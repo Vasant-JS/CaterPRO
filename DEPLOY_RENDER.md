@@ -79,6 +79,16 @@ For Android emulator, use your computer IP instead of `127.0.0.1`, or use a host
 - Universal data: menu items and raw materials.
 - User-owned data: events, clients, employees, additional services, payments.
 
+Full event creation APIs are exposed in Swagger:
+
+- `POST /api/events`
+- `POST /api/events/{eventId}/dates`
+- `POST /api/events/{eventId}/dates/{dateId}/menu-slots`
+- `POST /api/events/{eventId}/dates/{dateId}/additional-services`
+- `POST /api/events/{eventId}/payments`
+
+For a clean development user, call `POST /api/dev/reset-user-data` with a bearer token.
+
 The current local backend uses `backend/db.json`. Render free instances have ephemeral filesystem behavior, so production should move this to PostgreSQL before real use.
 
 ## Accessing The Current DB

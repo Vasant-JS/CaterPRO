@@ -37,6 +37,28 @@ Data ownership:
 - `universal.menuItems` and `universal.rawMaterials` are shared catalog data.
 - `userData.{userId}` contains user-owned events, clients, employees, services, and payments.
 
+Event creation flow:
+
+1. `POST /api/auth/login`
+2. `POST /api/events`
+3. `POST /api/events/{eventId}/dates`
+4. `POST /api/events/{eventId}/dates/{dateId}/menu-slots`
+5. `POST /api/events/{eventId}/dates/{dateId}/additional-services`
+6. `POST /api/events/{eventId}/payments`
+
+Universal catalog APIs:
+
+- `GET/POST /api/menu-items`
+- `PUT /api/menu-items/{id}`
+- `GET/POST /api/raw-materials`
+- `PUT /api/raw-materials/{id}`
+
+Development reset:
+
+- `POST /api/dev/reset-user-data`
+- Requires bearer token.
+- Clears events, clients, employees, additional services, and payments for the logged-in user.
+
 Current database:
 
 - Local development uses `db.json`.
