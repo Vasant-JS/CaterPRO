@@ -159,11 +159,13 @@ function firstExistingPath(paths) {
 
 function configurePdfFonts(doc) {
   const regular = firstExistingPath([
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-400-normal.woff'),
     'C:\\Windows\\Fonts\\Nirmala.ttf',
     'C:\\Windows\\Fonts\\arial.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
   ]);
   const bold = firstExistingPath([
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-700-normal.woff'),
     'C:\\Windows\\Fonts\\NirmalaB.ttf',
     'C:\\Windows\\Fonts\\arialbd.ttf',
     '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',

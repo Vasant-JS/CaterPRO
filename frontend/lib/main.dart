@@ -2655,7 +2655,8 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
     final total = eventTotal(event);
     final paid = eventPaid(event);
     final balance = eventBalance(event);
-    final progress = total == 0 ? 0.0 : (paid / total).clamp(0.0, 1.0);
+    final progressValue = paid + eventSettledDiscount(event);
+    final progress = total == 0 ? 0.0 : (progressValue / total).clamp(0.0, 1.0);
     return Column(children: [
       CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(event.primaryClient.isEmpty ? event.mobile : event.primaryClient, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text(event.mobile, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), Pill(event.status.toUpperCase(), color: Cp.secondaryFixed, textColor: const Color(0xff663e00))]),
@@ -2722,7 +2723,15 @@ class EventDetailsTabContent extends StatelessWidget {
             ...event.payments.map((payment) => CpCard(child: Row(children: [const Icon(Icons.payments, color: Cp.primary), const SizedBox(width: 12), Expanded(child: Text('${money(payment.amount)} • ${payment.mode}\n${payment.date}${payment.reference.isEmpty ? '' : ' • ${payment.reference}'}', style: const TextStyle(fontWeight: FontWeight.w800))), if (payment.settled) const Pill('Settled', color: Cp.tertiaryFixed, textColor: Color(0xff00210c))]))),
           ],
           const SizedBox(height: 16),
-          SizedBox(height: 52, child: FilledButton.icon(onPressed: () => showEventRecordPaymentSheet(context, event: event, api: api, onSaved: onEventUpdated), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), icon: const Icon(Icons.payments), label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
+          SizedBox(
+            height: 52,
+            child: FilledButton.icon(
+              onPressed: balance == 0 ? null : () => showEventRecordPaymentSheet(context, event: event, api: api, onSaved: onEventUpdated),
+              style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000), disabledBackgroundColor: Cp.surfaceHigh, disabledForegroundColor: Cp.onVariant),
+              icon: Icon(balance == 0 ? Icons.check_circle : Icons.payments),
+              label: Text(balance == 0 ? 'Payment Complete' : 'Record Payment', style: const TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
         ]);
       default:
         return CpCard(color: Cp.primaryContainer, child: Text('Event Notes\n${event.notes.isEmpty ? 'No notes added.' : event.notes}', style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700)));
