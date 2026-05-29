@@ -281,10 +281,12 @@ class ApiService {
     return getEvent(eventId);
   }
 
-  Future<Uri> documentUri(String eventId, String type) async {
+  Future<Uri> documentUri(String eventId, String type, {String? dateId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
-    return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/documents/$type?token=${Uri.encodeComponent(token)}');
+    final query = <String, String>{'token': token};
+    if (dateId != null && dateId.isNotEmpty) query['dateId'] = dateId;
+    return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/documents/$type').replace(queryParameters: query);
   }
 }
 
@@ -2540,13 +2542,17 @@ class EventDetailsScreen extends StatelessWidget {
         await downloadDocument(context, selectedEvent, 'invoice');
         break;
       case EventScreenAction.currentDayMenu:
-        showCpSnack(context, 'Current day menu opened');
+        if (selectedEvent.dates.isEmpty) {
+          showCpSnack(context, 'No event dates available for menu download');
+        } else {
+          await downloadDocument(context, selectedEvent, 'menu', dateId: selectedEvent.dates.first.id);
+        }
         break;
       case EventScreenAction.allDaysMenu:
-        showCpSnack(context, 'All days menu opened');
+        await downloadDocument(context, selectedEvent, 'all-menus');
         break;
       case EventScreenAction.shareMenu:
-        showCpSnack(context, 'Menu share sheet opened');
+        await downloadDocument(context, selectedEvent, 'all-menus');
         break;
       case EventScreenAction.deleteEvent:
         if (await confirmEventAction(context, 'Delete Event?', 'This will remove this event and all linked dates, menus, payments, and documents.')) {
@@ -2570,12 +2576,19 @@ class EventDetailsScreen extends StatelessWidget {
     }
   }
 
-  Future<void> downloadDocument(BuildContext context, AppEvent event, String type) async {
+  Future<void> downloadDocument(BuildContext context, AppEvent event, String type, {String? dateId}) async {
     try {
-      final uri = await api.documentUri(event.id, type);
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_self');
+      final uri = await api.documentUri(event.id, type, dateId: dateId);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (!context.mounted) return;
-      showCpSnack(context, launched ? '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started' : 'Unable to start download');
+      final label = switch (type) {
+        'invoice' => 'Invoice',
+        'quotation' => 'Quotation',
+        'menu' => 'Menu',
+        'all-menus' => 'All days menu',
+        _ => 'Document',
+      };
+      showCpSnack(context, launched ? '$label download started' : 'Unable to start download');
     } catch (e) {
       if (!context.mounted) return;
       showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -2691,7 +2704,13 @@ class EventDetailsTabContent extends StatelessWidget {
       case 1:
         return event.dates.isEmpty
             ? const EmptyStateCard(title: 'No dates configured', message: 'Add event dates and menu types from the create flow.')
-            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: event.dates.map((date) => EventDateMenuCard(date: date)).toList());
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: event.dates.map((date) => EventDateMenuCard(date: date, onDownload: () async {
+                  final uri = await api.documentUri(event.id, 'menu', dateId: date.id);
+                  if (context.mounted) {
+                    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                    if (context.mounted) showCpSnack(context, launched ? 'Menu download started' : 'Unable to start download');
+                  }
+                })).toList());
       case 2:
         final total = eventTotal(event);
         final paid = eventPaid(event);
@@ -2712,8 +2731,9 @@ class EventDetailsTabContent extends StatelessWidget {
 }
 
 class EventDateMenuCard extends StatelessWidget {
-  const EventDateMenuCard({super.key, required this.date});
+  const EventDateMenuCard({super.key, required this.date, required this.onDownload});
   final AppEventDate date;
+  final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -2740,9 +2760,9 @@ class EventDateMenuCard extends StatelessWidget {
                 ),
               ),
               IconButton(
-                onPressed: () => showCpSnack(context, 'Downloading menu for $date'),
-                icon: const Icon(Icons.download, color: Cp.primary),
-                tooltip: 'Download menu',
+                onPressed: onDownload,
+                icon: const Icon(Icons.picture_as_pdf, color: Cp.primary),
+                tooltip: 'Download menu PDF',
               ),
             ],
           ),

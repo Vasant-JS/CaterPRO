@@ -147,6 +147,12 @@ function menuTitleById(db, id) {
   return item ? item.english || item.title || id : id;
 }
 
+function menuDisplayById(db, id) {
+  const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
+  if (!item) return id;
+  return item.kannada ? `${item.kannada} / ${item.english}` : item.english || item.title || id;
+}
+
 function firstExistingPath(paths) {
   return paths.find((candidate) => candidate && fs.existsSync(candidate));
 }
@@ -270,6 +276,93 @@ function generateEventPdf({ res, db, event, type }) {
   doc.end();
 }
 
+function mealAccent(type) {
+  const key = String(type || '').toLowerCase();
+  if (key.includes('breakfast')) return '#f2a51a';
+  if (key.includes('lunch')) return '#0b6b3a';
+  if (key.includes('dinner')) return '#7b1b44';
+  if (key.includes('juice')) return '#1c7c8a';
+  if (key.includes('snack')) return '#b25a00';
+  return '#06445d';
+}
+
+function menuDocumentTitle(event, date) {
+  const client = event.primaryClient || event.name || 'Event';
+  return `${client}${date ? ` - ${date.date}` : ''}`;
+}
+
+function drawMenuPage({ doc, db, event, date, fonts, pageLabel }) {
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#fbf7ef');
+  doc.roundedRect(26, 24, 543, 88, 14).fill('#06445d');
+  doc.fillColor('white').font(fonts.bold).fontSize(28).text('MENU', 44, 42, { width: 160 });
+  doc.font(fonts.regular).fontSize(10).text('CaterPro event menu', 46, 76);
+  doc.font(fonts.bold).fontSize(12).text(menuDocumentTitle(event, date), 250, 42, { width: 285, align: 'right' });
+  doc.font(fonts.regular).fontSize(9).text(pageLabel, 250, 64, { width: 285, align: 'right' });
+  doc.text(event.venue || '', 250, 82, { width: 285, align: 'right' });
+
+  const label = date.label || date.date;
+  doc.roundedRect(42, 132, 511, 48, 12).fill('#fff4db').strokeColor('#f2a51a').stroke();
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(17).text(label, 60, 144, { width: 270 });
+  doc.fillColor('#5f6368').font(fonts.regular).fontSize(10).text(date.date, 60, 166);
+  const pax = date.menuSlots.reduce((sum, slot) => sum + Number(slot.pax || 0), 0);
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(12).text(`${pax} total pax`, 400, 151, { width: 120, align: 'right' });
+
+  let y = 205;
+  if (date.menuSlots.length === 0) {
+    doc.fillColor('#5f6368').font(fonts.regular).fontSize(12).text('No menu configured for this date.', 60, y);
+    return;
+  }
+  for (const slot of date.menuSlots) {
+    y = ensurePageSpace(doc, y, 112);
+    const color = mealAccent(slot.type);
+    const items = slot.menuItemIds.map((id) => menuDisplayById(db, id));
+    const rowHeight = Math.max(96, 66 + Math.ceil(Math.max(items.length, 1) / 2) * 24);
+    doc.roundedRect(42, y, 511, rowHeight, 14).fill('white').strokeColor('#eadfcf').stroke();
+    doc.roundedRect(42, y, 10, rowHeight, 4).fill(color);
+    doc.fillColor(color).font(fonts.bold).fontSize(18).text(slot.type || 'Menu', 66, y + 18, { width: 220 });
+    doc.fillColor('#5f6368').font(fonts.regular).fontSize(10).text(`${slot.time || ''}${slot.time ? ' • ' : ''}${slot.pax || 0} pax`, 66, y + 42);
+    doc.fillColor('#202124').font(fonts.regular).fontSize(10);
+    const leftItems = items.filter((_, index) => index % 2 === 0);
+    const rightItems = items.filter((_, index) => index % 2 === 1);
+    leftItems.forEach((item, index) => doc.text(`• ${item}`, 66, y + 66 + index * 22, { width: 210 }));
+    rightItems.forEach((item, index) => doc.text(`• ${item}`, 302, y + 66 + index * 22, { width: 210 }));
+    y += rowHeight + 16;
+  }
+
+  if (date.additionalServices.length > 0) {
+    y = ensurePageSpace(doc, y, 90);
+    doc.fillColor('#06445d').font(fonts.bold).fontSize(14).text('Additional Services', 42, y);
+    y += 22;
+    doc.fillColor('#202124').font(fonts.regular).fontSize(10);
+    date.additionalServices.forEach((service) => {
+      doc.text(`• ${service.name} - ${service.quantity || 0} ${service.unit || ''}`, 60, y, { width: 430 });
+      y += 18;
+    });
+  }
+
+  doc.fillColor('#9a6a00').font(fonts.bold).fontSize(10).text('Prepared by CaterPro', 42, 786, { width: 511, align: 'center' });
+}
+
+function generateMenuPdf({ res, db, event, dateId, allDates = false }) {
+  const dates = allDates ? event.dates : event.dates.filter((date) => date.id === dateId || date.date === dateId);
+  if (!dates.length) {
+    res.status(404).json({ message: 'Event date not found' });
+    return;
+  }
+  const doc = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `Menu - ${event.name}` }, autoFirstPage: false });
+  const fonts = configurePdfFonts(doc);
+  const suffix = allDates ? 'ALL_DAYS' : (dates[0].date || dates[0].id);
+  const number = `MENU_${event.id}_${suffix}`.replace(/[^A-Za-z0-9_-]/g, '_');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  doc.pipe(res);
+  dates.forEach((date, index) => {
+    doc.addPage();
+    drawMenuPage({ doc, db, event, date, fonts, pageLabel: allDates ? `Day ${index + 1} of ${dates.length}` : 'Single day menu' });
+  });
+  doc.end();
+}
+
 const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -310,7 +403,7 @@ const openApiSpec = {
     '/api/events/{eventId}/dates/{dateId}/menu-slots': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add menu type/slot for date' } },
     '/api/events/{eventId}/dates/{dateId}/additional-services': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add additional service for date' } },
     '/api/events/{eventId}/payments': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Record event payment' } },
-    '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice'] } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
+    '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice', 'menu', 'all-menus'] } }, { name: 'dateId', in: 'query', required: false, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
   },
 };
 
@@ -559,8 +652,14 @@ app.get('/api/events/:eventId/documents/:type', (req, res) => {
   if (!user) return;
   const event = findUserEvent(db, user.id, req.params.eventId);
   if (!event) return res.status(404).json({ message: 'Event not found' });
-  if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation or invoice' });
-  generateEventPdf({ res, db, event, type: req.params.type });
+  if (req.params.type === 'menu') {
+    return generateMenuPdf({ res, db, event, dateId: req.query.dateId || event.dates[0]?.id || event.dates[0]?.date });
+  }
+  if (req.params.type === 'all-menus') {
+    return generateMenuPdf({ res, db, event, allDates: true });
+  }
+  if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation, invoice, menu, or all-menus' });
+  return generateEventPdf({ res, db, event, type: req.params.type });
 });
 
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
