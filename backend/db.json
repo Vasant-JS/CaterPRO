@@ -8,7 +8,1154 @@
     }
   ],
   "universal": {
-    "menuItems": [],
+    "menuItems": [
+      {
+        "id": "MNU-001",
+        "english": "Idli",
+        "kannada": "ಇಡ್ಲಿ",
+        "title": "ಇಡ್ಲಿ/Idli",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-002",
+        "english": "Vada",
+        "kannada": "ವಡೆ",
+        "title": "ವಡೆ/Vada",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-003",
+        "english": "Masala Dosa",
+        "kannada": "ಮಸಾಲೆ ದೋಸೆ",
+        "title": "ಮಸಾಲೆ ದೋಸೆ/Masala Dosa",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-004",
+        "english": "Plain Dosa",
+        "kannada": "ಪ್ಲೇನ್ ದೋಸೆ",
+        "title": "ಪ್ಲೇನ್ ದೋಸೆ/Plain Dosa",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-005",
+        "english": "Upma",
+        "kannada": "ಉಪ್ಪಿಟ್ಟು",
+        "title": "ಉಪ್ಪಿಟ್ಟು/Upma",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-006",
+        "english": "Pongal",
+        "kannada": "ಪೊಂಗಲ್",
+        "title": "ಪೊಂಗಲ್/Pongal",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-007",
+        "english": "Poori Saagu",
+        "kannada": "ಪೂರಿ ಸಾಗು",
+        "title": "ಪೂರಿ ಸಾಗು/Poori Saagu",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-008",
+        "english": "Kesari Bath",
+        "kannada": "ಕೇಸರಿ ಬಾತ್",
+        "title": "ಕೇಸರಿ ಬಾತ್/Kesari Bath",
+        "category": "Dessert",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-009",
+        "english": "Chow Chow Bath",
+        "kannada": "ಚೌ ಚೌ ಬಾತ್",
+        "title": "ಚೌ ಚೌ ಬಾತ್/Chow Chow Bath",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-010",
+        "english": "Set Dosa",
+        "kannada": "ಸೆಟ್ ದೋಸೆ",
+        "title": "ಸೆಟ್ ದೋಸೆ/Set Dosa",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-011",
+        "english": "Paneer Butter Masala",
+        "kannada": "ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ",
+        "title": "ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ/Paneer Butter Masala",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-012",
+        "english": "Dal Makhani",
+        "kannada": "ದಾಲ್ ಮಖನಿ",
+        "title": "ದಾಲ್ ಮಖನಿ/Dal Makhani",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-013",
+        "english": "Veg Biryani",
+        "kannada": "ವೆಜ್ ಬಿರಿಯಾನಿ",
+        "title": "ವೆಜ್ ಬಿರಿಯಾನಿ/Veg Biryani",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-014",
+        "english": "Jeera Rice",
+        "kannada": "ಜೀರಾ ರೈಸ್",
+        "title": "ಜೀರಾ ರೈಸ್/Jeera Rice",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-015",
+        "english": "Ghee Rice",
+        "kannada": "ತುಪ್ಪದ ಅನ್ನ",
+        "title": "ತುಪ್ಪದ ಅನ್ನ/Ghee Rice",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-016",
+        "english": "Curd Rice",
+        "kannada": "ಮೊಸರನ್ನ",
+        "title": "ಮೊಸರನ್ನ/Curd Rice",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-017",
+        "english": "Sambar Rice",
+        "kannada": "ಸಾಂಬಾರ್ ರೈಸ್",
+        "title": "ಸಾಂಬಾರ್ ರೈಸ್/Sambar Rice",
+        "category": "Main Course",
+        "meals": [
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-018",
+        "english": "Rasam Rice",
+        "kannada": "ರಸಂ ರೈಸ್",
+        "title": "ರಸಂ ರೈಸ್/Rasam Rice",
+        "category": "Main Course",
+        "meals": [
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-019",
+        "english": "Chapati",
+        "kannada": "ಚಪಾತಿ",
+        "title": "ಚಪಾತಿ/Chapati",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-020",
+        "english": "Naan",
+        "kannada": "ನಾನ್",
+        "title": "ನಾನ್/Naan",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-021",
+        "english": "Chicken Biryani",
+        "kannada": "ಚಿಕನ್ ಬಿರಿಯಾನಿ",
+        "title": "ಚಿಕನ್ ಬಿರಿಯಾನಿ/Chicken Biryani",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-022",
+        "english": "Mutton Biryani",
+        "kannada": "ಮಟನ್ ಬಿರಿಯಾನಿ",
+        "title": "ಮಟನ್ ಬಿರಿಯಾನಿ/Mutton Biryani",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-023",
+        "english": "Butter Chicken",
+        "kannada": "ಬಟರ್ ಚಿಕನ್",
+        "title": "ಬಟರ್ ಚಿಕನ್/Butter Chicken",
+        "category": "Main Course",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-024",
+        "english": "Chicken Kabab",
+        "kannada": "ಚಿಕನ್ ಕಬಾಬ್",
+        "title": "ಚಿಕನ್ ಕಬಾಬ್/Chicken Kabab",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-025",
+        "english": "Fish Fry",
+        "kannada": "ಮೀನು ಫ್ರೈ",
+        "title": "ಮೀನು ಫ್ರೈ/Fish Fry",
+        "category": "Starter",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-026",
+        "english": "Egg Curry",
+        "kannada": "ಮೊಟ್ಟೆ ಕರ್ರಿ",
+        "title": "ಮೊಟ್ಟೆ ಕರ್ರಿ/Egg Curry",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-027",
+        "english": "Chicken Curry",
+        "kannada": "ಚಿಕನ್ ಕರ್ರಿ",
+        "title": "ಚಿಕನ್ ಕರ್ರಿ/Chicken Curry",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-028",
+        "english": "Mutton Curry",
+        "kannada": "ಮಟನ್ ಕರ್ರಿ",
+        "title": "ಮಟನ್ ಕರ್ರಿ/Mutton Curry",
+        "category": "Main Course",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-029",
+        "english": "Pepper Chicken",
+        "kannada": "ಪೆಪ್ಪರ್ ಚಿಕನ್",
+        "title": "ಪೆಪ್ಪರ್ ಚಿಕನ್/Pepper Chicken",
+        "category": "Starter",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-030",
+        "english": "Tandoori Chicken",
+        "kannada": "ತಂದೂರಿ ಚಿಕನ್",
+        "title": "ತಂದೂರಿ ಚಿಕನ್/Tandoori Chicken",
+        "category": "Starter",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-031",
+        "english": "Gobi Manchurian",
+        "kannada": "ಗೋಬಿ ಮಂಚೂರಿಯನ್",
+        "title": "ಗೋಬಿ ಮಂಚೂರಿಯನ್/Gobi Manchurian",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-032",
+        "english": "Paneer Tikka",
+        "kannada": "ಪನೀರ್ ಟಿಕ್ಕಾ",
+        "title": "ಪನೀರ್ ಟಿಕ್ಕಾ/Paneer Tikka",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-033",
+        "english": "Veg Spring Roll",
+        "kannada": "ವೆಜ್ ಸ್ಪ್ರಿಂಗ್ ರೋಲ್",
+        "title": "ವೆಜ್ ಸ್ಪ್ರಿಂಗ್ ರೋಲ್/Veg Spring Roll",
+        "category": "Starter",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-034",
+        "english": "French Fries",
+        "kannada": "ಫ್ರೆಂಚ್ ಫ್ರೈಸ್",
+        "title": "ಫ್ರೆಂಚ್ ಫ್ರೈಸ್/French Fries",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-035",
+        "english": "Samosa",
+        "kannada": "ಸಮೋಸ",
+        "title": "ಸಮೋಸ/Samosa",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-036",
+        "english": "Kachori",
+        "kannada": "ಕಚೋರಿ",
+        "title": "ಕಚೋರಿ/Kachori",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-037",
+        "english": "Pakoda",
+        "kannada": "ಪಕೋಡ",
+        "title": "ಪಕೋಡ/Pakoda",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-038",
+        "english": "Veg Cutlet",
+        "kannada": "ವೆಜ್ ಕಟ್ಲೆಟ್",
+        "title": "ವೆಜ್ ಕಟ್ಲೆಟ್/Veg Cutlet",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-039",
+        "english": "Corn Cheese Balls",
+        "kannada": "ಕಾರ್ನ್ ಚೀಸ್ ಬಾಲ್ಸ್",
+        "title": "ಕಾರ್ನ್ ಚೀಸ್ ಬಾಲ್ಸ್/Corn Cheese Balls",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-040",
+        "english": "Dahi Puri",
+        "kannada": "ದಹಿ ಪುರಿ",
+        "title": "ದಹಿ ಪುರಿ/Dahi Puri",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-041",
+        "english": "Gulab Jamun",
+        "kannada": "ಗುಲಾಬ್ ಜಾಮೂನ್",
+        "title": "ಗುಲಾಬ್ ಜಾಮೂನ್/Gulab Jamun",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-042",
+        "english": "Rasgulla",
+        "kannada": "ರಸಗುಲ್ಲ",
+        "title": "ರಸಗುಲ್ಲ/Rasgulla",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-043",
+        "english": "Jalebi",
+        "kannada": "ಜಲೇಬಿ",
+        "title": "ಜಲೇಬಿ/Jalebi",
+        "category": "Dessert",
+        "meals": [
+          "Breakfast",
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-044",
+        "english": "Carrot Halwa",
+        "kannada": "ಕ್ಯಾರೆಟ್ ಹಲ್ವ",
+        "title": "ಕ್ಯಾರೆಟ್ ಹಲ್ವ/Carrot Halwa",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-045",
+        "english": "Payasam",
+        "kannada": "ಪಾಯಸ",
+        "title": "ಪಾಯಸ/Payasam",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-046",
+        "english": "Ice Cream",
+        "kannada": "ಐಸ್ ಕ್ರೀಮ್",
+        "title": "ಐಸ್ ಕ್ರೀಮ್/Ice Cream",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-047",
+        "english": "Fruit Salad",
+        "kannada": "ಹಣ್ಣಿನ ಸಲಾಡ್",
+        "title": "ಹಣ್ಣಿನ ಸಲಾಡ್/Fruit Salad",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-048",
+        "english": "Mysore Pak",
+        "kannada": "ಮೈಸೂರ್ ಪಾಕ್",
+        "title": "ಮೈಸೂರ್ ಪಾಕ್/Mysore Pak",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-049",
+        "english": "Badam Halwa",
+        "kannada": "ಬಾದಾಮ್ ಹಲ್ವ",
+        "title": "ಬಾದಾಮ್ ಹಲ್ವ/Badam Halwa",
+        "category": "Dessert",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-050",
+        "english": "Kheer",
+        "kannada": "ಖೀರ್",
+        "title": "ಖೀರ್/Kheer",
+        "category": "Dessert",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-051",
+        "english": "Tea",
+        "kannada": "ಚಹ",
+        "title": "ಚಹ/Tea",
+        "category": "Beverage",
+        "meals": [
+          "Breakfast",
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-052",
+        "english": "Coffee",
+        "kannada": "ಕಾಫಿ",
+        "title": "ಕಾಫಿ/Coffee",
+        "category": "Beverage",
+        "meals": [
+          "Breakfast",
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-053",
+        "english": "Lemon Juice",
+        "kannada": "ನಿಂಬೆ ರಸ",
+        "title": "ನಿಂಬೆ ರಸ/Lemon Juice",
+        "category": "Beverage",
+        "meals": [
+          "Juice"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-054",
+        "english": "Mango Juice",
+        "kannada": "ಮಾವಿನ ರಸ",
+        "title": "ಮಾವಿನ ರಸ/Mango Juice",
+        "category": "Beverage",
+        "meals": [
+          "Juice"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-055",
+        "english": "Watermelon Juice",
+        "kannada": "ತರಬೂಜ ರಸ",
+        "title": "ತರಬೂಜ ರಸ/Watermelon Juice",
+        "category": "Beverage",
+        "meals": [
+          "Juice"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-056",
+        "english": "Mosambi Juice",
+        "kannada": "ಮೊಸಂಬಿ ರಸ",
+        "title": "ಮೊಸಂಬಿ ರಸ/Mosambi Juice",
+        "category": "Beverage",
+        "meals": [
+          "Juice"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-057",
+        "english": "Buttermilk",
+        "kannada": "ಮಜ್ಜಿಗೆ",
+        "title": "ಮಜ್ಜಿಗೆ/Buttermilk",
+        "category": "Beverage",
+        "meals": [
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-058",
+        "english": "Lassi",
+        "kannada": "ಲಸ್ಸಿ",
+        "title": "ಲಸ್ಸಿ/Lassi",
+        "category": "Beverage",
+        "meals": [
+          "Juice",
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-059",
+        "english": "Badam Milk",
+        "kannada": "ಬಾದಾಮ್ ಹಾಲು",
+        "title": "ಬಾದಾಮ್ ಹಾಲು/Badam Milk",
+        "category": "Beverage",
+        "meals": [
+          "Juice",
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-060",
+        "english": "Filter Coffee",
+        "kannada": "ಫಿಲ್ಟರ್ ಕಾಫಿ",
+        "title": "ಫಿಲ್ಟರ್ ಕಾಫಿ/Filter Coffee",
+        "category": "Beverage",
+        "meals": [
+          "Breakfast",
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-061",
+        "english": "Idli Special",
+        "kannada": "ಇಡ್ಲಿ Special",
+        "title": "ಇಡ್ಲಿ Special/Idli Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-062",
+        "english": "Vada Special",
+        "kannada": "ವಡೆ Special",
+        "title": "ವಡೆ Special/Vada Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-063",
+        "english": "Masala Dosa Special",
+        "kannada": "ಮಸಾಲೆ ದೋಸೆ Special",
+        "title": "ಮಸಾಲೆ ದೋಸೆ Special/Masala Dosa Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-064",
+        "english": "Plain Dosa Special",
+        "kannada": "ಪ್ಲೇನ್ ದೋಸೆ Special",
+        "title": "ಪ್ಲೇನ್ ದೋಸೆ Special/Plain Dosa Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-065",
+        "english": "Upma Special",
+        "kannada": "ಉಪ್ಪಿಟ್ಟು Special",
+        "title": "ಉಪ್ಪಿಟ್ಟು Special/Upma Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-066",
+        "english": "Pongal Special",
+        "kannada": "ಪೊಂಗಲ್ Special",
+        "title": "ಪೊಂಗಲ್ Special/Pongal Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-067",
+        "english": "Poori Saagu Special",
+        "kannada": "ಪೂರಿ ಸಾಗು Special",
+        "title": "ಪೂರಿ ಸಾಗು Special/Poori Saagu Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-068",
+        "english": "Kesari Bath Special",
+        "kannada": "ಕೇಸರಿ ಬಾತ್ Special",
+        "title": "ಕೇಸರಿ ಬಾತ್ Special/Kesari Bath Special",
+        "category": "Dessert",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-069",
+        "english": "Chow Chow Bath Special",
+        "kannada": "ಚೌ ಚೌ ಬಾತ್ Special",
+        "title": "ಚೌ ಚೌ ಬಾತ್ Special/Chow Chow Bath Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-070",
+        "english": "Set Dosa Special",
+        "kannada": "ಸೆಟ್ ದೋಸೆ Special",
+        "title": "ಸೆಟ್ ದೋಸೆ Special/Set Dosa Special",
+        "category": "South Indian",
+        "meals": [
+          "Breakfast"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-071",
+        "english": "Paneer Butter Masala Special",
+        "kannada": "ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ Special",
+        "title": "ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ Special/Paneer Butter Masala Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-072",
+        "english": "Dal Makhani Special",
+        "kannada": "ದಾಲ್ ಮಖನಿ Special",
+        "title": "ದಾಲ್ ಮಖನಿ Special/Dal Makhani Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-073",
+        "english": "Veg Biryani Special",
+        "kannada": "ವೆಜ್ ಬಿರಿಯಾನಿ Special",
+        "title": "ವೆಜ್ ಬಿರಿಯಾನಿ Special/Veg Biryani Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-074",
+        "english": "Jeera Rice Special",
+        "kannada": "ಜೀರಾ ರೈಸ್ Special",
+        "title": "ಜೀರಾ ರೈಸ್ Special/Jeera Rice Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-075",
+        "english": "Ghee Rice Special",
+        "kannada": "ತುಪ್ಪದ ಅನ್ನ Special",
+        "title": "ತುಪ್ಪದ ಅನ್ನ Special/Ghee Rice Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-076",
+        "english": "Curd Rice Special",
+        "kannada": "ಮೊಸರನ್ನ Special",
+        "title": "ಮೊಸರನ್ನ Special/Curd Rice Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-077",
+        "english": "Sambar Rice Special",
+        "kannada": "ಸಾಂಬಾರ್ ರೈಸ್ Special",
+        "title": "ಸಾಂಬಾರ್ ರೈಸ್ Special/Sambar Rice Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-078",
+        "english": "Rasam Rice Special",
+        "kannada": "ರಸಂ ರೈಸ್ Special",
+        "title": "ರಸಂ ರೈಸ್ Special/Rasam Rice Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-079",
+        "english": "Chapati Special",
+        "kannada": "ಚಪಾತಿ Special",
+        "title": "ಚಪಾತಿ Special/Chapati Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-080",
+        "english": "Naan Special",
+        "kannada": "ನಾನ್ Special",
+        "title": "ನಾನ್ Special/Naan Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-081",
+        "english": "Chicken Biryani Special",
+        "kannada": "ಚಿಕನ್ ಬಿರಿಯಾನಿ Special",
+        "title": "ಚಿಕನ್ ಬಿರಿಯಾನಿ Special/Chicken Biryani Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-082",
+        "english": "Mutton Biryani Special",
+        "kannada": "ಮಟನ್ ಬಿರಿಯಾನಿ Special",
+        "title": "ಮಟನ್ ಬಿರಿಯಾನಿ Special/Mutton Biryani Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-083",
+        "english": "Butter Chicken Special",
+        "kannada": "ಬಟರ್ ಚಿಕನ್ Special",
+        "title": "ಬಟರ್ ಚಿಕನ್ Special/Butter Chicken Special",
+        "category": "Main Course",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-084",
+        "english": "Chicken Kabab Special",
+        "kannada": "ಚಿಕನ್ ಕಬಾಬ್ Special",
+        "title": "ಚಿಕನ್ ಕಬಾಬ್ Special/Chicken Kabab Special",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-085",
+        "english": "Fish Fry Special",
+        "kannada": "ಮೀನು ಫ್ರೈ Special",
+        "title": "ಮೀನು ಫ್ರೈ Special/Fish Fry Special",
+        "category": "Starter",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-086",
+        "english": "Egg Curry Special",
+        "kannada": "ಮೊಟ್ಟೆ ಕರ್ರಿ Special",
+        "title": "ಮೊಟ್ಟೆ ಕರ್ರಿ Special/Egg Curry Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-087",
+        "english": "Chicken Curry Special",
+        "kannada": "ಚಿಕನ್ ಕರ್ರಿ Special",
+        "title": "ಚಿಕನ್ ಕರ್ರಿ Special/Chicken Curry Special",
+        "category": "Main Course",
+        "meals": [
+          "Lunch",
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-088",
+        "english": "Mutton Curry Special",
+        "kannada": "ಮಟನ್ ಕರ್ರಿ Special",
+        "title": "ಮಟನ್ ಕರ್ರಿ Special/Mutton Curry Special",
+        "category": "Main Course",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-089",
+        "english": "Pepper Chicken Special",
+        "kannada": "ಪೆಪ್ಪರ್ ಚಿಕನ್ Special",
+        "title": "ಪೆಪ್ಪರ್ ಚಿಕನ್ Special/Pepper Chicken Special",
+        "category": "Starter",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-090",
+        "english": "Tandoori Chicken Special",
+        "kannada": "ತಂದೂರಿ ಚಿಕನ್ Special",
+        "title": "ತಂದೂರಿ ಚಿಕನ್ Special/Tandoori Chicken Special",
+        "category": "Starter",
+        "meals": [
+          "Dinner"
+        ],
+        "veg": false
+      },
+      {
+        "id": "MNU-091",
+        "english": "Gobi Manchurian Special",
+        "kannada": "ಗೋಬಿ ಮಂಚೂರಿಯನ್ Special",
+        "title": "ಗೋಬಿ ಮಂಚೂರಿಯನ್ Special/Gobi Manchurian Special",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-092",
+        "english": "Paneer Tikka Special",
+        "kannada": "ಪನೀರ್ ಟಿಕ್ಕಾ Special",
+        "title": "ಪನೀರ್ ಟಿಕ್ಕಾ Special/Paneer Tikka Special",
+        "category": "Starter",
+        "meals": [
+          "Snack",
+          "Dinner"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-093",
+        "english": "Veg Spring Roll Special",
+        "kannada": "ವೆಜ್ ಸ್ಪ್ರಿಂಗ್ ರೋಲ್ Special",
+        "title": "ವೆಜ್ ಸ್ಪ್ರಿಂಗ್ ರೋಲ್ Special/Veg Spring Roll Special",
+        "category": "Starter",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-094",
+        "english": "French Fries Special",
+        "kannada": "ಫ್ರೆಂಚ್ ಫ್ರೈಸ್ Special",
+        "title": "ಫ್ರೆಂಚ್ ಫ್ರೈಸ್ Special/French Fries Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-095",
+        "english": "Samosa Special",
+        "kannada": "ಸಮೋಸ Special",
+        "title": "ಸಮೋಸ Special/Samosa Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-096",
+        "english": "Kachori Special",
+        "kannada": "ಕಚೋರಿ Special",
+        "title": "ಕಚೋರಿ Special/Kachori Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-097",
+        "english": "Pakoda Special",
+        "kannada": "ಪಕೋಡ Special",
+        "title": "ಪಕೋಡ Special/Pakoda Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-098",
+        "english": "Veg Cutlet Special",
+        "kannada": "ವೆಜ್ ಕಟ್ಲೆಟ್ Special",
+        "title": "ವೆಜ್ ಕಟ್ಲೆಟ್ Special/Veg Cutlet Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-099",
+        "english": "Corn Cheese Balls Special",
+        "kannada": "ಕಾರ್ನ್ ಚೀಸ್ ಬಾಲ್ಸ್ Special",
+        "title": "ಕಾರ್ನ್ ಚೀಸ್ ಬಾಲ್ಸ್ Special/Corn Cheese Balls Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      },
+      {
+        "id": "MNU-100",
+        "english": "Dahi Puri Special",
+        "kannada": "ದಹಿ ಪುರಿ Special",
+        "title": "ದಹಿ ಪುರಿ Special/Dahi Puri Special",
+        "category": "Snack",
+        "meals": [
+          "Snack"
+        ],
+        "veg": true
+      }
+    ],
     "rawMaterials": []
   },
   "userData": {
@@ -17,7 +1164,8 @@
       "clients": [],
       "employees": [],
       "additionalServices": [],
-      "payments": []
+      "payments": [],
+      "businessProfile": null
     }
   }
 }

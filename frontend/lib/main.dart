@@ -189,6 +189,12 @@ class ApiService {
     return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(AppEvent.fromJson).toList();
   }
 
+  Future<List<MenuMasterItem>> getMenuItems() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
+    if (response.statusCode != 200) throw Exception('Unable to load menu items');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(MenuMasterItem.fromJson).toList();
+  }
+
   Future<AppEvent> createEvent(EventDraft draft) async {
     final headers = await authHeaders();
     final eventResponse = await http.post(
@@ -410,11 +416,15 @@ class _AppShellState extends State<AppShell> {
     });
     try {
       final loaded = await api.getEvents();
+      final menuItems = await api.getMenuItems();
       if (!mounted) return;
       setState(() {
         events
           ..clear()
           ..addAll(loaded);
+        MenuMasterScreen.menuItems
+          ..clear()
+          ..addAll(menuItems);
       });
     } catch (e) {
       if (!mounted) return;
@@ -1696,23 +1706,55 @@ class CreateDatesStep extends StatelessWidget {
 Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
   final dateController = TextEditingController();
   final labelController = TextEditingController();
+  DateTime? selectedDate;
+  final today = DateTime.now();
+  final firstDate = DateTime(today.year, today.month, today.day);
+  String formatDate(DateTime date) => '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   return showModalBottomSheet<DraftDateConfig>(
     context: context,
     backgroundColor: Colors.transparent,
-    builder: (context) => SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-          const Text('Add Event Date', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
-          const Text('Select the mandatory date for this sub-event.', style: TextStyle(color: Cp.onVariant)),
-          const SizedBox(height: 18),
-          EditableInlineField(label: 'Event Date (YYYY-MM-DD)', controller: dateController),
-          EditableInlineField(label: 'Date Label', controller: labelController),
-          Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))), const SizedBox(width: 12), Expanded(child: FilledButton(onPressed: () => Navigator.pop(context, DraftDateConfig(date: dateController.text.trim(), label: labelController.text.trim())), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), child: const Text('Save Date')))]),
-        ]),
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheetState) => SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+          decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            const Text('Add Event Date', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            const Text('Select a date. Previous dates are disabled.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 18),
+            InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context,
+                  initialDate: selectedDate ?? firstDate,
+                  firstDate: firstDate,
+                  lastDate: DateTime(firstDate.year + 5),
+                );
+                if (picked == null) return;
+                setSheetState(() {
+                  selectedDate = picked;
+                  dateController.text = formatDate(picked);
+                });
+              },
+              child: IgnorePointer(child: EditableInlineField(label: 'Event Date', controller: dateController)),
+            ),
+            EditableInlineField(label: 'Date Label', controller: labelController),
+            Row(children: [
+              Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  onPressed: selectedDate == null ? null : () => Navigator.pop(context, DraftDateConfig(date: dateController.text.trim(), label: labelController.text.trim())),
+                  style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)),
+                  child: const Text('Save Date'),
+                ),
+              ),
+            ]),
+          ]),
+        ),
       ),
     ),
   );
@@ -2463,6 +2505,19 @@ class MenuMasterItem {
   final bool veg;
 
   String get title => '$kannada/$english';
+
+  factory MenuMasterItem.fromJson(Map<String, dynamic> json) {
+    final mealsValue = json['meals'];
+    final mealsText = mealsValue is List ? mealsValue.map((item) => item.toString()).join(', ') : mealsValue?.toString() ?? '';
+    return MenuMasterItem(
+      id: json['id']?.toString() ?? '',
+      english: json['english']?.toString() ?? '',
+      kannada: json['kannada']?.toString() ?? '',
+      category: json['category']?.toString() ?? '',
+      meals: mealsText,
+      veg: json['veg'] == true,
+    );
+  }
 }
 
 class MenuMasterScreen extends StatefulWidget {
