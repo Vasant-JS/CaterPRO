@@ -153,26 +153,31 @@ function menuDisplayById(db, id) {
   return item.kannada ? `${item.kannada} / ${item.english}` : item.english || item.title || id;
 }
 
+function menuPartsById(db, id) {
+  const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
+  if (!item) return { kannada: '', english: id };
+  return { kannada: item.kannada || '', english: item.english || item.title || id };
+}
+
 function firstExistingPath(paths) {
   return paths.find((candidate) => candidate && fs.existsSync(candidate));
 }
 
 function configurePdfFonts(doc) {
-  const regular = firstExistingPath([
+  const kannadaRegular = firstExistingPath([
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-400-normal.woff'),
-    'C:\\Windows\\Fonts\\Nirmala.ttf',
-    'C:\\Windows\\Fonts\\arial.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
   ]);
-  const bold = firstExistingPath([
+  const kannadaBold = firstExistingPath([
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-700-normal.woff'),
-    'C:\\Windows\\Fonts\\NirmalaB.ttf',
-    'C:\\Windows\\Fonts\\arialbd.ttf',
-    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
   ]);
-  if (regular) doc.registerFont('DocRegular', regular);
-  if (bold) doc.registerFont('DocBold', bold);
-  return { regular: regular ? 'DocRegular' : 'Helvetica', bold: bold ? 'DocBold' : 'Helvetica-Bold' };
+  if (kannadaRegular) doc.registerFont('KannadaRegular', kannadaRegular);
+  if (kannadaBold) doc.registerFont('KannadaBold', kannadaBold);
+  return {
+    regular: 'Helvetica',
+    bold: 'Helvetica-Bold',
+    kannada: kannadaRegular ? 'KannadaRegular' : 'Helvetica',
+    kannadaBold: kannadaBold ? 'KannadaBold' : 'Helvetica-Bold',
+  };
 }
 
 function writeDocumentHeader(doc, title, event, number, fonts) {
@@ -293,56 +298,65 @@ function menuDocumentTitle(event, date) {
   return `${client}${date ? ` - ${date.date}` : ''}`;
 }
 
+function drawChefMenuItem(doc, item, x, y, width, fonts) {
+  doc.fillColor('#202124').font(fonts.regular).fontSize(8).text('•', x, y, { width: 8 });
+  let offset = 12;
+  if (item.kannada) {
+    doc.font(fonts.kannada).fontSize(9).text(item.kannada, x + offset, y - 1, { width: width - offset, continued: false });
+    offset += doc.font(fonts.kannada).fontSize(9).widthOfString(item.kannada) + 7;
+  }
+  doc.font(fonts.regular).fontSize(8).text(`/ ${item.english}`, x + offset, y, { width: Math.max(40, width - offset) });
+}
+
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel }) {
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#fbf7ef');
-  doc.roundedRect(26, 24, 543, 88, 14).fill('#06445d');
-  doc.fillColor('white').font(fonts.bold).fontSize(28).text('MENU', 44, 42, { width: 160 });
-  doc.font(fonts.regular).fontSize(10).text('CaterPro event menu', 46, 76);
-  doc.font(fonts.bold).fontSize(12).text(menuDocumentTitle(event, date), 250, 42, { width: 285, align: 'right' });
-  doc.font(fonts.regular).fontSize(9).text(pageLabel, 250, 64, { width: 285, align: 'right' });
-  doc.text(event.venue || '', 250, 82, { width: 285, align: 'right' });
+  doc.roundedRect(30, 26, 535, 56, 10).fill('#06445d');
+  doc.fillColor('white').font(fonts.bold).fontSize(22).text('MENU', 44, 42, { width: 120 });
+  doc.font(fonts.regular).fontSize(8).text('Chef printout', 130, 49);
+  doc.font(fonts.bold).fontSize(10).text(menuDocumentTitle(event, date), 250, 39, { width: 285, align: 'right' });
+  doc.font(fonts.regular).fontSize(8).text(pageLabel, 250, 55, { width: 285, align: 'right' });
+  doc.text(event.venue || '', 250, 68, { width: 285, align: 'right' });
 
   const label = date.label || date.date;
-  doc.roundedRect(42, 132, 511, 48, 12).fill('#fff4db').strokeColor('#f2a51a').stroke();
-  doc.fillColor('#06445d').font(fonts.bold).fontSize(17).text(label, 60, 144, { width: 270 });
-  doc.fillColor('#5f6368').font(fonts.regular).fontSize(10).text(date.date, 60, 166);
+  doc.roundedRect(42, 98, 511, 30, 8).fill('#fff4db');
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(12).text(label, 56, 107, { width: 270 });
+  doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(date.date, 235, 110);
   const pax = date.menuSlots.reduce((sum, slot) => sum + Number(slot.pax || 0), 0);
-  doc.fillColor('#06445d').font(fonts.bold).fontSize(12).text(`${pax} total pax`, 400, 151, { width: 120, align: 'right' });
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(10).text(`${pax} total pax`, 400, 109, { width: 120, align: 'right' });
 
-  let y = 205;
+  let y = 146;
   if (date.menuSlots.length === 0) {
     doc.fillColor('#5f6368').font(fonts.regular).fontSize(12).text('No menu configured for this date.', 60, y);
     return;
   }
   for (const slot of date.menuSlots) {
-    y = ensurePageSpace(doc, y, 112);
+    const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
+    const rowHeight = Math.max(54, 39 + Math.ceil(Math.max(items.length, 1) / 2) * 16);
+    y = ensurePageSpace(doc, y, rowHeight + 12);
     const color = mealAccent(slot.type);
-    const items = slot.menuItemIds.map((id) => menuDisplayById(db, id));
-    const rowHeight = Math.max(96, 66 + Math.ceil(Math.max(items.length, 1) / 2) * 24);
-    doc.roundedRect(42, y, 511, rowHeight, 14).fill('white').strokeColor('#eadfcf').stroke();
-    doc.roundedRect(42, y, 10, rowHeight, 4).fill(color);
-    doc.fillColor(color).font(fonts.bold).fontSize(18).text(slot.type || 'Menu', 66, y + 18, { width: 220 });
-    doc.fillColor('#5f6368').font(fonts.regular).fontSize(10).text(`${slot.time || ''}${slot.time ? ' • ' : ''}${slot.pax || 0} pax`, 66, y + 42);
-    doc.fillColor('#202124').font(fonts.regular).fontSize(10);
+    doc.roundedRect(42, y, 511, rowHeight, 9).fill('white').strokeColor('#eadfcf').stroke();
+    doc.roundedRect(42, y, 7, rowHeight, 3).fill(color);
+    doc.fillColor(color).font(fonts.bold).fontSize(13).text(slot.type || 'Menu', 58, y + 10, { width: 180 });
+    doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(`${slot.time || ''}${slot.time ? ' • ' : ''}${slot.pax || 0} pax`, 58, y + 27);
     const leftItems = items.filter((_, index) => index % 2 === 0);
     const rightItems = items.filter((_, index) => index % 2 === 1);
-    leftItems.forEach((item, index) => doc.text(`• ${item}`, 66, y + 66 + index * 22, { width: 210 }));
-    rightItems.forEach((item, index) => doc.text(`• ${item}`, 302, y + 66 + index * 22, { width: 210 }));
-    y += rowHeight + 16;
+    leftItems.forEach((item, index) => drawChefMenuItem(doc, item, 58, y + 43 + index * 16, 220, fonts));
+    rightItems.forEach((item, index) => drawChefMenuItem(doc, item, 304, y + 43 + index * 16, 220, fonts));
+    y += rowHeight + 10;
   }
 
   if (date.additionalServices.length > 0) {
-    y = ensurePageSpace(doc, y, 90);
-    doc.fillColor('#06445d').font(fonts.bold).fontSize(14).text('Additional Services', 42, y);
-    y += 22;
-    doc.fillColor('#202124').font(fonts.regular).fontSize(10);
+    y = ensurePageSpace(doc, y, 64);
+    doc.fillColor('#06445d').font(fonts.bold).fontSize(11).text('Additional Services', 42, y);
+    y += 16;
+    doc.fillColor('#202124').font(fonts.regular).fontSize(8);
     date.additionalServices.forEach((service) => {
       doc.text(`• ${service.name} - ${service.quantity || 0} ${service.unit || ''}`, 60, y, { width: 430 });
-      y += 18;
+      y += 13;
     });
   }
 
-  doc.fillColor('#9a6a00').font(fonts.bold).fontSize(10).text('Prepared by CaterPro', 42, 786, { width: 511, align: 'center' });
+  doc.fillColor('#9a6a00').font(fonts.bold).fontSize(8).text('Prepared by CaterPro', 42, 796, { width: 511, align: 'center' });
 }
 
 function generateMenuPdf({ res, db, event, dateId, allDates = false }) {
