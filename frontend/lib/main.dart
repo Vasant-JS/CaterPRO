@@ -117,6 +117,136 @@ class AuthService {
   }
 }
 
+class AppEvent {
+  const AppEvent({required this.id, required this.name, required this.mobile, required this.venue, required this.notes, required this.dates});
+  final String id;
+  final String name;
+  final String mobile;
+  final String venue;
+  final String notes;
+  final List<AppEventDate> dates;
+
+  factory AppEvent.fromJson(Map<String, dynamic> json) {
+    return AppEvent(
+      id: json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      mobile: json['mobile'] as String? ?? '',
+      venue: json['venue'] as String? ?? '',
+      notes: json['notes'] as String? ?? '',
+      dates: ((json['dates'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppEventDate.fromJson).toList(),
+    );
+  }
+}
+
+class AppEventDate {
+  const AppEventDate({required this.id, required this.date, required this.label, required this.menuSlots, required this.additionalServices});
+  final String id;
+  final String date;
+  final String label;
+  final List<AppMenuSlot> menuSlots;
+  final List<Map<String, dynamic>> additionalServices;
+
+  factory AppEventDate.fromJson(Map<String, dynamic> json) {
+    return AppEventDate(
+      id: json['id'] as String? ?? '',
+      date: json['date'] as String? ?? '',
+      label: json['label'] as String? ?? '',
+      menuSlots: ((json['menuSlots'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppMenuSlot.fromJson).toList(),
+      additionalServices: ((json['additionalServices'] as List?) ?? []).whereType<Map<String, dynamic>>().toList(),
+    );
+  }
+}
+
+class AppMenuSlot {
+  const AppMenuSlot({required this.id, required this.type, required this.pax, required this.pricePerPax, required this.menuItemIds});
+  final String id;
+  final String type;
+  final int pax;
+  final int pricePerPax;
+  final List<String> menuItemIds;
+
+  factory AppMenuSlot.fromJson(Map<String, dynamic> json) {
+    return AppMenuSlot(
+      id: json['id'] as String? ?? '',
+      type: json['type'] as String? ?? '',
+      pax: (json['pax'] as num?)?.toInt() ?? 0,
+      pricePerPax: (json['pricePerPax'] as num?)?.toInt() ?? 0,
+      menuItemIds: ((json['menuItemIds'] as List?) ?? []).map((item) => item.toString()).toList(),
+    );
+  }
+}
+
+class ApiService {
+  Future<Map<String, String>> authHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'};
+  }
+
+  Future<List<AppEvent>> getEvents() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/events'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load events');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(AppEvent.fromJson).toList();
+  }
+
+  Future<AppEvent> createEvent(EventDraft draft) async {
+    final headers = await authHeaders();
+    final eventResponse = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/events'),
+      headers: headers,
+      body: jsonEncode({'name': draft.name, 'primaryClient': draft.client, 'mobile': draft.mobile, 'venue': draft.venue, 'notes': draft.notes, 'status': 'draft'}),
+    );
+    if (eventResponse.statusCode != 201) throw Exception('Unable to create event');
+    final event = jsonDecode(eventResponse.body) as Map<String, dynamic>;
+    final eventId = event['id'] as String;
+
+    for (final dateConfig in draft.dates) {
+      final dateResponse = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/events/$eventId/dates'),
+        headers: headers,
+        body: jsonEncode({'date': dateConfig.date, 'label': dateConfig.label}),
+      );
+      if (dateResponse.statusCode != 201) throw Exception('Unable to add event date');
+      final date = jsonDecode(dateResponse.body) as Map<String, dynamic>;
+      final dateId = date['id'] as String;
+      for (final slot in dateConfig.slots) {
+        if (!slot.enabled) continue;
+        await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/events/$eventId/dates/$dateId/menu-slots'),
+          headers: headers,
+          body: jsonEncode({'type': slot.type, 'time': slot.time, 'pax': int.tryParse(slot.pax) ?? 0, 'pricePerPax': slot.pricePerPax, 'enabled': slot.enabled, 'menuItemIds': slot.selectedMenuIds.toList()}),
+        );
+      }
+      for (final service in dateConfig.additionalServices) {
+        await http.post(
+          Uri.parse('${ApiConfig.baseUrl}/events/$eventId/dates/$dateId/additional-services'),
+          headers: headers,
+          body: jsonEncode(service),
+        );
+      }
+    }
+    final loaded = await http.get(Uri.parse('${ApiConfig.baseUrl}/events/$eventId'), headers: headers);
+    return AppEvent.fromJson(jsonDecode(loaded.body) as Map<String, dynamic>);
+  }
+}
+
+class EventDraft {
+  String name = '';
+  String client = '';
+  String mobile = '';
+  String venue = '';
+  String notes = '';
+  final List<DraftDateConfig> dates = [];
+}
+
+class DraftDateConfig {
+  DraftDateConfig({required this.date, this.label = ''});
+  String date;
+  String label;
+  final List<MealSlotConfig> slots = [];
+  final List<Map<String, dynamic>> additionalServices = [];
+}
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -260,12 +390,47 @@ class AppShell extends StatefulWidget {
 }
 
 class _AppShellState extends State<AppShell> {
+  final api = ApiService();
   int tab = 0;
-  final List<AdditionalServiceItem> services = [
-    const AdditionalServiceItem(id: 'SRV-001', name: 'Disposable Plates', unit: 'pcs', quantity: 250, price: 2500),
-    const AdditionalServiceItem(id: 'SRV-002', name: 'Water Bottles', unit: 'pcs', quantity: 250, price: 3750),
-    const AdditionalServiceItem(id: 'SRV-003', name: 'Serving Staff', unit: 'people', quantity: 8, price: 6400),
-  ];
+  bool loading = true;
+  String? loadError;
+  final List<AppEvent> events = [];
+  final List<AdditionalServiceItem> services = [];
+
+  @override
+  void initState() {
+    super.initState();
+    refreshEvents();
+  }
+
+  Future<void> refreshEvents() async {
+    setState(() {
+      loading = true;
+      loadError = null;
+    });
+    try {
+      final loaded = await api.getEvents();
+      if (!mounted) return;
+      setState(() {
+        events
+          ..clear()
+          ..addAll(loaded);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => loadError = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> createEvent(EventDraft draft) async {
+    final event = await api.createEvent(draft);
+    setState(() {
+      events.add(event);
+      tab = 1;
+    });
+  }
 
   void upsertService(AdditionalServiceItem service) {
     setState(() {
@@ -282,13 +447,13 @@ class _AppShellState extends State<AppShell> {
     setState(() => services.removeWhere((item) => item.id == id));
   }
 
-  late final pages = <Widget>[
-    DashboardScreen(openCreate: () => setState(() => tab = 5)),
-    EventsScreen(openDetails: () => setState(() => tab = 6), openCreate: () => setState(() => tab = 5)),
+  List<Widget> get pages => <Widget>[
+    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
+    EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: () => setState(() => tab = 6), openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
     const ClientsScreen(),
     const BillingScreen(),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
-    CreateEventScreen(onClose: () => setState(() => tab = 1), services: services, onSaveService: upsertService, onDeleteService: removeService),
+    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
@@ -351,7 +516,7 @@ class CaterSideDrawer extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: const [
-                        Text('Royal Caterers', style: TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
+                        Text('CaterPro', style: TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
                         Text('CaterPro Manager', style: TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w700)),
                       ],
                     ),
@@ -608,18 +773,28 @@ class ScreenFrame extends StatelessWidget {
 }
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required this.openCreate});
+  const DashboardScreen({super.key, required this.events, required this.loading, required this.loadError, required this.openCreate, required this.refresh});
+  final List<AppEvent> events;
+  final bool loading;
+  final String? loadError;
   final VoidCallback openCreate;
+  final VoidCallback refresh;
 
   @override
   Widget build(BuildContext context) {
+    final totalDates = events.fold<int>(0, (sum, event) => sum + event.dates.length);
+    final totalSlots = events.fold<int>(0, (sum, event) => sum + event.dates.fold<int>(0, (dateSum, date) => dateSum + date.menuSlots.length));
     return ScreenFrame(
       topBar: TopBar(
-        title: 'Good Morning, Ravi',
-        subtitle: 'Manage your events for today',
-        actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications_rounded, color: Cp.primary))],
+        title: 'CaterPro',
+        subtitle: 'Manage your events',
+        actions: [IconButton(onPressed: refresh, icon: const Icon(Icons.refresh_rounded, color: Cp.primary))],
       ),
       children: [
+        if (loadError != null) ...[
+          CpCard(color: Cp.errorContainer, child: Text(loadError!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+          const SizedBox(height: 12),
+        ],
         GridView.count(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -628,30 +803,53 @@ class DashboardScreen extends StatelessWidget {
           mainAxisSpacing: 12,
           childAspectRatio: 1.3,
           children: [
-            MetricCard(label: 'This Month', value: '₹1,24,500', note: '+12% from last month', icon: Icons.trending_up, color: Cp.card, valueColor: Cp.primary),
-            MetricCard(label: 'Pending', value: '₹38,200', note: '4 Invoices Overdue', icon: Icons.account_balance_wallet, color: Cp.errorContainer.withValues(alpha: .35), valueColor: Cp.error),
-            MetricCard(label: 'Upcoming', value: '6', note: 'Next 7 Days', icon: Icons.calendar_today, color: Cp.primaryFixed.withValues(alpha: .5), valueColor: Cp.primary),
-            MetricCard(label: 'Clients', value: '14', note: '2 New this week', icon: Icons.groups, color: Cp.tertiaryFixed.withValues(alpha: .4), valueColor: Cp.tertiary),
+            MetricCard(label: 'Events', value: '${events.length}', note: loading ? 'Loading...' : 'Created by you', icon: Icons.calendar_month, color: Cp.card, valueColor: Cp.primary),
+            MetricCard(label: 'Dates', value: '$totalDates', note: 'Across events', icon: Icons.today, color: Cp.primaryFixed.withValues(alpha: .5), valueColor: Cp.primary),
+            MetricCard(label: 'Menus', value: '$totalSlots', note: 'Configured slots', icon: Icons.restaurant_menu, color: Cp.secondaryFixed, valueColor: Cp.secondary),
+            MetricCard(label: 'Payments', value: '0', note: 'API-backed', icon: Icons.payments, color: Cp.tertiaryFixed.withValues(alpha: .4), valueColor: Cp.tertiary),
           ],
         ),
-        const SizedBox(height: 24),
-        SectionHeader('Revenue Trend', trailing: 'Details'),
-        const SizedBox(height: 8),
-        const RevenueChart(),
         const SizedBox(height: 24),
         Row(
           children: [
-            const Expanded(child: Text('Events Next 3 Days', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
-            Pill('3 Active', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
+            const Expanded(child: Text('Events', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
+            Pill('${events.length} Active', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
           ],
         ),
         const SizedBox(height: 12),
-        EventMiniCard(title: 'Sharma Wedding', client: 'Priya Sharma', time: 'Tom, 10:00 AM', pax: '250 pax', status: 'Confirmed', statusColor: Cp.tertiaryFixed),
-        EventMiniCard(title: 'TechCorp Lunch', client: 'Rajesh Kumar', time: 'Tom, 1:00 PM', pax: '80 pax', status: 'Advance Pending', statusColor: Cp.secondaryFixed),
-        EventMiniCard(title: 'Mehta Birthday', client: 'Sunita Mehta', time: 'Day after, 7:00 PM', pax: '120 pax', status: 'Confirmed', statusColor: Cp.tertiaryFixed),
+        if (loading)
+          const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+        else if (events.isEmpty)
+          EmptyStateCard(title: 'No events yet', message: 'Create your first event and it will appear here.', actionLabel: 'Create Event', onAction: openCreate)
+        else
+          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', status: 'Draft', statusColor: Cp.secondaryFixed)),
       ],
     );
   }
+}
+
+class EmptyStateCard extends StatelessWidget {
+  const EmptyStateCard({super.key, required this.title, required this.message, this.actionLabel, this.onAction});
+  final String title;
+  final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => CpCard(
+        color: Cp.surfaceLow,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Icon(Icons.inbox_outlined, color: Cp.outline, size: 36),
+          const SizedBox(height: 12),
+          Text(title, style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 4),
+          Text(message, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 14),
+            FilledButton.icon(onPressed: onAction, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.add), label: Text(actionLabel!, style: const TextStyle(fontWeight: FontWeight.w900))),
+          ],
+        ]),
+      );
 }
 
 class MetricCard extends StatelessWidget {
@@ -767,21 +965,32 @@ class EventMiniCard extends StatelessWidget {
 }
 
 class EventsScreen extends StatelessWidget {
-  const EventsScreen({super.key, required this.openDetails, required this.openCreate});
+  const EventsScreen({super.key, required this.events, required this.loading, required this.loadError, required this.openDetails, required this.openCreate, required this.refresh});
+  final List<AppEvent> events;
+  final bool loading;
+  final String? loadError;
   final VoidCallback openDetails;
   final VoidCallback openCreate;
+  final VoidCallback refresh;
 
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
-      topBar: TopBar(title: 'Events', actions: [IconButton(onPressed: () => showCpSnack(context, 'Search events'), icon: const Icon(Icons.search)), IconButton(onPressed: () => showCpSnack(context, 'Event filters opened'), icon: const Icon(Icons.filter_list)), IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications))]),
+      topBar: TopBar(title: 'Events', actions: [IconButton(onPressed: refresh, icon: const Icon(Icons.refresh)), IconButton(onPressed: openCreate, icon: const Icon(Icons.add))]),
       children: [
         const ChipRow(['All', 'Upcoming', 'Confirmed', 'Advance Pending', 'Completed']),
         const SizedBox(height: 16),
-        EventListCard(title: 'Sharma Wedding', client: 'Priya Sharma', phone: '+91-9876543210', dates: '12 Jun - 14 Jun 2025', amount: '₹3,50,000', balance: 'Bal: ₹1,25,000', status: 'Confirmed', meals: ['Breakfast', 'Lunch', 'Dinner'], onTap: openDetails),
-        EventListCard(title: 'TechCorp Lunch', client: 'Rajesh Kumar', phone: '+91-9876500000', dates: '13 Jun 2025', amount: '₹45,000', balance: 'Bal: ₹20,000', status: 'Advance Pending', meals: ['Lunch']),
-        EventListCard(title: 'Kapoor Anniversary', client: 'Amit Kapoor', phone: '+91-9876511111', dates: '20 Jun 2025', amount: '₹1,20,000', balance: 'Paid in Full', status: 'Confirmed', meals: ['Dinner']),
-        CpCard(color: Cp.primaryContainer, child: const SizedBox(height: 96, child: Align(alignment: Alignment.centerLeft, child: Text('Peak Season Tip\nSecure June rentals now to avoid last-minute price hikes.', style: TextStyle(color: Colors.white, fontSize: 16, height: 1.35, fontWeight: FontWeight.w700))))),
+        if (loadError != null) CpCard(color: Cp.errorContainer, child: Text(loadError!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+        if (loading)
+          const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+        else if (events.isEmpty)
+          EmptyStateCard(title: 'No events added', message: 'Use Create Event to add the first event from scratch.', actionLabel: 'Create Event', onAction: openCreate)
+        else
+          ...events.map((event) {
+            final meals = event.dates.expand((date) => date.menuSlots.map((slot) => slot.type)).toSet().toList();
+            final dateText = event.dates.isEmpty ? 'No dates' : event.dates.map((date) => date.date).join(', ');
+            return EventListCard(title: event.name, client: event.name, phone: event.mobile, dates: dateText, amount: '₹0', balance: 'No payments', status: 'Draft', meals: meals, onTap: openDetails);
+          }),
       ],
     );
   }
@@ -862,12 +1071,9 @@ class ClientsScreen extends StatelessWidget {
       children: [
         SearchBox('Search clients by name, city, or phone...'),
         const SizedBox(height: 22),
-        Row(children: const [Expanded(child: Text('Clients', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))), Text('24 Total', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w600))]),
+        Row(children: const [Expanded(child: Text('Clients', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))), Text('0 Total', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w600))]),
         const SizedBox(height: 12),
-        ClientCard(name: 'Priya Sharma', initials: 'PS', phone: '+91-9876543210', city: 'Mumbai', revenue: '₹12.45L', events: '3 Events', color: Cp.primaryContainer, tag: 'High Value'),
-        ClientCard(name: 'Rajesh Kumar', initials: 'RK', phone: '+91-9876500000', city: 'Pune', revenue: '₹45,000', events: '1 Event', color: Cp.secondaryContainer, tag: 'New Client'),
-        const SizedBox(height: 18),
-        const Center(child: Text('Showing 2 of 24 clients', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w700))),
+        const EmptyStateCard(title: 'No clients yet', message: 'Clients will appear after you create events or add client records.'),
       ],
     );
   }
@@ -921,15 +1127,7 @@ class BillingScreen extends StatelessWidget {
       children: [
         const ChipRow(['Invoices', 'Quotations', 'Advances', 'Standalone']),
         const SizedBox(height: 18),
-        Row(children: [
-          Expanded(child: CpCard(color: Cp.primaryContainer, padding: const EdgeInsets.all(24), child: const SizedBox(height: 112, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total Outstanding', style: TextStyle(color: Cp.primaryFixed, fontWeight: FontWeight.w700)), Text('₹5,15,000', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)), Text('12% increase from last month', style: TextStyle(color: Cp.primaryFixed))])))),
-          const SizedBox(width: 12),
-          SizedBox(width: 116, child: CpCard(color: Cp.secondaryFixed, padding: const EdgeInsets.all(16), child: const SizedBox(height: 128, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.account_balance_wallet, color: Color(0xff2b1700), size: 34), Text('Pending Collections', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Color(0xff2b1700))), Text('14 Active', style: TextStyle(color: Color(0xff2b1700), fontWeight: FontWeight.w900))])))),
-        ]),
-        const SizedBox(height: 18),
-        InvoiceCard(code: 'INV-2025-0042', event: 'Sharma Wedding', amount: '₹3,50,000', dateLabel: 'Due Date', date: '15 Jun, 2025', status: 'Partially Paid', color: Cp.secondaryContainer, onTap: () => showRecordPaymentSheet(context)),
-        InvoiceCard(code: 'INV-2025-0038', event: 'TechCorp Lunch', amount: '₹45,000', dateLabel: 'Critical Delay', date: '14 Jun, 2025', status: 'Overdue', color: Cp.error),
-        InvoiceCard(code: 'INV-2025-0035', event: 'Kapoor Anniversary', amount: '₹1,20,000', dateLabel: 'Paid On', date: '10 Jun, 2025', status: 'Paid', color: Cp.tertiaryContainer),
+        const EmptyStateCard(title: 'No billing records yet', message: 'Invoices, quotations, advances, and payments will appear after you create and bill events.'),
       ],
     );
   }
@@ -1046,7 +1244,7 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-            const Text('Record Payment - Sharma Wedding', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            const Text('Record Payment', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
             const Text('Update the financial records for this event.', style: TextStyle(color: Cp.onVariant)),
             const SizedBox(height: 18),
@@ -1171,8 +1369,8 @@ class SettingsScreen extends StatelessWidget {
           child: Column(children: [
             Stack(alignment: Alignment.bottomRight, children: [const CircleAvatar(radius: 48, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))), CircleAvatar(radius: 16, backgroundColor: Cp.primary, child: const Icon(Icons.edit, color: Colors.white, size: 15))]),
             const SizedBox(height: 12),
-            const Text('Royal Caterers', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const Text('Premium Event Catering Services', style: TextStyle(color: Cp.onVariant)),
+            const Text('Business Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const Text('Add your business details', style: TextStyle(color: Cp.onVariant)),
             const SizedBox(height: 14),
             Pill('Edit Profile', color: Cp.primaryContainer, textColor: Colors.white),
           ]),
@@ -1374,8 +1572,9 @@ class EditableInlineField extends StatelessWidget {
 }
 
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key, required this.onClose, required this.services, required this.onSaveService, required this.onDeleteService});
+  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.onSaveService, required this.onDeleteService});
   final VoidCallback onClose;
+  final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
@@ -1386,6 +1585,30 @@ class CreateEventScreen extends StatefulWidget {
 
 class _CreateEventScreenState extends State<CreateEventScreen> {
   int step = 0;
+  bool saving = false;
+  String? error;
+  final draft = EventDraft();
+
+  Future<void> save() async {
+    if (draft.name.trim().isEmpty || draft.mobile.trim().isEmpty) {
+      setState(() => error = 'Event name and mobile number are required.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.onCreate(draft);
+      if (!mounted) return;
+      showCpSnack(context, 'Event created');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1395,10 +1618,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       children: [
         StepperHeader(active: step),
         const SizedBox(height: 24),
-        if (step == 0) const CreateDetailsStep(),
-        if (step == 1) const CreateDatesStep(),
-        if (step == 2) CreateMenuStep(services: widget.services, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
-        if (step == 3) const CreateReviewStep(),
+        if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
+        if (step == 0) CreateDetailsStep(draft: draft),
+        if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () => setState(() {})),
+        if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
+        if (step == 3) CreateReviewStep(draft: draft),
         const SizedBox(height: 20),
         Row(
           children: [
@@ -1409,9 +1633,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               child: SizedBox(
                 height: 56,
                 child: FilledButton.icon(
-                  onPressed: () => step == 3 ? widget.onClose() : setState(() => step++),
+                  onPressed: saving ? null : () => step == 3 ? save() : setState(() => step++),
                   style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
-                  label: Text(step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : 'Create Event', style: const TextStyle(fontWeight: FontWeight.w900)),
+                  label: Text(saving ? 'Saving...' : step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : 'Create Event', style: const TextStyle(fontWeight: FontWeight.w900)),
                   icon: Icon(step == 3 ? Icons.check : Icons.arrow_forward),
                 ),
               ),
@@ -1424,7 +1648,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 }
 
 class CreateDetailsStep extends StatelessWidget {
-  const CreateDetailsStep({super.key});
+  const CreateDetailsStep({super.key, required this.draft});
+  final EventDraft draft;
 
   @override
   Widget build(BuildContext context) {
@@ -1433,21 +1658,21 @@ class CreateDetailsStep extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Row(children: [Icon(Icons.assignment, color: Cp.primary), SizedBox(width: 8), Text('Event Fundamentals', style: TextStyle(fontSize: 20, color: Cp.primary, fontWeight: FontWeight.w800))]),
           const SizedBox(height: 20),
-          FormFieldBox(label: 'Event Name', value: 'Summer Gala 2025'),
-          FormFieldBox(label: 'Primary Client', value: 'Priya Sharma', icon: Icons.person_search),
-          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: '+91 98765 43210', icon: Icons.phone_iphone),
-          FormFieldBox(label: 'Venue', value: 'Hyatt Regency, Ballroom B', icon: Icons.location_on),
-          FormFieldBox(label: 'Event Notes & Logistics', value: '', height: 98),
+          FormFieldBox(label: 'Event Name', value: draft.name, onChanged: (value) => draft.name = value),
+          FormFieldBox(label: 'Primary Client', value: draft.client, icon: Icons.person_search, onChanged: (value) => draft.client = value),
+          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: draft.mobile, icon: Icons.phone_iphone, onChanged: (value) => draft.mobile = value),
+          FormFieldBox(label: 'Venue', value: draft.venue, icon: Icons.location_on, onChanged: (value) => draft.venue = value),
+          FormFieldBox(label: 'Event Notes & Logistics', value: draft.notes, height: 98, onChanged: (value) => draft.notes = value),
         ]),
       ),
-      const SizedBox(height: 20),
-      Container(height: 180, decoration: BoxDecoration(color: Cp.primaryContainer, borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.all(16), alignment: Alignment.bottomLeft, child: const Text('Selected Venue Visual\nHyatt Regency Ballroom', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800))),
     ]);
   }
 }
 
 class CreateDatesStep extends StatelessWidget {
-  const CreateDatesStep({super.key});
+  const CreateDatesStep({super.key, required this.dates, required this.onChanged});
+  final List<DraftDateConfig> dates;
+  final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -1455,15 +1680,23 @@ class CreateDatesStep extends StatelessWidget {
       const Text('Event Dates', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
       const Text('Add every date in the event schedule. Pax is configured later for each date and menu type.', style: TextStyle(color: Cp.onVariant)),
       const SizedBox(height: 16),
-      const DateScheduleCard(month: 'JUN', day: '12', title: 'Day 1: Mehendi', summary: '12 Jun 2025'),
-      const DateScheduleCard(month: 'JUN', day: '13', title: 'Day 2: Sangeet', summary: '13 Jun 2025'),
-      DashedAction(label: 'Add Date', icon: Icons.add_circle, onTap: () => showAddDateSheet(context)),
+      if (dates.isEmpty) const EmptyStateCard(title: 'No dates added', message: 'Add each event date. Pax is configured per menu type later.'),
+      ...dates.map((date) => DateScheduleCard(month: date.date.length >= 7 ? date.date.substring(5, 7) : '--', day: date.date.length >= 10 ? date.date.substring(8, 10) : '--', title: date.label.isEmpty ? 'Event Date' : date.label, summary: date.date, onDelete: () { dates.remove(date); onChanged(); })),
+      DashedAction(label: 'Add Date', icon: Icons.add_circle, onTap: () async {
+        final date = await showAddDateSheet(context);
+        if (date != null) {
+          dates.add(date);
+          onChanged();
+        }
+      }),
     ]);
   }
 }
 
-void showAddDateSheet(BuildContext context) {
-  showModalBottomSheet<void>(
+Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
+  final dateController = TextEditingController();
+  final labelController = TextEditingController();
+  return showModalBottomSheet<DraftDateConfig>(
     context: context,
     backgroundColor: Colors.transparent,
     builder: (context) => SafeArea(
@@ -1476,8 +1709,9 @@ void showAddDateSheet(BuildContext context) {
           const Text('Add Event Date', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
           const Text('Select the mandatory date for this sub-event.', style: TextStyle(color: Cp.onVariant)),
           const SizedBox(height: 18),
-          const FormFieldBox(label: 'Event Date', value: '14 Jun 2025', icon: Icons.calendar_today),
-          Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))), const SizedBox(width: 12), Expanded(child: FilledButton(onPressed: () => Navigator.pop(context), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), child: const Text('Save Date')))]),
+          EditableInlineField(label: 'Event Date (YYYY-MM-DD)', controller: dateController),
+          EditableInlineField(label: 'Date Label', controller: labelController),
+          Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))), const SizedBox(width: 12), Expanded(child: FilledButton(onPressed: () => Navigator.pop(context, DraftDateConfig(date: dateController.text.trim(), label: labelController.text.trim())), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), child: const Text('Save Date')))]),
         ]),
       ),
     ),
@@ -1485,17 +1719,19 @@ void showAddDateSheet(BuildContext context) {
 }
 
 class DateScheduleCard extends StatelessWidget {
-  const DateScheduleCard({super.key, required this.month, required this.day, required this.title, required this.summary});
+  const DateScheduleCard({super.key, required this.month, required this.day, required this.title, required this.summary, this.onDelete});
   final String month, day, title, summary;
+  final VoidCallback? onDelete;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: CpCard(child: Row(children: [Container(width: 52, padding: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(10)), child: Column(children: [Text(month, style: const TextStyle(color: Cp.primary, fontSize: 11, fontWeight: FontWeight.w900)), Text(day, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), Text(summary, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), IconButton(onPressed: () => showCpSnack(context, 'Edit $title'), icon: const Icon(Icons.edit, color: Cp.primary)), IconButton(onPressed: () => showCpSnack(context, 'Delete $title'), icon: const Icon(Icons.delete, color: Cp.error))])),
+        child: CpCard(child: Row(children: [Container(width: 52, padding: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(10)), child: Column(children: [Text(month, style: const TextStyle(color: Cp.primary, fontSize: 11, fontWeight: FontWeight.w900)), Text(day, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), Text(summary, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), if (onDelete != null) IconButton(onPressed: onDelete, icon: const Icon(Icons.delete, color: Cp.error))])),
       );
 }
 
 class CreateMenuStep extends StatefulWidget {
-  const CreateMenuStep({super.key, required this.services, required this.onSaveService, required this.onDeleteService});
+  const CreateMenuStep({super.key, required this.dates, required this.services, required this.onSaveService, required this.onDeleteService});
+  final List<DraftDateConfig> dates;
   final List<AdditionalServiceItem> services;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
@@ -1506,41 +1742,23 @@ class CreateMenuStep extends StatefulWidget {
 
 class _CreateMenuStepState extends State<CreateMenuStep> {
   int selectedDateIndex = 0;
-  final dateLabels = ['12 Jun', '13 Jun', '14 Jun'];
-  late final List<DateMenuConfig> dateConfigs = [
-    DateMenuConfig(
-      label: '12 Jun',
-      slots: [
-        MealSlotConfig(type: 'Breakfast', time: '8:00 AM', pax: '250', price: '₹450/pax', selectedMenuIds: {'MNU-003'}),
-        MealSlotConfig(type: 'Lunch', time: '1:30 PM', pax: '250', price: '₹850/pax', selectedMenuIds: {'MNU-001'}),
-      ],
-      selectedServiceIds: {'SRV-001'},
-    ),
-    DateMenuConfig(
-      label: '13 Jun',
-      slots: [
-        MealSlotConfig(type: 'Dinner', time: '8:00 PM', pax: '300', price: '₹950/pax', selectedMenuIds: {'MNU-002', 'MNU-005'}),
-        MealSlotConfig(type: 'Juice', time: '5:00 PM', pax: '180', price: '₹120/pax', selectedMenuIds: const <String>{}, enabled: false),
-      ],
-      selectedServiceIds: {'SRV-002'},
-    ),
-    DateMenuConfig(label: '14 Jun'),
-  ];
 
-  DateMenuConfig get currentConfig => dateConfigs[selectedDateIndex];
+  DraftDateConfig? get currentConfig => widget.dates.isEmpty ? null : widget.dates[selectedDateIndex.clamp(0, widget.dates.length - 1)];
 
   @override
   Widget build(BuildContext context) {
     final config = currentConfig;
-    final selectedServices = widget.services.where((service) => config.selectedServiceIds.contains(service.id)).toList();
+    if (config == null) {
+      return const EmptyStateCard(title: 'Add dates first', message: 'Menu configuration is available after you add at least one event date.');
+    }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Wrap(
         spacing: 10,
-        children: List.generate(dateLabels.length, (index) {
+        children: List.generate(widget.dates.length, (index) {
           final selected = index == selectedDateIndex;
           return ChoiceChip(
             selected: selected,
-            label: Text(dateLabels[index]),
+            label: Text(widget.dates[index].date),
             selectedColor: Cp.primaryContainer,
             labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
             onSelected: (_) => setState(() => selectedDateIndex = index),
@@ -1573,10 +1791,13 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       const SizedBox(height: 12),
       const Text('Additional Services', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
-      if (selectedServices.isEmpty)
+      if (config.additionalServices.isEmpty)
         const Padding(padding: EdgeInsets.only(bottom: 10), child: Text('No additional services for this date.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic)))
       else
-        ...selectedServices.map((service) => AdditionalServiceCard(service: service, onDelete: (id) => setState(() => config.selectedServiceIds.remove(id)))),
+        ...config.additionalServices.map((service) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: CpCard(child: Row(children: [Expanded(child: Text('${service['name'] ?? ''}\n${service['quantity'] ?? 0} ${service['unit'] ?? ''} • ₹${service['price'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () => setState(() => config.additionalServices.remove(service)), icon: const Icon(Icons.delete, color: Cp.error))])),
+            )),
       const SizedBox(height: 12),
       DashedAction(label: 'Add Service', icon: Icons.add_circle, onTap: openServicePicker),
     ]);
@@ -1601,13 +1822,14 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
 
   void openMealTypePicker() {
     const availableTypes = [
-      ('Breakfast', '8:00 AM', '₹450/pax'),
-      ('Juice', '5:00 PM', '₹120/pax'),
-      ('Lunch', '1:30 PM', '₹850/pax'),
-      ('Snack', '4:30 PM', '₹300/pax'),
-      ('Dinner', '8:00 PM', '₹950/pax'),
+      ('Breakfast', '8:00 AM', 0),
+      ('Juice', '5:00 PM', 0),
+      ('Lunch', '1:30 PM', 0),
+      ('Snack', '4:30 PM', 0),
+      ('Dinner', '8:00 PM', 0),
     ];
     final config = currentConfig;
+    if (config == null) return;
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1618,7 +1840,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-            Text('Add Menu Type for ${config.label}', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            Text('Add Menu Type for ${config.date}', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
             const SizedBox(height: 14),
             ...availableTypes.map((type) {
               final exists = config.slots.any((slot) => slot.type == type.$1);
@@ -1629,7 +1851,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                   onTap: exists
                       ? null
                       : () {
-                          setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', price: type.$3)));
+                          setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', pricePerPax: type.$3)));
                           Navigator.pop(context);
                         },
                   child: Row(children: [
@@ -1649,17 +1871,18 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
 
   void openServicePicker() {
     final config = currentConfig;
+    if (config == null) return;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => ServicePickerSheet(
         services: widget.services,
-        selectedIds: config.selectedServiceIds,
+        selectedIds: config.additionalServices.map((service) => service['serviceId'].toString()).toSet(),
         onChanged: (ids) => setState(() {
-          config.selectedServiceIds
+          config.additionalServices
             ..clear()
-            ..addAll(ids);
+            ..addAll(widget.services.where((service) => ids.contains(service.id)).map((service) => {'serviceId': service.id, 'name': service.name, 'quantity': service.quantity, 'unit': service.unit, 'price': service.price}));
         }),
       ),
     );
@@ -1677,12 +1900,12 @@ class DateMenuConfig {
 }
 
 class MealSlotConfig {
-  MealSlotConfig({required this.type, required this.time, required this.pax, required this.price, Set<String>? selectedMenuIds, this.enabled = true}) : selectedMenuIds = selectedMenuIds ?? <String>{};
+  MealSlotConfig({required this.type, required this.time, required this.pax, required this.pricePerPax, Set<String>? selectedMenuIds, this.enabled = true}) : selectedMenuIds = selectedMenuIds ?? <String>{};
 
   final String type;
   final String time;
   String pax;
-  final String price;
+  int pricePerPax;
   Set<String> selectedMenuIds;
   bool enabled;
 }
@@ -1892,7 +2115,7 @@ class MealSlotCard extends StatelessWidget {
               const SizedBox(height: 12),
               if (items.isEmpty) const Text('No menu items selected.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic)) else Wrap(spacing: 8, runSpacing: 8, children: items.map((e) => Pill(e, color: Cp.surfaceHigh)).toList()),
               const Divider(height: 24),
-              Row(children: [Text(slot.price, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)), const Spacer(), InkWell(onTap: onEditMenu, child: const Row(children: [Icon(Icons.edit, color: Cp.primary, size: 18), Text(' Edit Menu', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800))]))]),
+              Row(children: [Text('₹${slot.pricePerPax}/pax', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)), const Spacer(), InkWell(onTap: onEditMenu, child: const Row(children: [Icon(Icons.edit, color: Cp.primary, size: 18), Text(' Edit Menu', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800))]))]),
             ],
             if (!enabled) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Menu slot is currently disabled.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic))),
           ]),
@@ -1903,12 +2126,13 @@ class MealSlotCard extends StatelessWidget {
 }
 
 class CreateReviewStep extends StatelessWidget {
-  const CreateReviewStep({super.key});
+  const CreateReviewStep({super.key, required this.draft});
+  final EventDraft draft;
   @override
   Widget build(BuildContext context) => Column(children: [
-        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Summer Gala 2025', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('Priya Sharma â€¢ Hyatt Regency, Ballroom B', style: TextStyle(color: Cp.onVariant)), Divider(), InfoTile(Icons.calendar_today, 'Dates', '12-14 Jun 2025'), SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Meal Pax', '12 Jun: Breakfast 250, Lunch 250'), SizedBox(height: 10), InfoTile(Icons.restaurant, 'Menus', 'Breakfast, Lunch, Dinner')])),
+        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(draft.name.isEmpty ? 'Untitled Event' : draft.name, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('${draft.client} • ${draft.mobile}', style: const TextStyle(color: Cp.onVariant)), const Divider(), InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'), const SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Menu Slots', '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'), const SizedBox(height: 10), InfoTile(Icons.location_on, 'Venue', draft.venue.isEmpty ? 'Not set' : draft.venue)])),
         const SizedBox(height: 12),
-        CpCard(color: Cp.primaryContainer, child: const Text('Estimated Event Value\n₹3,50,000', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))),
+        CpCard(color: Cp.primaryContainer, child: const Text('Event will be saved to your account via API.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900))),
       ]);
 }
 
@@ -2038,7 +2262,7 @@ class EventDetailsScreen extends StatelessWidget {
         showCpSnack(context, 'Menu share sheet opened');
         break;
       case EventScreenAction.deleteEvent:
-        if (await confirmEventAction(context, 'Delete Event?', 'This will remove Sharma Wedding and all linked dates, menus, payments, and documents.')) {
+        if (await confirmEventAction(context, 'Delete Event?', 'This will remove this event and all linked dates, menus, payments, and documents.')) {
           if (!context.mounted) return;
           showCpSnack(context, 'Event deleted');
           onClose();
@@ -2062,7 +2286,7 @@ class EventDetailsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => ScreenFrame(
         topBar: TopBar(
-          title: 'Sharma Wedding',
+          title: 'Event Details',
           avatar: false,
           leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
           actions: [
@@ -2093,7 +2317,7 @@ class EventDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-        children: const [EventDetailsContent()],
+        children: const [EmptyStateCard(title: 'Select an event', message: 'Created events will open here once detail navigation is connected to API IDs.')],
       );
 }
 
@@ -2112,9 +2336,9 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
   Widget build(BuildContext context) {
     return Column(children: [
       CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text('Priya Sharma', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), Pill('CONFIRMED', color: Cp.tertiaryFixed, textColor: Color(0xff00210c))]),
+        Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text('Not selected', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), Pill('DRAFT', color: Cp.secondaryFixed, textColor: Color(0xff663e00))]),
         const SizedBox(height: 16),
-        const Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', '12-14 Jun 2025'), InfoTile(Icons.location_on, 'Venue', 'Hyatt Regency'), InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', '₹1,25,000', color: Cp.error)]),
+        const Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', '0'), InfoTile(Icons.location_on, 'Venue', 'Not set'), InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', '₹0', color: Cp.error)]),
         const SizedBox(height: 18),
         const Text('Payment Progress', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
@@ -2160,7 +2384,7 @@ class EventDetailsTabContent extends StatelessWidget {
         ]);
       case 2:
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Payment Summary', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 8), Text('Total: ₹3,50,000'), Text('Paid: ₹2,25,000'), Text('Balance: ₹1,25,000', style: TextStyle(color: Cp.error, fontWeight: FontWeight.w800))])),
+          CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Payment Summary', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 8), Text('Total: ₹0'), Text('Paid: ₹0'), Text('Balance: ₹0', style: TextStyle(color: Cp.error, fontWeight: FontWeight.w800))])),
           const SizedBox(height: 16),
           SizedBox(height: 52, child: FilledButton.icon(onPressed: () => showRecordPaymentSheet(context), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), icon: const Icon(Icons.payments), label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
         ]);
@@ -2246,11 +2470,6 @@ class MenuMasterScreen extends StatefulWidget {
   final VoidCallback onClose;
 
   static final List<MenuMasterItem> menuItems = [
-    MenuMasterItem(id: 'MNU-001', english: 'Paneer Butter Masala', kannada: 'ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ', category: 'Main Course', meals: 'Lunch, Dinner', veg: true),
-    MenuMasterItem(id: 'MNU-002', english: 'Chicken Biryani', kannada: 'ಚಿಕನ್ ಬಿರಿಯಾನಿ', category: 'Main Course', meals: 'Lunch, Dinner', veg: false),
-    MenuMasterItem(id: 'MNU-003', english: 'Idli', kannada: 'ಇಡ್ಲಿ', category: 'South Indian', meals: 'Breakfast', veg: true),
-    MenuMasterItem(id: 'MNU-004', english: 'Masala Dosa', kannada: 'ಮಸಾಲೆ ದೋಸೆ', category: 'South Indian', meals: 'Breakfast', veg: true),
-    MenuMasterItem(id: 'MNU-005', english: 'Gulab Jamun', kannada: 'ಗುಲಾಬ್ ಜಾಮೂನ್', category: 'Dessert', meals: 'Lunch, Dinner', veg: true),
   ];
 
   @override
@@ -2730,12 +2949,7 @@ class EmployeeScreen extends StatefulWidget {
 
 class _EmployeeScreenState extends State<EmployeeScreen> {
   final search = TextEditingController();
-  final employees = <Employee>[
-    const Employee(name: 'Ramesh Gowda', age: 34, mobile: '+91 98765 11001', designation: 'Chef', payPerDay: 2200),
-    const Employee(name: 'Anita Rao', age: 29, mobile: '+91 98765 11002', designation: 'Supervisor', payPerDay: 1800),
-    const Employee(name: 'Imran Khan', age: 26, mobile: '+91 98765 11003', designation: 'Server', payPerDay: 950),
-    const Employee(name: 'Lakshmi Devi', age: 31, mobile: '+91 98765 11004', designation: 'Cleaner', payPerDay: 800),
-  ];
+  final employees = <Employee>[];
   String selectedFilter = 'All';
   String query = '';
 
@@ -2938,25 +3152,25 @@ class BusinessProfileScreen extends StatelessWidget {
   final VoidCallback onClose;
   @override
   Widget build(BuildContext context) => ScreenFrame(topBar: TopBar(title: 'Business Profile', avatar: false, leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)), actions: [TextButton(onPressed: onClose, child: const Text('Save', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)))]), children: [
-        CpCard(child: Column(children: const [CircleAvatar(radius: 44, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))), SizedBox(height: 12), Text('Royal Caterers', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), Text('Premium Event Catering Services', style: TextStyle(color: Cp.onVariant))])),
+        CpCard(child: Column(children: const [CircleAvatar(radius: 44, backgroundColor: Cp.primaryContainer, child: Icon(Icons.business, color: Colors.white)), SizedBox(height: 12), Text('Business Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), Text('Enter your business information', style: TextStyle(color: Cp.onVariant))])),
         const SizedBox(height: 16),
         Row(children: const [Expanded(child: UploadBox(label: 'Logo', icon: Icons.storefront, filled: true)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Signature', icon: Icons.draw)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Payment QR', icon: Icons.qr_code_2))]),
         const SizedBox(height: 16),
         const SectionTitle('Basic Info', Icons.business),
-        FormFieldBox(label: 'Business Name', value: 'Royal Caterers'),
-        FormFieldBox(label: 'Service Type', value: 'Event Services'),
+        FormFieldBox(label: 'Business Name', value: ''),
+        FormFieldBox(label: 'Service Type', value: ''),
         const SectionTitle('Tax & Legal', Icons.gavel),
-        Row(children: const [Expanded(child: FormFieldBox(label: 'GSTIN', value: '27AAAAA0000A1Z5')), SizedBox(width: 12), Expanded(child: FormFieldBox(label: 'PAN', value: 'AXXXX0000X'))]),
+        Row(children: const [Expanded(child: FormFieldBox(label: 'GSTIN', value: '')), SizedBox(width: 12), Expanded(child: FormFieldBox(label: 'PAN', value: ''))]),
         const SectionTitle('Business Address', Icons.location_on),
-        FormFieldBox(label: 'Full Address', value: '123, MG Road, Mumbai, Maharashtra, 400001', height: 82),
+        FormFieldBox(label: 'Full Address', value: '', height: 82),
         const SectionTitle('Contact Information', Icons.contact_phone),
-        FormFieldBox(label: 'Phone Number', value: '+91 9876543210'),
-        FormFieldBox(label: 'Email Address', value: 'info@royalcaterers.com'),
+        FormFieldBox(label: 'Phone Number', value: ''),
+        FormFieldBox(label: 'Email Address', value: ''),
         const SectionTitle('Settlement Bank', Icons.account_balance),
-        FormFieldBox(label: 'Bank Name', value: 'HDFC Bank'),
-        FormFieldBox(label: 'Account Number', value: '50100012345678'),
+        FormFieldBox(label: 'Bank Name', value: ''),
+        FormFieldBox(label: 'Account Number', value: ''),
         const SectionTitle('Terms & Conditions', Icons.description),
-        FormFieldBox(label: 'Standard Terms', value: '50% advance required. Final guest count must be shared 48 hours prior. Taxes applicable as per government norms.', height: 112),
+        FormFieldBox(label: 'Standard Terms', value: '', height: 112),
       ]);
 }
 
