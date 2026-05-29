@@ -3,6 +3,7 @@ const swaggerUi = require('swagger-ui-express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 const dbPath = path.join(__dirname, 'db.json');
@@ -30,7 +31,7 @@ function makeId(prefix) {
 }
 
 function decodeToken(req) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  const token = (req.headers.authorization || req.query.token || '').replace(/^Bearer\s+/i, '');
   if (!token) return null;
   try {
     return Buffer.from(token, 'base64url').toString('utf8').split(':')[0];
@@ -128,6 +129,147 @@ function serviceFromBody(body, existing = {}) {
   };
 }
 
+function money(value) {
+  return `₹${Number(value || 0).toLocaleString('en-IN')}`;
+}
+
+function eventTotals(event) {
+  const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
+  const serviceTotal = event.dates.reduce((dateSum, date) => dateSum + date.additionalServices.reduce((svcSum, service) => svcSum + Number(service.price || 0), 0), 0);
+  const paid = event.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const discount = event.payments.reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
+  const total = menuTotal + serviceTotal;
+  return { menuTotal, serviceTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
+}
+
+function menuTitleById(db, id) {
+  const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
+  return item ? item.english || item.title || id : id;
+}
+
+function firstExistingPath(paths) {
+  return paths.find((candidate) => candidate && fs.existsSync(candidate));
+}
+
+function configurePdfFonts(doc) {
+  const regular = firstExistingPath([
+    'C:\\Windows\\Fonts\\Nirmala.ttf',
+    'C:\\Windows\\Fonts\\arial.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+  ]);
+  const bold = firstExistingPath([
+    'C:\\Windows\\Fonts\\NirmalaB.ttf',
+    'C:\\Windows\\Fonts\\arialbd.ttf',
+    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+  ]);
+  if (regular) doc.registerFont('DocRegular', regular);
+  if (bold) doc.registerFont('DocBold', bold);
+  return { regular: regular ? 'DocRegular' : 'Helvetica', bold: bold ? 'DocBold' : 'Helvetica-Bold' };
+}
+
+function writeDocumentHeader(doc, title, event, number, fonts) {
+  doc.rect(0, 0, doc.page.width, 96).fill('#06445d');
+  doc.fillColor('white').fontSize(22).font(fonts.bold).text('CaterPro', 42, 28);
+  doc.fontSize(10).font(fonts.regular).text('Catering event management', 42, 56);
+  doc.fontSize(20).font(fonts.bold).text(title, 360, 28, { align: 'right', width: 190 });
+  doc.fontSize(9).font(fonts.regular).text(number, 360, 56, { align: 'right', width: 190 });
+  doc.fillColor('#202124').fontSize(12).font(fonts.bold).text(event.name || 'Untitled Event', 42, 126);
+  doc.font(fonts.regular).fontSize(10).fillColor('#5f6368')
+    .text(`Client: ${event.primaryClient || event.mobile || '-'}`, 42, 146)
+    .text(`Mobile: ${event.mobile || '-'}`, 42, 162)
+    .text(`Venue: ${event.venue || '-'}`, 42, 178)
+    .text(`Date(s): ${event.dates.map((date) => date.date).join(', ') || '-'}`, 42, 194);
+}
+
+function tableHeader(doc, y, fonts) {
+  doc.roundedRect(42, y, 511, 24, 4).fill('#e8eef2');
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(9)
+    .text('Description', 52, y + 7, { width: 250 })
+    .text('Qty', 312, y + 7, { width: 45, align: 'right' })
+    .text('Rate', 370, y + 7, { width: 70, align: 'right' })
+    .text('Amount', 456, y + 7, { width: 86, align: 'right' });
+}
+
+function ensurePageSpace(doc, y, needed = 44) {
+  if (y + needed < 760) return y;
+  doc.addPage();
+  return 48;
+}
+
+function generateEventPdf({ res, db, event, type }) {
+  const isInvoice = type === 'invoice';
+  const title = isInvoice ? 'INVOICE' : 'QUOTATION';
+  const prefix = isInvoice ? 'INV' : 'QUOTE';
+  const number = `${prefix}_${event.id}_${new Date().toISOString().slice(0, 10).replaceAll('-', '')}`;
+  const totals = eventTotals(event);
+  const doc = new PDFDocument({ size: 'A4', margin: 42, info: { Title: `${title} - ${event.name}` } });
+  const fonts = configurePdfFonts(doc);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  doc.pipe(res);
+  writeDocumentHeader(doc, title, event, number, fonts);
+  let y = 232;
+  tableHeader(doc, y, fonts);
+  y += 32;
+
+  for (const date of event.dates) {
+    y = ensurePageSpace(doc, y, 34);
+    doc.fillColor('#06445d').font(fonts.bold).fontSize(11).text(`${date.date}${date.label ? ` - ${date.label}` : ''}`, 42, y);
+    y += 18;
+    for (const slot of date.menuSlots) {
+      y = ensurePageSpace(doc, y, 62);
+      const items = slot.menuItemIds.map((id) => menuTitleById(db, id)).join(', ') || 'Menu items not selected';
+      const amount = Number(slot.pax || 0) * Number(slot.pricePerPax || 0);
+      doc.fillColor('#202124').font(fonts.bold).fontSize(10).text(`${slot.type}${slot.time ? ` (${slot.time})` : ''}`, 52, y, { width: 250 });
+      doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(items, 52, y + 14, { width: 250, height: 28 });
+      doc.fillColor('#202124').fontSize(9)
+        .text(`${slot.pax || 0}`, 312, y, { width: 45, align: 'right' })
+        .text(money(slot.pricePerPax), 370, y, { width: 70, align: 'right' })
+        .text(money(amount), 456, y, { width: 86, align: 'right' });
+      y += 48;
+    }
+    for (const service of date.additionalServices) {
+      y = ensurePageSpace(doc, y, 30);
+      doc.fillColor('#202124').font(fonts.regular).fontSize(9)
+        .text(`Additional Service: ${service.name}`, 52, y, { width: 250 })
+        .text(`${service.quantity || 0} ${service.unit || ''}`, 312, y, { width: 45, align: 'right' })
+        .text('-', 370, y, { width: 70, align: 'right' })
+        .text(money(service.price), 456, y, { width: 86, align: 'right' });
+      y += 24;
+    }
+  }
+
+  y = ensurePageSpace(doc, y, isInvoice ? 160 : 116);
+  doc.moveTo(42, y).lineTo(553, y).strokeColor('#c5ccd3').stroke();
+  y += 18;
+  doc.fillColor('#202124').font(fonts.regular).fontSize(10)
+    .text('Menu Total', 356, y, { width: 90 })
+    .text(money(totals.menuTotal), 456, y, { width: 86, align: 'right' });
+  y += 18;
+  doc.text('Services Total', 356, y, { width: 90 }).text(money(totals.serviceTotal), 456, y, { width: 86, align: 'right' });
+  y += 22;
+  doc.font(fonts.bold).fontSize(12).fillColor('#06445d').text('Grand Total', 356, y, { width: 90 }).text(money(totals.total), 456, y, { width: 86, align: 'right' });
+  y += 26;
+
+  if (isInvoice) {
+    doc.font(fonts.regular).fontSize(10).fillColor('#202124')
+      .text('Paid', 356, y, { width: 90 })
+      .text(money(totals.paid), 456, y, { width: 86, align: 'right' });
+    y += 18;
+    if (totals.discount > 0) {
+      doc.text('Settlement Discount', 356, y, { width: 90 }).text(money(totals.discount), 456, y, { width: 86, align: 'right' });
+      y += 18;
+    }
+    doc.font(fonts.bold).fillColor(totals.balance > 0 ? '#ba1a1a' : '#0b6b3a').text('Balance Due', 356, y, { width: 90 }).text(money(totals.balance), 456, y, { width: 86, align: 'right' });
+    y += 30;
+  }
+
+  doc.fillColor('#5f6368').font(fonts.regular).fontSize(9)
+    .text(isInvoice ? 'Thank you for your payment. This invoice is generated from CaterPro event records.' : 'This quotation is based on the selected menu, pax, and service configuration. Final billing may vary after confirmation.', 42, y, { width: 330 });
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(10).text('Authorized Signature', 410, y + 48, { align: 'center', width: 130 });
+  doc.end();
+}
+
 const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -168,6 +310,7 @@ const openApiSpec = {
     '/api/events/{eventId}/dates/{dateId}/menu-slots': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add menu type/slot for date' } },
     '/api/events/{eventId}/dates/{dateId}/additional-services': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add additional service for date' } },
     '/api/events/{eventId}/payments': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Record event payment' } },
+    '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice'] } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
   },
 };
 
@@ -408,6 +551,16 @@ app.post('/api/events/:eventId/payments', (req, res) => {
   event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.status(201).json(payment);
+});
+
+app.get('/api/events/:eventId/documents/:type', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation or invoice' });
+  generateEventPdf({ res, db, event, type: req.params.type });
 });
 
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));

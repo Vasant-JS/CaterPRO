@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() => runApp(const CaterProApp());
 
@@ -118,22 +119,51 @@ class AuthService {
 }
 
 class AppEvent {
-  const AppEvent({required this.id, required this.name, required this.mobile, required this.venue, required this.notes, required this.dates});
+  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.dates, required this.payments});
   final String id;
   final String name;
+  final String primaryClient;
   final String mobile;
   final String venue;
   final String notes;
+  final String status;
   final List<AppEventDate> dates;
+  final List<AppPayment> payments;
 
   factory AppEvent.fromJson(Map<String, dynamic> json) {
     return AppEvent(
       id: json['id'] as String? ?? '',
       name: json['name'] as String? ?? '',
+      primaryClient: json['primaryClient'] as String? ?? '',
       mobile: json['mobile'] as String? ?? '',
       venue: json['venue'] as String? ?? '',
       notes: json['notes'] as String? ?? '',
+      status: json['status'] as String? ?? 'draft',
       dates: ((json['dates'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppEventDate.fromJson).toList(),
+      payments: ((json['payments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppPayment.fromJson).toList(),
+    );
+  }
+}
+
+class AppPayment {
+  const AppPayment({required this.id, required this.amount, required this.date, required this.mode, required this.reference, required this.settled, required this.settledDiscount});
+  final String id;
+  final int amount;
+  final String date;
+  final String mode;
+  final String reference;
+  final bool settled;
+  final int settledDiscount;
+
+  factory AppPayment.fromJson(Map<String, dynamic> json) {
+    return AppPayment(
+      id: json['id'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toInt() ?? 0,
+      date: json['date'] as String? ?? '',
+      mode: json['mode'] as String? ?? '',
+      reference: json['reference'] as String? ?? '',
+      settled: json['settled'] == true,
+      settledDiscount: (json['settledDiscount'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -189,6 +219,12 @@ class ApiService {
     return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(AppEvent.fromJson).toList();
   }
 
+  Future<AppEvent> getEvent(String eventId) async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/events/$eventId'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load event');
+    return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<MenuMasterItem>> getMenuItems() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
     if (response.statusCode != 200) throw Exception('Unable to load menu items');
@@ -234,7 +270,32 @@ class ApiService {
     final loaded = await http.get(Uri.parse('${ApiConfig.baseUrl}/events/$eventId'), headers: headers);
     return AppEvent.fromJson(jsonDecode(loaded.body) as Map<String, dynamic>);
   }
+
+  Future<AppEvent> recordPayment(String eventId, {required int amount, required String date, required String mode, required String reference, required bool settled, required int settledDiscount}) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/events/$eventId/payments'),
+      headers: await authHeaders(),
+      body: jsonEncode({'amount': amount, 'date': date, 'mode': mode, 'reference': reference, 'settled': settled, 'settledDiscount': settledDiscount}),
+    );
+    if (response.statusCode != 201) throw Exception('Unable to save payment');
+    return getEvent(eventId);
+  }
+
+  Future<Uri> documentUri(String eventId, String type) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/documents/$type?token=${Uri.encodeComponent(token)}');
+  }
 }
+
+String money(int value) => '₹${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (match) => ',')}';
+
+int eventMenuTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.menuSlots.fold(0, (slotSum, slot) => slotSum + slot.pax * slot.pricePerPax));
+int eventServiceTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.additionalServices.fold(0, (sum, service) => sum + ((service['price'] as num?)?.toInt() ?? 0)));
+int eventTotal(AppEvent event) => eventMenuTotal(event) + eventServiceTotal(event);
+int eventPaid(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.amount);
+int eventSettledDiscount(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.settledDiscount);
+int eventBalance(AppEvent event) => (eventTotal(event) - eventPaid(event) - eventSettledDiscount(event)).clamp(0, eventTotal(event));
 
 class EventDraft {
   String name = '';
@@ -402,6 +463,7 @@ class _AppShellState extends State<AppShell> {
   String? loadError;
   final List<AppEvent> events = [];
   final List<AdditionalServiceItem> services = [];
+  String? selectedEventId;
 
   @override
   void initState() {
@@ -438,7 +500,27 @@ class _AppShellState extends State<AppShell> {
     final event = await api.createEvent(draft);
     setState(() {
       events.add(event);
+      selectedEventId = event.id;
       tab = 1;
+    });
+  }
+
+  void openEventDetails(AppEvent event) {
+    setState(() {
+      selectedEventId = event.id;
+      tab = 6;
+    });
+  }
+
+  void updateSelectedEvent(AppEvent event) {
+    setState(() {
+      final index = events.indexWhere((item) => item.id == event.id);
+      if (index == -1) {
+        events.add(event);
+      } else {
+        events[index] = event;
+      }
+      selectedEventId = event.id;
     });
   }
 
@@ -458,13 +540,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   List<Widget> get pages => <Widget>[
-    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
-    EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: () => setState(() => tab = 6), openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
+    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), openDetails: openEventDetails, refresh: refreshEvents),
+    EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
     const ClientsScreen(),
     const BillingScreen(),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, onSaveService: upsertService, onDeleteService: removeService),
-    EventDetailsScreen(onClose: () => setState(() => tab = 1)),
+    EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
     EmployeeScreen(onClose: () => setState(() => tab = 4)),
@@ -783,11 +865,12 @@ class ScreenFrame extends StatelessWidget {
 }
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required this.events, required this.loading, required this.loadError, required this.openCreate, required this.refresh});
+  const DashboardScreen({super.key, required this.events, required this.loading, required this.loadError, required this.openCreate, required this.openDetails, required this.refresh});
   final List<AppEvent> events;
   final bool loading;
   final String? loadError;
   final VoidCallback openCreate;
+  final ValueChanged<AppEvent> openDetails;
   final VoidCallback refresh;
 
   @override
@@ -832,7 +915,7 @@ class DashboardScreen extends StatelessWidget {
         else if (events.isEmpty)
           EmptyStateCard(title: 'No events yet', message: 'Create your first event and it will appear here.', actionLabel: 'Create Event', onAction: openCreate)
         else
-          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', status: 'Draft', statusColor: Cp.secondaryFixed)),
+          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', status: event.status.toUpperCase(), statusColor: Cp.secondaryFixed, onTap: () => openDetails(event))),
       ],
     );
   }
@@ -945,19 +1028,21 @@ class SectionHeader extends StatelessWidget {
 }
 
 class EventMiniCard extends StatelessWidget {
-  const EventMiniCard({super.key, required this.title, required this.client, required this.time, required this.pax, required this.status, required this.statusColor});
+  const EventMiniCard({super.key, required this.title, required this.client, required this.time, required this.pax, required this.status, required this.statusColor, this.onTap});
   final String title;
   final String client;
   final String time;
   final String pax;
   final String status;
   final Color statusColor;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
+        onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -979,7 +1064,7 @@ class EventsScreen extends StatelessWidget {
   final List<AppEvent> events;
   final bool loading;
   final String? loadError;
-  final VoidCallback openDetails;
+  final ValueChanged<AppEvent> openDetails;
   final VoidCallback openCreate;
   final VoidCallback refresh;
 
@@ -999,7 +1084,7 @@ class EventsScreen extends StatelessWidget {
           ...events.map((event) {
             final meals = event.dates.expand((date) => date.menuSlots.map((slot) => slot.type)).toSet().toList();
             final dateText = event.dates.isEmpty ? 'No dates' : event.dates.map((date) => date.date).join(', ');
-            return EventListCard(title: event.name, client: event.name, phone: event.mobile, dates: dateText, amount: '₹0', balance: 'No payments', status: 'Draft', meals: meals, onTap: openDetails);
+            return EventListCard(title: event.name, client: event.primaryClient.isEmpty ? event.name : event.primaryClient, phone: event.mobile, dates: dateText, amount: money(eventTotal(event)), balance: eventBalance(event) == 0 ? 'Paid' : '${money(eventBalance(event))} due', status: event.status.toUpperCase(), meals: meals, onTap: () => openDetails(event));
           }),
       ],
     );
@@ -1430,6 +1515,155 @@ void showAdditionalServiceManager(
     backgroundColor: Colors.transparent,
     builder: (context) => AdditionalServiceManagerSheet(services: services, onSave: onSave, onDelete: onDelete),
   );
+}
+
+void showEventRecordPaymentSheet(BuildContext context, {required AppEvent event, required ApiService api, required ValueChanged<AppEvent> onSaved}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => EventRecordPaymentSheet(event: event, api: api, onSaved: onSaved),
+  );
+}
+
+class EventRecordPaymentSheet extends StatefulWidget {
+  const EventRecordPaymentSheet({super.key, required this.event, required this.api, required this.onSaved});
+  final AppEvent event;
+  final ApiService api;
+  final ValueChanged<AppEvent> onSaved;
+
+  @override
+  State<EventRecordPaymentSheet> createState() => _EventRecordPaymentSheetState();
+}
+
+class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
+  late final TextEditingController paymentController;
+  late final TextEditingController dateController;
+  late final TextEditingController refController;
+  final paymentModes = ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque'];
+  int selectedMode = 0;
+  bool settled = false;
+  bool saving = false;
+  String? errorText;
+
+  int get totalAmount => eventTotal(widget.event);
+  int get paidAmount => eventPaid(widget.event);
+  int get balanceAmount => eventBalance(widget.event);
+  int get paymentAmount => int.tryParse(paymentController.text.replaceAll(',', '').trim()) ?? 0;
+  int get remainingAfterPayment => (balanceAmount - paymentAmount).clamp(0, balanceAmount);
+  int get settledDiscount => settled && paymentAmount <= balanceAmount ? remainingAfterPayment : 0;
+  int get finalBalance => settled && paymentAmount <= balanceAmount ? 0 : remainingAfterPayment;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = DateTime.now();
+    paymentController = TextEditingController();
+    dateController = TextEditingController(text: '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}');
+    refController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    paymentController.dispose();
+    dateController.dispose();
+    refController.dispose();
+    super.dispose();
+  }
+
+  void validate() {
+    final amount = paymentAmount;
+    setState(() {
+      if (amount <= 0) {
+        errorText = 'Enter a payment amount.';
+      } else if (amount > balanceAmount) {
+        errorText = 'Payment cannot be more than remaining balance ${money(balanceAmount)}.';
+      } else {
+        errorText = null;
+      }
+    });
+  }
+
+  Future<void> savePayment() async {
+    validate();
+    if (errorText != null || saving) return;
+    setState(() => saving = true);
+    try {
+      final updated = await widget.api.recordPayment(
+        widget.event.id,
+        amount: paymentAmount,
+        date: dateController.text.trim(),
+        mode: paymentModes[selectedMode],
+        reference: refController.text.trim(),
+        settled: settled,
+        settledDiscount: settledDiscount,
+      );
+      widget.onSaved(updated);
+      if (!mounted) return;
+      Navigator.pop(context);
+      showCpSnack(context, settledDiscount > 0 ? 'Payment saved. ${money(settledDiscount)} marked as settlement discount.' : 'Payment saved.');
+    } catch (e) {
+      if (mounted) setState(() => errorText = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 10, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 22), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            Text('Record Payment - ${widget.event.name}', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            const Text('Payment amount must be less than or equal to the remaining balance.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 16),
+            CpCard(color: Cp.surfaceLow, child: Row(children: [
+              Expanded(child: _MoneyCell(label: 'Total', value: money(totalAmount))),
+              Expanded(child: _MoneyCell(label: 'Paid', value: money(paidAmount), color: Cp.tertiaryContainer)),
+              Expanded(child: _MoneyCell(label: 'Balance', value: money(balanceAmount), color: Cp.error)),
+            ])),
+            const SizedBox(height: 16),
+            PaymentInputBox(label: 'Payment Amount', controller: paymentController, icon: Icons.currency_rupee, keyboardType: TextInputType.number, onChanged: (_) => validate()),
+            Row(children: [Expanded(child: PaymentInputBox(label: 'Date', controller: dateController, icon: Icons.calendar_today)), const SizedBox(width: 12), Expanded(child: PaymentInputBox(label: 'Ref No.', controller: refController, icon: Icons.confirmation_number))]),
+            const Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List.generate(paymentModes.length, (index) {
+                final selected = selectedMode == index;
+                return ChoiceChip(
+                  selected: selected,
+                  label: Text(paymentModes[index]),
+                  selectedColor: Cp.primaryContainer,
+                  labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
+                  onSelected: (_) => setState(() => selectedMode = index),
+                );
+              }),
+            ),
+            const SizedBox(height: 10),
+            CheckboxListTile(
+              value: settled,
+              onChanged: (value) => setState(() => settled = value ?? false),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: Cp.primary,
+              title: const Text('Settled', style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: Text(settled ? '${money(settledDiscount)} will be treated as discount/settlement. Final balance: ${money(finalBalance)}' : 'Unchecked keeps ${money(remainingAfterPayment)} as pending balance.'),
+            ),
+            if (errorText != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(errorText!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+            SizedBox(width: double.infinity, height: 54, child: FilledButton.icon(onPressed: saving ? null : savePayment, style: FilledButton.styleFrom(backgroundColor: Cp.primary), icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save), label: Text(saving ? 'Saving...' : 'Save Payment', style: const TextStyle(fontWeight: FontWeight.w900)))),
+            Center(child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)))),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class AdditionalServiceManagerSheet extends StatelessWidget {
@@ -2289,16 +2523,21 @@ class _FormFieldBoxState extends State<FormFieldBox> {
 }
 
 class EventDetailsScreen extends StatelessWidget {
-  const EventDetailsScreen({super.key, required this.onClose});
+  const EventDetailsScreen({super.key, required this.event, required this.api, required this.onEventUpdated, required this.onClose});
+  final AppEvent? event;
+  final ApiService api;
+  final ValueChanged<AppEvent> onEventUpdated;
   final VoidCallback onClose;
 
   Future<void> handleAction(BuildContext context, EventScreenAction action) async {
+    final selectedEvent = event;
+    if (selectedEvent == null) return;
     switch (action) {
       case EventScreenAction.downloadQuotation:
-        showCpSnack(context, 'Quotation download started');
+        await downloadDocument(context, selectedEvent, 'quotation');
         break;
       case EventScreenAction.downloadInvoice:
-        showCpSnack(context, 'Invoice download started');
+        await downloadDocument(context, selectedEvent, 'invoice');
         break;
       case EventScreenAction.currentDayMenu:
         showCpSnack(context, 'Current day menu opened');
@@ -2331,10 +2570,22 @@ class EventDetailsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> downloadDocument(BuildContext context, AppEvent event, String type) async {
+    try {
+      final uri = await api.documentUri(event.id, type);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_self');
+      if (!context.mounted) return;
+      showCpSnack(context, launched ? '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started' : 'Unable to start download');
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => ScreenFrame(
         topBar: TopBar(
-          title: 'Event Details',
+          title: event?.name.isEmpty == false ? event!.name : 'Event Details',
           avatar: false,
           leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
           actions: [
@@ -2365,12 +2616,17 @@ class EventDetailsScreen extends StatelessWidget {
             ),
           ],
         ),
-        children: const [EmptyStateCard(title: 'Select an event', message: 'Created events will open here once detail navigation is connected to API IDs.')],
+        children: event == null
+            ? const [EmptyStateCard(title: 'Select an event', message: 'Open an event from the event list to view details, payments, invoices, and quotations.')]
+            : [EventDetailsContent(event: event!, api: api, onEventUpdated: onEventUpdated)],
       );
 }
 
 class EventDetailsContent extends StatefulWidget {
-  const EventDetailsContent({super.key});
+  const EventDetailsContent({super.key, required this.event, required this.api, required this.onEventUpdated});
+  final AppEvent event;
+  final ApiService api;
+  final ValueChanged<AppEvent> onEventUpdated;
 
   @override
   State<EventDetailsContent> createState() => _EventDetailsContentState();
@@ -2382,15 +2638,20 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
 
   @override
   Widget build(BuildContext context) {
+    final event = widget.event;
+    final total = eventTotal(event);
+    final paid = eventPaid(event);
+    final balance = eventBalance(event);
+    final progress = total == 0 ? 0.0 : (paid / total).clamp(0.0, 1.0);
     return Column(children: [
       CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text('Not selected', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), Pill('DRAFT', color: Cp.secondaryFixed, textColor: Color(0xff663e00))]),
+        Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(event.primaryClient.isEmpty ? event.mobile : event.primaryClient, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text(event.mobile, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), Pill(event.status.toUpperCase(), color: Cp.secondaryFixed, textColor: const Color(0xff663e00))]),
         const SizedBox(height: 16),
-        const Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', '0'), InfoTile(Icons.location_on, 'Venue', 'Not set'), InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', '₹0', color: Cp.error)]),
+        Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', event.dates.map((date) => date.date).join(', ')), InfoTile(Icons.location_on, 'Venue', event.venue.isEmpty ? 'Not set' : event.venue), const InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', money(balance), color: Cp.error)]),
         const SizedBox(height: 18),
         const Text('Payment Progress', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
-        ClipRRect(borderRadius: BorderRadius.circular(99), child: LinearProgressIndicator(value: .64, minHeight: 12, color: Cp.primaryContainer, backgroundColor: Cp.surfaceHigh)),
+        ClipRRect(borderRadius: BorderRadius.circular(99), child: LinearProgressIndicator(value: progress, minHeight: 12, color: Cp.primaryContainer, backgroundColor: Cp.surfaceHigh)),
       ])),
       const SizedBox(height: 16),
       SingleChildScrollView(
@@ -2412,39 +2673,47 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
         ),
       ),
       const SizedBox(height: 16),
-      EventDetailsTabContent(tab: selectedTab),
+      EventDetailsTabContent(tab: selectedTab, event: event, api: widget.api, onEventUpdated: widget.onEventUpdated),
     ]);
   }
 }
 
 class EventDetailsTabContent extends StatelessWidget {
-  const EventDetailsTabContent({super.key, required this.tab});
+  const EventDetailsTabContent({super.key, required this.tab, required this.event, required this.api, required this.onEventUpdated});
   final int tab;
+  final AppEvent event;
+  final ApiService api;
+  final ValueChanged<AppEvent> onEventUpdated;
 
   @override
   Widget build(BuildContext context) {
     switch (tab) {
       case 1:
-        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: const [
-          EventDateMenuCard(date: '12 Jun 2025', title: 'Day 1: Mehendi', meals: 'Breakfast, Lunch'),
-          EventDateMenuCard(date: '13 Jun 2025', title: 'Day 2: Sangeet', meals: 'Dinner, Juice'),
-          EventDateMenuCard(date: '14 Jun 2025', title: 'Day 3: Reception', meals: 'Breakfast, Lunch, Dinner'),
-        ]);
+        return event.dates.isEmpty
+            ? const EmptyStateCard(title: 'No dates configured', message: 'Add event dates and menu types from the create flow.')
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: event.dates.map((date) => EventDateMenuCard(date: date)).toList());
       case 2:
+        final total = eventTotal(event);
+        final paid = eventPaid(event);
+        final balance = eventBalance(event);
         return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Payment Summary', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 8), Text('Total: ₹0'), Text('Paid: ₹0'), Text('Balance: ₹0', style: TextStyle(color: Cp.error, fontWeight: FontWeight.w800))])),
+          CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Payment Summary', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), const SizedBox(height: 8), Text('Total: ${money(total)}'), Text('Paid: ${money(paid)}'), if (eventSettledDiscount(event) > 0) Text('Settlement Discount: ${money(eventSettledDiscount(event))}'), Text('Balance: ${money(balance)}', style: TextStyle(color: balance == 0 ? Cp.tertiary : Cp.error, fontWeight: FontWeight.w800))])),
+          if (event.payments.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            ...event.payments.map((payment) => CpCard(child: Row(children: [const Icon(Icons.payments, color: Cp.primary), const SizedBox(width: 12), Expanded(child: Text('${money(payment.amount)} • ${payment.mode}\n${payment.date}${payment.reference.isEmpty ? '' : ' • ${payment.reference}'}', style: const TextStyle(fontWeight: FontWeight.w800))), if (payment.settled) const Pill('Settled', color: Cp.tertiaryFixed, textColor: Color(0xff00210c))]))),
+          ],
           const SizedBox(height: 16),
-          SizedBox(height: 52, child: FilledButton.icon(onPressed: () => showRecordPaymentSheet(context), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), icon: const Icon(Icons.payments), label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
+          SizedBox(height: 52, child: FilledButton.icon(onPressed: () => showEventRecordPaymentSheet(context, event: event, api: api, onSaved: onEventUpdated), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), icon: const Icon(Icons.payments), label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
         ]);
       default:
-        return CpCard(color: Cp.primaryContainer, child: const Text('Event Notes\nHigh profile corporate guests attending. Focus on premium fusion menu. Strict allergy control for seafood requested. VIP lounge setup required.', style: TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700)));
+        return CpCard(color: Cp.primaryContainer, child: Text('Event Notes\n${event.notes.isEmpty ? 'No notes added.' : event.notes}', style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700)));
     }
   }
 }
 
 class EventDateMenuCard extends StatelessWidget {
-  const EventDateMenuCard({super.key, required this.date, required this.title, required this.meals});
-  final String date, title, meals;
+  const EventDateMenuCard({super.key, required this.date});
+  final AppEventDate date;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -2457,16 +2726,16 @@ class EventDateMenuCard extends StatelessWidget {
                 height: 58,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(10)),
-                child: Text(date.replaceAll(' 2025', '').replaceFirst(' ', '\n'), textAlign: TextAlign.center, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900, height: 1.1)),
+                child: Text(date.date.split('-').skip(1).join('\n'), textAlign: TextAlign.center, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900, height: 1.1)),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
+                    Text(date.label.isEmpty ? date.date : date.label, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
                     const SizedBox(height: 2),
-                    Text(meals, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                    Text(date.menuSlots.isEmpty ? 'No menu slots' : date.menuSlots.map((slot) => '${slot.type} • ${slot.pax} pax • ${money(slot.pricePerPax)}/pax').join('\n'), style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
