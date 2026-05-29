@@ -356,11 +356,11 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel }) {
     });
   }
 
-  doc.fillColor('#9a6a00').font(fonts.bold).fontSize(8).text('Prepared by CaterPro', 42, 796, { width: 511, align: 'center' });
 }
 
 function generateMenuPdf({ res, db, event, dateId, allDates = false }) {
-  const dates = allDates ? event.dates : event.dates.filter((date) => date.id === dateId || date.date === dateId);
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0;
+  const dates = allDates ? event.dates.filter(hasMenuContent) : event.dates.filter((date) => date.id === dateId || date.date === dateId);
   if (!dates.length) {
     res.status(404).json({ message: 'Event date not found' });
     return;
