@@ -1825,6 +1825,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
               items: selectedMenuTitles(slot),
               onEnabledChanged: (value) => setState(() => slot.enabled = value),
               onPaxChanged: (value) => setState(() => slot.pax = value),
+              onPriceChanged: (value) => setState(() => slot.pricePerPax = int.tryParse(value) ?? 0),
               onEditMenu: () => openMenuPicker(slot),
               onDelete: () => setState(() => config.slots.remove(slot)),
             )),
@@ -2124,11 +2125,12 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
 }
 
 class MealSlotCard extends StatelessWidget {
-  const MealSlotCard({super.key, required this.slot, required this.items, required this.onEnabledChanged, required this.onPaxChanged, required this.onEditMenu, required this.onDelete});
+  const MealSlotCard({super.key, required this.slot, required this.items, required this.onEnabledChanged, required this.onPaxChanged, required this.onPriceChanged, required this.onEditMenu, required this.onDelete});
   final MealSlotConfig slot;
   final List<String> items;
   final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<String> onPaxChanged;
+  final ValueChanged<String> onPriceChanged;
   final VoidCallback onEditMenu;
   final VoidCallback onDelete;
 
@@ -2151,7 +2153,11 @@ class MealSlotCard extends StatelessWidget {
             ]),
             if (enabled) ...[
               const SizedBox(height: 12),
-              FormFieldBox(label: '${slot.type} Pax', value: slot.pax, icon: Icons.person, onChanged: onPaxChanged),
+              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Expanded(child: FormFieldBox(label: '${slot.type} Pax', value: slot.pax, icon: Icons.person, onChanged: onPaxChanged)),
+                const SizedBox(width: 12),
+                Expanded(child: FormFieldBox(label: 'Price / Pax', value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}', icon: Icons.currency_rupee, onChanged: onPriceChanged)),
+              ]),
             ],
             if (enabled) ...[
               const SizedBox(height: 12),
@@ -2237,7 +2243,7 @@ class _FormFieldBoxState extends State<FormFieldBox> {
 
   TextInputType get keyboardType {
     final label = widget.label.toLowerCase();
-    if (label.contains('phone') || label.contains('mobile') || label.contains('pax') || label.contains('amount') || label.contains('number')) {
+    if (label.contains('phone') || label.contains('mobile') || label.contains('pax') || label.contains('price') || label.contains('amount') || label.contains('number')) {
       return TextInputType.phone;
     }
     if (label.contains('email')) return TextInputType.emailAddress;
