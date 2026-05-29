@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
 
 void main() => runApp(const CaterProApp());
 
@@ -2524,6 +2525,32 @@ class _FormFieldBoxState extends State<FormFieldBox> {
   }
 }
 
+class ShareMenuTile extends StatelessWidget {
+  const ShareMenuTile({super.key, required this.icon, required this.label, required this.onTap});
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: Cp.outlineVariant)),
+            child: Row(children: [
+              Icon(icon, color: Cp.primary),
+              const SizedBox(width: 12),
+              Expanded(child: Text(label, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+              const Icon(Icons.chevron_right, color: Cp.outline),
+            ]),
+          ),
+        ),
+      );
+}
+
 class EventDetailsScreen extends StatelessWidget {
   const EventDetailsScreen({super.key, required this.event, required this.api, required this.onEventUpdated, required this.onClose});
   final AppEvent? event;
@@ -2552,7 +2579,7 @@ class EventDetailsScreen extends StatelessWidget {
         await downloadDocument(context, selectedEvent, 'all-menus');
         break;
       case EventScreenAction.shareMenu:
-        await downloadDocument(context, selectedEvent, 'all-menus');
+        await showMenuShareSheet(context, selectedEvent);
         break;
       case EventScreenAction.deleteEvent:
         if (await confirmEventAction(context, 'Delete Event?', 'This will remove this event and all linked dates, menus, payments, and documents.')) {
@@ -2589,6 +2616,76 @@ class EventDetailsScreen extends StatelessWidget {
         _ => 'Document',
       };
       showCpSnack(context, launched ? '$label download started' : 'Unable to start download');
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> showMenuShareSheet(BuildContext context, AppEvent event) async {
+    try {
+      final uri = await api.documentUri(event.id, 'all-menus');
+      if (!context.mounted) return;
+      final link = uri.toString();
+      final message = 'CaterPro menu for ${event.name}: $link';
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (sheetContext) => SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+            decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 18), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+              const Text('Share Menu', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+              Text(event.name, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 14),
+              ShareMenuTile(
+                icon: Icons.chat,
+                label: 'WhatsApp',
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await launchUrl(Uri.parse('https://wa.me/?text=${Uri.encodeComponent(message)}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                },
+              ),
+              ShareMenuTile(
+                icon: Icons.email,
+                label: 'Email',
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await launchUrl(Uri(scheme: 'mailto', queryParameters: {'subject': 'Menu - ${event.name}', 'body': message}), mode: LaunchMode.externalApplication);
+                },
+              ),
+              ShareMenuTile(
+                icon: Icons.sms,
+                label: 'SMS',
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await launchUrl(Uri(scheme: 'sms', queryParameters: {'body': message}), mode: LaunchMode.externalApplication);
+                },
+              ),
+              ShareMenuTile(
+                icon: Icons.link,
+                label: 'Copy Link',
+                onTap: () async {
+                  await Clipboard.setData(ClipboardData(text: link));
+                  if (sheetContext.mounted) Navigator.pop(sheetContext);
+                  if (context.mounted) showCpSnack(context, 'Menu link copied');
+                },
+              ),
+              ShareMenuTile(
+                icon: Icons.picture_as_pdf,
+                label: 'Download PDF',
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                },
+              ),
+            ]),
+          ),
+        ),
+      );
     } catch (e) {
       if (!context.mounted) return;
       showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
