@@ -3477,7 +3477,106 @@
       "events": [],
       "clients": [],
       "employees": [],
-      "additionalServices": [],
+      "additionalServices": [
+        {
+          "id": "SVC-001",
+          "name": "Banana Leaf",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-002",
+          "name": "Buffet",
+          "unit": "setup",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-003",
+          "name": "Areca Plates",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-004",
+          "name": "Serving",
+          "unit": "staff",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-005",
+          "name": "Cleaning",
+          "unit": "staff",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-006",
+          "name": "Dustbin Cover",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-007",
+          "name": "Water Cups",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-008",
+          "name": "Coffee Tea Cups",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-009",
+          "name": "Juice Cups",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-010",
+          "name": "Water Can",
+          "unit": "can",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-011",
+          "name": "Water Bottles",
+          "unit": "bottle",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-012",
+          "name": "Wet Tissue",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-013",
+          "name": "Tissue Paper",
+          "unit": "pack",
+          "quantity": 0,
+          "price": 0
+        },
+        {
+          "id": "SVC-014",
+          "name": "Steel Plates",
+          "unit": "pcs",
+          "quantity": 0,
+          "price": 0
+        }
+      ],
       "payments": [],
       "businessProfile": null
     }

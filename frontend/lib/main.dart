@@ -75,6 +75,16 @@ class AdditionalServiceItem {
       price: price ?? this.price,
     );
   }
+
+  factory AdditionalServiceItem.fromJson(Map<String, dynamic> json) {
+    return AdditionalServiceItem(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      unit: json['unit']?.toString() ?? '',
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+      price: (json['price'] as num?)?.toInt() ?? 0,
+    );
+  }
 }
 
 class ApiConfig {
@@ -230,6 +240,14 @@ class ApiService {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
     if (response.statusCode != 200) throw Exception('Unable to load menu items');
     return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(MenuMasterItem.fromJson).toList();
+  }
+
+  Future<List<AdditionalServiceItem>> getAdditionalServices() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/bootstrap'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load additional services');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final userData = (body['userData'] as Map?) ?? {};
+    return ((userData['additionalServices'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AdditionalServiceItem.fromJson).toList();
   }
 
   Future<AppEvent> createEvent(EventDraft draft) async {
@@ -482,6 +500,7 @@ class _AppShellState extends State<AppShell> {
     try {
       final loaded = await api.getEvents();
       final menuItems = await api.getMenuItems();
+      final additionalServices = await api.getAdditionalServices();
       if (!mounted) return;
       setState(() {
         events
@@ -490,6 +509,9 @@ class _AppShellState extends State<AppShell> {
         MenuMasterScreen.menuItems
           ..clear()
           ..addAll(menuItems);
+        services
+          ..clear()
+          ..addAll(additionalServices);
       });
     } catch (e) {
       if (!mounted) return;
