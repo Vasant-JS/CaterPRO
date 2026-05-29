@@ -1,0 +1,2987 @@
+﻿import 'package:flutter/material.dart';
+import 'dart:convert';
+
+import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() => runApp(const CaterProApp());
+
+class CaterProApp extends StatelessWidget {
+  const CaterProApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = GoogleFonts.quicksandTextTheme();
+    return MaterialApp(
+      title: 'CaterPro',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: Cp.background,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Cp.primary,
+          primary: Cp.primary,
+          secondary: Cp.secondaryContainer,
+          surface: Cp.surface,
+          error: Cp.error,
+        ),
+        textTheme: textTheme.apply(bodyColor: Cp.onSurface, displayColor: Cp.onSurface),
+      ),
+      home: const LoginScreen(),
+    );
+  }
+}
+
+class Cp {
+  static const surface = Color(0xfff8f9fa);
+  static const background = Color(0xfff8f9fa);
+  static const card = Color(0xffffffff);
+  static const surfaceLow = Color(0xfff3f4f5);
+  static const surfaceHigh = Color(0xffe7e8e9);
+  static const outline = Color(0xff72787f);
+  static const outlineVariant = Color(0xffc1c7cf);
+  static const onSurface = Color(0xff191c1d);
+  static const onVariant = Color(0xff41474e);
+  static const primary = Color(0xff003857);
+  static const primaryContainer = Color(0xff1b4f72);
+  static const primaryFixed = Color(0xffcce5ff);
+  static const secondary = Color(0xff865300);
+  static const secondaryContainer = Color(0xfffea520);
+  static const secondaryFixed = Color(0xffffddb9);
+  static const tertiary = Color(0xff003d1c);
+  static const tertiaryContainer = Color(0xff00572a);
+  static const tertiaryFixed = Color(0xff6bfe9c);
+  static const error = Color(0xffba1a1a);
+  static const errorContainer = Color(0xffffdad6);
+}
+
+class AdditionalServiceItem {
+  const AdditionalServiceItem({required this.id, required this.name, required this.unit, required this.quantity, required this.price});
+  final String id;
+  final String name;
+  final String unit;
+  final int quantity;
+  final int price;
+
+  AdditionalServiceItem copyWith({String? id, String? name, String? unit, int? quantity, int? price}) {
+    return AdditionalServiceItem(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      unit: unit ?? this.unit,
+      quantity: quantity ?? this.quantity,
+      price: price ?? this.price,
+    );
+  }
+}
+
+class ApiConfig {
+  static const baseUrl = String.fromEnvironment('CATERPRO_API_URL', defaultValue: 'http://127.0.0.1:8787/api');
+}
+
+class AuthSession {
+  const AuthSession({required this.token, required this.userId, required this.email, required this.name});
+  final String token;
+  final String userId;
+  final String email;
+  final String name;
+}
+
+class AuthService {
+  Future<AuthSession> login({required String email, required String password}) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/login'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(body['message'] ?? 'Login failed');
+    }
+    final user = body['user'] as Map<String, dynamic>;
+    final session = AuthSession(token: body['token'] as String, userId: user['id'] as String, email: user['email'] as String, name: user['name'] as String);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth.token', session.token);
+    await prefs.setString('auth.userId', session.userId);
+    await prefs.setString('auth.email', session.email);
+    await prefs.setString('auth.name', session.name);
+    return session;
+  }
+
+  Future<void> forgotPassword(String email) async {
+    await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/forgot-password'),
+      headers: const {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email}),
+    );
+  }
+}
+
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final authService = AuthService();
+  final email = TextEditingController(text: 'admin@caterpro.in');
+  final password = TextEditingController(text: 'password');
+  bool obscurePassword = true;
+  bool rememberMe = true;
+  bool loading = false;
+  String? error;
+
+  @override
+  void dispose() {
+    email.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> login() async {
+    final emailText = email.text.trim();
+    final passwordText = password.text;
+    if (!emailText.contains('@') || passwordText.length < 4) {
+      setState(() => error = 'Enter a valid email and password.');
+      return;
+    }
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      await authService.login(email: emailText, password: passwordText);
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  void fingerprintLogin() {
+    showCpSnack(context, 'Fingerprint authenticated');
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
+  }
+
+  Future<void> forgotPassword() async {
+    final emailText = email.text.trim();
+    if (!emailText.contains('@')) {
+      showCpSnack(context, 'Enter your email to receive reset link');
+      return;
+    }
+    try {
+      await authService.forgotPassword(emailText);
+      if (!mounted) return;
+      showCpSnack(context, 'Reset link sent to $emailText');
+    } catch (_) {
+      if (!mounted) return;
+      showCpSnack(context, 'Backend is not reachable. Start CaterPro API.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Cp.background,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
+          children: [
+            const SizedBox(height: 18),
+            Container(
+              width: 78,
+              height: 78,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: Cp.primaryContainer, borderRadius: BorderRadius.circular(20)),
+              child: const Icon(Icons.restaurant_menu, color: Colors.white, size: 42),
+            ),
+            const SizedBox(height: 26),
+            const Text('CaterPro', style: TextStyle(color: Cp.primary, fontSize: 38, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            const Text('Sign in to manage events, menus, billing, and teams.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 28),
+            CpCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Login', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+                const SizedBox(height: 18),
+                TextField(
+                  controller: email,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: InputDecoration(prefixIcon: const Icon(Icons.email_outlined), labelText: 'Email', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: password,
+                  obscureText: obscurePassword,
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    labelText: 'Password',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    suffixIcon: IconButton(onPressed: () => setState(() => obscurePassword = !obscurePassword), icon: Icon(obscurePassword ? Icons.visibility : Icons.visibility_off)),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Checkbox(value: rememberMe, activeColor: Cp.primary, onChanged: (value) => setState(() => rememberMe = value ?? false)),
+                  const Expanded(child: Text('Remember me', style: TextStyle(fontWeight: FontWeight.w700))),
+                  TextButton(onPressed: forgotPassword, child: const Text('Forgot Password?', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+                ]),
+                if (error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+                SizedBox(width: double.infinity, height: 54, child: FilledButton.icon(onPressed: loading ? null : login, style: FilledButton.styleFrom(backgroundColor: Cp.primary), icon: loading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.login), label: Text(loading ? 'Logging in...' : 'Login', style: const TextStyle(fontWeight: FontWeight.w900)))),
+                const SizedBox(height: 14),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: OutlinedButton.icon(
+                    onPressed: fingerprintLogin,
+                    icon: const Icon(Icons.fingerprint, size: 28),
+                    label: const Text('Authenticate with Fingerprint', style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int tab = 0;
+  final List<AdditionalServiceItem> services = [
+    const AdditionalServiceItem(id: 'SRV-001', name: 'Disposable Plates', unit: 'pcs', quantity: 250, price: 2500),
+    const AdditionalServiceItem(id: 'SRV-002', name: 'Water Bottles', unit: 'pcs', quantity: 250, price: 3750),
+    const AdditionalServiceItem(id: 'SRV-003', name: 'Serving Staff', unit: 'people', quantity: 8, price: 6400),
+  ];
+
+  void upsertService(AdditionalServiceItem service) {
+    setState(() {
+      final index = services.indexWhere((item) => item.id == service.id);
+      if (index == -1) {
+        services.add(service);
+      } else {
+        services[index] = service;
+      }
+    });
+  }
+
+  void removeService(String id) {
+    setState(() => services.removeWhere((item) => item.id == id));
+  }
+
+  late final pages = <Widget>[
+    DashboardScreen(openCreate: () => setState(() => tab = 5)),
+    EventsScreen(openDetails: () => setState(() => tab = 6), openCreate: () => setState(() => tab = 5)),
+    const ClientsScreen(),
+    const BillingScreen(),
+    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
+    CreateEventScreen(onClose: () => setState(() => tab = 1), services: services, onSaveService: upsertService, onDeleteService: removeService),
+    EventDetailsScreen(onClose: () => setState(() => tab = 1)),
+    MenuMasterScreen(onClose: () => setState(() => tab = 4)),
+    BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
+    EmployeeScreen(onClose: () => setState(() => tab = 4)),
+    RawMaterialScreen(onClose: () => setState(() => tab = 4)),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final showNav = tab < 5;
+    return Scaffold(
+      drawer: showNav ? CaterSideDrawer(index: tab, onChanged: (i) => setState(() => tab = i)) : null,
+      body: IndexedStack(index: tab, children: pages),
+      floatingActionButton: showNav ? _fabForTab() : null,
+    );
+  }
+
+  Widget? _fabForTab() {
+    final icons = [Icons.add, Icons.add, Icons.add, Icons.add, null];
+    if (icons[tab] == null) return null;
+    return FloatingActionButton(
+      backgroundColor: Cp.secondaryContainer,
+      foregroundColor: Color(0xff694000),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      onPressed: () => setState(() => tab = tab == 0 || tab == 1 ? 5 : tab),
+      child: Icon(icons[tab]),
+    );
+  }
+}
+
+class CaterSideDrawer extends StatelessWidget {
+  const CaterSideDrawer({super.key, required this.index, required this.onChanged});
+
+  final int index;
+  final ValueChanged<int> onChanged;
+
+  static const items = [
+    (Icons.home_rounded, 'Dashboard'),
+    (Icons.calendar_month_rounded, 'Events'),
+    (Icons.group_rounded, 'Clients'),
+    (Icons.receipt_long_rounded, 'Billing'),
+    (Icons.settings_rounded, 'Settings'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Drawer(
+      backgroundColor: Cp.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.horizontal(right: Radius.circular(24))),
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 22),
+              child: Row(
+                children: [
+                  const CircleAvatar(radius: 26, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Text('Royal Caterers', style: TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
+                        Text('CaterPro Manager', style: TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: Cp.outlineVariant),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+                children: [
+                  ...List.generate(items.length, (i) {
+                    final selected = i == index;
+                    final item = items[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: ListTile(
+                        selected: selected,
+                        selectedTileColor: Cp.secondaryContainer,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+                        leading: Icon(item.$1, color: selected ? const Color(0xff694000) : Cp.onVariant),
+                        title: Text(item.$2, style: TextStyle(color: selected ? const Color(0xff694000) : Cp.onSurface, fontWeight: selected ? FontWeight.w900 : FontWeight.w700)),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onChanged(i);
+                        },
+                      ),
+                    );
+                  }),
+                  const SizedBox(height: 12),
+                  const Divider(color: Cp.outlineVariant),
+                  ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: const Icon(Icons.restaurant_menu, color: Cp.onVariant),
+                    title: const Text('Menu Master', style: TextStyle(fontWeight: FontWeight.w700)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      onChanged(7);
+                    },
+                  ),
+                  ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: const Icon(Icons.storefront, color: Cp.onVariant),
+                    title: const Text('Business Profile', style: TextStyle(fontWeight: FontWeight.w700)),
+                    onTap: () {
+                      Navigator.pop(context);
+                      onChanged(8);
+                    },
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer, foregroundColor: Colors.white),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    onChanged(5);
+                  },
+                  icon: const Icon(Icons.add),
+                  label: const Text('New Event', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class TopBar extends StatelessWidget {
+  const TopBar({super.key, required this.title, this.subtitle, this.leading, this.actions = const [], this.avatar = true});
+
+  final String title;
+  final String? subtitle;
+  final Widget? leading;
+  final List<Widget> actions;
+  final bool avatar;
+
+  @override
+  Widget build(BuildContext context) {
+    final canOpenDrawer = Scaffold.maybeOf(context)?.hasDrawer ?? false;
+    final defaultLeading = canOpenDrawer
+        ? Builder(
+            builder: (context) => IconButton(
+              tooltip: 'Open menu',
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              icon: const Icon(Icons.menu_rounded, color: Cp.primary),
+            ),
+          )
+        : (avatar ? const CircleAvatar(radius: 20, backgroundColor: Cp.primaryContainer, child: Text('R', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800))) : const SizedBox.shrink());
+    return SafeArea(
+      bottom: false,
+      child: Container(
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        color: Cp.surface,
+        child: Row(
+          children: [
+            leading ?? defaultLeading,
+            if (leading != null || avatar || canOpenDrawer) const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.primary, fontSize: 22, height: 1.1, fontWeight: FontWeight.w800)),
+                  if (subtitle != null) Text(subtitle!, style: const TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+            ...actions,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class CpCard extends StatelessWidget {
+  const CpCard({super.key, required this.child, this.color = Cp.card, this.padding = const EdgeInsets.all(16), this.borderColor, this.onTap});
+
+  final Widget child;
+  final Color color;
+  final EdgeInsets padding;
+  final Color? borderColor;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor ?? Cp.outlineVariant.withValues(alpha: .35)),
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: .04), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: child,
+    );
+    return onTap == null ? card : InkWell(borderRadius: BorderRadius.circular(12), onTap: onTap, child: card);
+  }
+}
+
+class Pill extends StatelessWidget {
+  const Pill(this.text, {super.key, this.color = Cp.surfaceHigh, this.textColor = Cp.onVariant, this.icon});
+  final String text;
+  final Color color;
+  final Color textColor;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[Icon(icon, size: 14, color: textColor), const SizedBox(width: 4)],
+          Text(text, style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}
+
+void showCpSnack(BuildContext context, String message) {
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(message),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: Cp.primaryContainer,
+    ),
+  );
+}
+
+enum EventScreenAction {
+  downloadQuotation,
+  downloadInvoice,
+  currentDayMenu,
+  allDaysMenu,
+  shareMenu,
+  deleteEvent,
+  deleteDate,
+  deleteMenu,
+}
+
+class EventActionMenuItem {
+  const EventActionMenuItem(this.value, this.label, this.icon, {this.destructive = false});
+  final EventScreenAction value;
+  final String label;
+  final IconData icon;
+  final bool destructive;
+}
+
+const eventScreenActions = [
+  EventActionMenuItem(EventScreenAction.downloadQuotation, 'Download Quotation', Icons.request_quote),
+  EventActionMenuItem(EventScreenAction.downloadInvoice, 'Download Invoice', Icons.receipt_long),
+  EventActionMenuItem(EventScreenAction.currentDayMenu, 'Current Day Menu', Icons.today),
+  EventActionMenuItem(EventScreenAction.allDaysMenu, 'All Days Menu', Icons.date_range),
+  EventActionMenuItem(EventScreenAction.shareMenu, 'Share Menu', Icons.share),
+  EventActionMenuItem(EventScreenAction.deleteEvent, 'Delete Event', Icons.delete_forever, destructive: true),
+  EventActionMenuItem(EventScreenAction.deleteDate, 'Delete Date', Icons.event_busy, destructive: true),
+  EventActionMenuItem(EventScreenAction.deleteMenu, 'Delete Menu', Icons.no_meals, destructive: true),
+];
+
+Future<bool> confirmEventAction(BuildContext context, String title, String message) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(title, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+      content: Text(message),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          style: FilledButton.styleFrom(backgroundColor: Cp.error, foregroundColor: Colors.white),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
+class ScreenFrame extends StatelessWidget {
+  const ScreenFrame({super.key, required this.topBar, required this.children, this.bottomPadding = 24});
+
+  final Widget topBar;
+  final List<Widget> children;
+  final double bottomPadding;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        topBar,
+        Expanded(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+            children: children,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class DashboardScreen extends StatelessWidget {
+  const DashboardScreen({super.key, required this.openCreate});
+  final VoidCallback openCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(
+        title: 'Good Morning, Ravi',
+        subtitle: 'Manage your events for today',
+        actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications_rounded, color: Cp.primary))],
+      ),
+      children: [
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 1.3,
+          children: [
+            MetricCard(label: 'This Month', value: '₹1,24,500', note: '+12% from last month', icon: Icons.trending_up, color: Cp.card, valueColor: Cp.primary),
+            MetricCard(label: 'Pending', value: '₹38,200', note: '4 Invoices Overdue', icon: Icons.account_balance_wallet, color: Cp.errorContainer.withValues(alpha: .35), valueColor: Cp.error),
+            MetricCard(label: 'Upcoming', value: '6', note: 'Next 7 Days', icon: Icons.calendar_today, color: Cp.primaryFixed.withValues(alpha: .5), valueColor: Cp.primary),
+            MetricCard(label: 'Clients', value: '14', note: '2 New this week', icon: Icons.groups, color: Cp.tertiaryFixed.withValues(alpha: .4), valueColor: Cp.tertiary),
+          ],
+        ),
+        const SizedBox(height: 24),
+        SectionHeader('Revenue Trend', trailing: 'Details'),
+        const SizedBox(height: 8),
+        const RevenueChart(),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            const Expanded(child: Text('Events Next 3 Days', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
+            Pill('3 Active', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
+          ],
+        ),
+        const SizedBox(height: 12),
+        EventMiniCard(title: 'Sharma Wedding', client: 'Priya Sharma', time: 'Tom, 10:00 AM', pax: '250 pax', status: 'Confirmed', statusColor: Cp.tertiaryFixed),
+        EventMiniCard(title: 'TechCorp Lunch', client: 'Rajesh Kumar', time: 'Tom, 1:00 PM', pax: '80 pax', status: 'Advance Pending', statusColor: Cp.secondaryFixed),
+        EventMiniCard(title: 'Mehta Birthday', client: 'Sunita Mehta', time: 'Day after, 7:00 PM', pax: '120 pax', status: 'Confirmed', statusColor: Cp.tertiaryFixed),
+      ],
+    );
+  }
+}
+
+class MetricCard extends StatelessWidget {
+  const MetricCard({super.key, required this.label, required this.value, required this.note, required this.icon, required this.color, required this.valueColor});
+  final String label;
+  final String value;
+  final String note;
+  final IconData icon;
+  final Color color;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return CpCard(
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(children: [Expanded(child: Text(label, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))), Icon(icon, color: valueColor)]),
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value, style: TextStyle(fontSize: 21, color: valueColor, fontWeight: FontWeight.w800)),
+            Text(note, style: TextStyle(fontSize: 10, color: valueColor, fontWeight: FontWeight.w800)),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+class RevenueChart extends StatelessWidget {
+  const RevenueChart({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final heights = [.40, .55, .45, .70, .85, 1.0];
+    return CpCard(
+      child: SizedBox(
+        height: 160,
+        child: Column(
+          children: [
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: List.generate(heights.length, (i) {
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: FractionallySizedBox(
+                        heightFactor: heights[i],
+                        alignment: Alignment.bottomCenter,
+                        child: Container(decoration: BoxDecoration(color: i == 5 ? Cp.primaryContainer : Cp.primaryFixed.withValues(alpha: .65), borderRadius: const BorderRadius.vertical(top: Radius.circular(8)))),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'].map((m) => Text(m, style: const TextStyle(fontSize: 10, color: Cp.onVariant, fontWeight: FontWeight.w600))).toList()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class SectionHeader extends StatelessWidget {
+  const SectionHeader(this.title, {super.key, this.trailing});
+  final String title;
+  final String? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Text(title, style: const TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
+        if (trailing != null) Text(trailing!, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)),
+        if (trailing != null) const Icon(Icons.chevron_right, color: Cp.primary, size: 18),
+      ],
+    );
+  }
+}
+
+class EventMiniCard extends StatelessWidget {
+  const EventMiniCard({super.key, required this.title, required this.client, required this.time, required this.pax, required this.status, required this.statusColor});
+  final String title;
+  final String client;
+  final String time;
+  final String pax;
+  final String status;
+  final Color statusColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(client, style: const TextStyle(color: Cp.onVariant))])),
+              Pill(status, color: statusColor, textColor: statusColor == Cp.secondaryFixed ? Color(0xff663e00) : Color(0xff00210c)),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [const Icon(Icons.schedule, size: 18, color: Cp.onVariant), Text(' $time   ', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600)), const Icon(Icons.group, size: 18, color: Cp.onVariant), Text(' $pax', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600))]),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EventsScreen extends StatelessWidget {
+  const EventsScreen({super.key, required this.openDetails, required this.openCreate});
+  final VoidCallback openDetails;
+  final VoidCallback openCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(title: 'Events', actions: [IconButton(onPressed: () => showCpSnack(context, 'Search events'), icon: const Icon(Icons.search)), IconButton(onPressed: () => showCpSnack(context, 'Event filters opened'), icon: const Icon(Icons.filter_list)), IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications))]),
+      children: [
+        const ChipRow(['All', 'Upcoming', 'Confirmed', 'Advance Pending', 'Completed']),
+        const SizedBox(height: 16),
+        EventListCard(title: 'Sharma Wedding', client: 'Priya Sharma', phone: '+91-9876543210', dates: '12 Jun - 14 Jun 2025', amount: '₹3,50,000', balance: 'Bal: ₹1,25,000', status: 'Confirmed', meals: ['Breakfast', 'Lunch', 'Dinner'], onTap: openDetails),
+        EventListCard(title: 'TechCorp Lunch', client: 'Rajesh Kumar', phone: '+91-9876500000', dates: '13 Jun 2025', amount: '₹45,000', balance: 'Bal: ₹20,000', status: 'Advance Pending', meals: ['Lunch']),
+        EventListCard(title: 'Kapoor Anniversary', client: 'Amit Kapoor', phone: '+91-9876511111', dates: '20 Jun 2025', amount: '₹1,20,000', balance: 'Paid in Full', status: 'Confirmed', meals: ['Dinner']),
+        CpCard(color: Cp.primaryContainer, child: const SizedBox(height: 96, child: Align(alignment: Alignment.centerLeft, child: Text('Peak Season Tip\nSecure June rentals now to avoid last-minute price hikes.', style: TextStyle(color: Colors.white, fontSize: 16, height: 1.35, fontWeight: FontWeight.w700))))),
+      ],
+    );
+  }
+}
+
+class ChipRow extends StatefulWidget {
+  const ChipRow(this.labels, {super.key});
+  final List<String> labels;
+
+  @override
+  State<ChipRow> createState() => _ChipRowState();
+}
+
+class _ChipRowState extends State<ChipRow> {
+  int selectedIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: List.generate(widget.labels.length, (i) {
+          final selected = i == selectedIndex;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(999),
+              onTap: () {
+                setState(() => selectedIndex = i);
+                showCpSnack(context, '${widget.labels[i]} selected');
+              },
+              child: Pill(widget.labels[i], color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
+class EventListCard extends StatelessWidget {
+  const EventListCard({super.key, required this.title, required this.client, required this.phone, required this.dates, required this.amount, required this.balance, required this.status, required this.meals, this.onTap});
+  final String title, client, phone, dates, amount, balance, status;
+  final List<String> meals;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    final pending = status.contains('Pending');
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 18, color: Cp.primary, fontWeight: FontWeight.w800)), Row(children: [const Icon(Icons.person, size: 16, color: Cp.onVariant), Flexible(child: Text(' $client â€¢ $phone', overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600)))])])),
+              Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Pill(status, color: pending ? Cp.secondaryContainer : Cp.tertiaryFixed, textColor: pending ? Color(0xff694000) : Color(0xff00210c)), const SizedBox(height: 6), Text(amount, style: const TextStyle(color: Cp.primaryContainer, fontWeight: FontWeight.w900)), Text(balance, style: TextStyle(color: balance.startsWith('Paid') ? Cp.tertiary : Cp.error, fontWeight: FontWeight.w800, fontSize: 12))]),
+            ]),
+            const SizedBox(height: 14),
+            Row(children: [const Icon(Icons.calendar_today, size: 18, color: Cp.onVariant), Text(' $dates', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))]),
+            const SizedBox(height: 12),
+            Wrap(spacing: 8, children: meals.map((m) => Pill(m, color: Cp.surfaceHigh, textColor: Cp.onSurface)).toList()),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ClientsScreen extends StatelessWidget {
+  const ClientsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(title: 'CaterPro', actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary))]),
+      children: [
+        SearchBox('Search clients by name, city, or phone...'),
+        const SizedBox(height: 22),
+        Row(children: const [Expanded(child: Text('Clients', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))), Text('24 Total', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w600))]),
+        const SizedBox(height: 12),
+        ClientCard(name: 'Priya Sharma', initials: 'PS', phone: '+91-9876543210', city: 'Mumbai', revenue: '₹12.45L', events: '3 Events', color: Cp.primaryContainer, tag: 'High Value'),
+        ClientCard(name: 'Rajesh Kumar', initials: 'RK', phone: '+91-9876500000', city: 'Pune', revenue: '₹45,000', events: '1 Event', color: Cp.secondaryContainer, tag: 'New Client'),
+        const SizedBox(height: 18),
+        const Center(child: Text('Showing 2 of 24 clients', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w700))),
+      ],
+    );
+  }
+}
+
+class SearchBox extends StatelessWidget {
+  const SearchBox(this.hint, {super.key});
+  final String hint;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 56,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(color: Cp.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: Cp.outlineVariant)),
+      child: Row(children: [const Icon(Icons.search, color: Cp.outline), const SizedBox(width: 12), Expanded(child: Text(hint, style: const TextStyle(color: Cp.outline, fontSize: 15)))]),
+    );
+  }
+}
+
+class ClientCard extends StatelessWidget {
+  const ClientCard({super.key, required this.name, required this.initials, required this.phone, required this.city, required this.revenue, required this.events, required this.color, required this.tag});
+  final String name, initials, phone, city, revenue, events, tag;
+  final Color color;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        child: Column(children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            CircleAvatar(radius: 24, backgroundColor: color, child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
+            const SizedBox(width: 14),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(phone, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600)), Text(city, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600))])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(revenue, style: const TextStyle(color: Cp.secondary, fontSize: 16, fontWeight: FontWeight.w900)), Text(events, style: const TextStyle(color: Cp.outline, fontSize: 12))]),
+          ]),
+          const Divider(height: 24, color: Cp.outlineVariant),
+          Row(children: [Pill(tag, color: Cp.surfaceHigh, textColor: Cp.onVariant), const Spacer(), const Icon(Icons.chevron_right, color: Cp.outline)]),
+        ]),
+      ),
+    );
+  }
+}
+
+class BillingScreen extends StatelessWidget {
+  const BillingScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(title: 'CaterPro', actions: [IconButton(onPressed: () => showCpSnack(context, 'Billing filters opened'), icon: const Icon(Icons.filter_list, color: Cp.primary)), IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary))]),
+      children: [
+        const ChipRow(['Invoices', 'Quotations', 'Advances', 'Standalone']),
+        const SizedBox(height: 18),
+        Row(children: [
+          Expanded(child: CpCard(color: Cp.primaryContainer, padding: const EdgeInsets.all(24), child: const SizedBox(height: 112, child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Total Outstanding', style: TextStyle(color: Cp.primaryFixed, fontWeight: FontWeight.w700)), Text('₹5,15,000', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900)), Text('12% increase from last month', style: TextStyle(color: Cp.primaryFixed))])))),
+          const SizedBox(width: 12),
+          SizedBox(width: 116, child: CpCard(color: Cp.secondaryFixed, padding: const EdgeInsets.all(16), child: const SizedBox(height: 128, child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.account_balance_wallet, color: Color(0xff2b1700), size: 34), Text('Pending Collections', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: Color(0xff2b1700))), Text('14 Active', style: TextStyle(color: Color(0xff2b1700), fontWeight: FontWeight.w900))])))),
+        ]),
+        const SizedBox(height: 18),
+        InvoiceCard(code: 'INV-2025-0042', event: 'Sharma Wedding', amount: '₹3,50,000', dateLabel: 'Due Date', date: '15 Jun, 2025', status: 'Partially Paid', color: Cp.secondaryContainer, onTap: () => showRecordPaymentSheet(context)),
+        InvoiceCard(code: 'INV-2025-0038', event: 'TechCorp Lunch', amount: '₹45,000', dateLabel: 'Critical Delay', date: '14 Jun, 2025', status: 'Overdue', color: Cp.error),
+        InvoiceCard(code: 'INV-2025-0035', event: 'Kapoor Anniversary', amount: '₹1,20,000', dateLabel: 'Paid On', date: '10 Jun, 2025', status: 'Paid', color: Cp.tertiaryContainer),
+      ],
+    );
+  }
+}
+
+void showRecordPaymentSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => const RecordPaymentSheet(),
+  );
+}
+
+class InvoiceCard extends StatelessWidget {
+  const InvoiceCard({super.key, required this.code, required this.event, required this.amount, required this.dateLabel, required this.date, required this.status, required this.color, this.onTap});
+  final String code, event, amount, dateLabel, date, status;
+  final Color color;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        onTap: onTap,
+        child: Column(children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(code, style: const TextStyle(fontWeight: FontWeight.w900)), Text(event, style: const TextStyle(color: Cp.onVariant))])), Pill(status, color: color.withValues(alpha: .18), textColor: color, icon: status == 'Paid' ? Icons.check_circle : status == 'Overdue' ? Icons.warning : null)]),
+          const SizedBox(height: 18),
+          Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Total Amount', style: TextStyle(color: Cp.outline, fontSize: 12)), Text(amount, style: TextStyle(color: color == Cp.error ? Cp.error : Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(dateLabel, style: TextStyle(color: color == Cp.error ? Cp.error : Cp.outline, fontSize: 12, fontWeight: FontWeight.w700)), Text(date, style: const TextStyle(fontWeight: FontWeight.w700))])]),
+        ]),
+      ),
+    );
+  }
+}
+
+class RecordPaymentSheet extends StatefulWidget {
+  const RecordPaymentSheet({super.key});
+
+  @override
+  State<RecordPaymentSheet> createState() => _RecordPaymentSheetState();
+}
+
+class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
+  static const int totalAmount = 350000;
+  static const int paidAmount = 225000;
+  static const int balanceAmount = 125000;
+  final paymentController = TextEditingController(text: '50000');
+  final dateController = TextEditingController(text: '14 Jun 2025');
+  final refController = TextEditingController(text: 'REF123456789');
+  final paymentModes = const ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque'];
+  int selectedMode = 0;
+  bool settled = false;
+  String? errorText;
+
+  int get paymentAmount => int.tryParse(paymentController.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  int get remainingAfterPayment => (balanceAmount - paymentAmount).clamp(0, balanceAmount);
+  int get settledDiscount => settled && paymentAmount <= balanceAmount ? remainingAfterPayment : 0;
+  int get finalBalance => settled && paymentAmount <= balanceAmount ? 0 : remainingAfterPayment;
+
+  @override
+  void dispose() {
+    paymentController.dispose();
+    dateController.dispose();
+    refController.dispose();
+    super.dispose();
+  }
+
+  String money(int value) {
+    final text = value.toString();
+    if (text.length <= 3) return '₹$text';
+    final tail = text.substring(text.length - 3);
+    var head = text.substring(0, text.length - 3);
+    final groups = <String>[];
+    while (head.length > 2) {
+      groups.insert(0, head.substring(head.length - 2));
+      head = head.substring(0, head.length - 2);
+    }
+    if (head.isNotEmpty) groups.insert(0, head);
+    return '₹${groups.join(',')},$tail';
+  }
+
+  bool validate() {
+    if (paymentAmount <= 0) {
+      setState(() => errorText = 'Enter a payment amount.');
+      return false;
+    }
+    if (paymentAmount > balanceAmount) {
+      setState(() => errorText = 'Payment cannot be more than remaining balance ${money(balanceAmount)}.');
+      return false;
+    }
+    setState(() => errorText = null);
+    return true;
+  }
+
+  void savePayment() {
+    if (!validate()) return;
+    final discount = settledDiscount;
+    Navigator.pop(context);
+    showCpSnack(
+      context,
+      discount > 0 ? 'Payment saved. ${money(discount)} marked as settled discount.' : 'Payment saved by ${paymentModes[selectedMode]}.',
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+        decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            const Text('Record Payment - Sharma Wedding', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 4),
+            const Text('Update the financial records for this event.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 18),
+            CpCard(
+              color: Cp.surfaceLow,
+              child: Row(
+                children: [
+                  Expanded(child: _MoneyCell(label: 'Total', value: money(totalAmount))),
+                  Expanded(child: _MoneyCell(label: 'Paid', value: money(paidAmount), color: Cp.tertiaryContainer)),
+                  Expanded(child: _MoneyCell(label: 'Balance', value: money(balanceAmount), color: Cp.error)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
+            PaymentInputBox(label: 'Payment Amount', controller: paymentController, icon: Icons.currency_rupee, keyboardType: TextInputType.number, onChanged: (_) => validate()),
+            if (errorText != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(errorText!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+            Row(children: [Expanded(child: PaymentInputBox(label: 'Date', controller: dateController, icon: Icons.calendar_today)), const SizedBox(width: 12), Expanded(child: PaymentInputBox(label: 'Ref No.', controller: refController, icon: Icons.confirmation_number))]),
+            const Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: List.generate(paymentModes.length, (i) {
+                  final selected = i == selectedMode;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () => setState(() => selectedMode = i),
+                      child: Pill(paymentModes[i], color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                    ),
+                  );
+                }),
+              ),
+            ),
+            const SizedBox(height: 10),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: settled,
+              activeColor: Cp.primary,
+              onChanged: (value) => setState(() => settled = value ?? false),
+              title: const Text('Mark balance as settled', style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: Text(settled ? '${money(settledDiscount)} will be treated as discount/settlement. Final balance: ${money(finalBalance)}' : 'Unchecked keeps ${money(remainingAfterPayment)} as pending balance.'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
+            const SizedBox(height: 20),
+            SizedBox(width: double.infinity, height: 54, child: FilledButton.icon(onPressed: savePayment, style: FilledButton.styleFrom(backgroundColor: Cp.primary), icon: const Icon(Icons.save), label: const Text('Save Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
+            Center(child: TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)))),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class PaymentInputBox extends StatelessWidget {
+  const PaymentInputBox({super.key, required this.label, required this.controller, this.icon, this.keyboardType, this.onChanged});
+  final String label;
+  final TextEditingController controller;
+  final IconData? icon;
+  final TextInputType? keyboardType;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
+        decoration: BoxDecoration(border: Border.all(color: Cp.outline), borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                keyboardType: keyboardType,
+                onChanged: onChanged,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                decoration: InputDecoration(
+                  labelText: label,
+                  labelStyle: const TextStyle(color: Cp.primary, fontSize: 13, fontWeight: FontWeight.w700),
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+            if (icon != null) Padding(padding: const EdgeInsets.only(left: 8), child: Icon(icon, color: Cp.outline)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MoneyCell extends StatelessWidget {
+  const _MoneyCell({required this.label, required this.value, this.color = Cp.onSurface});
+  final String label, value;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Column(children: [Text(label, style: const TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900))]);
+}
+
+class SettingsScreen extends StatelessWidget {
+  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openEmployees, required this.openRawMaterials, required this.services, required this.onSaveService, required this.onDeleteService});
+  final VoidCallback openBusiness;
+  final VoidCallback openMenu;
+  final VoidCallback openEmployees;
+  final VoidCallback openRawMaterials;
+  final List<AdditionalServiceItem> services;
+  final ValueChanged<AdditionalServiceItem> onSaveService;
+  final ValueChanged<String> onDeleteService;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(title: 'CaterPro', avatar: false, actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary)), const CircleAvatar(radius: 16, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(fontSize: 10, color: Colors.white)))]),
+      children: [
+        CpCard(
+          padding: const EdgeInsets.all(24),
+          child: Column(children: [
+            Stack(alignment: Alignment.bottomRight, children: [const CircleAvatar(radius: 48, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))), CircleAvatar(radius: 16, backgroundColor: Cp.primary, child: const Icon(Icons.edit, color: Colors.white, size: 15))]),
+            const SizedBox(height: 12),
+            const Text('Royal Caterers', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            const Text('Premium Event Catering Services', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 14),
+            Pill('Edit Profile', color: Cp.primaryContainer, textColor: Colors.white),
+          ]),
+        ),
+        const SizedBox(height: 20),
+        SettingsGroup(title: 'Business', items: [(Icons.storefront, 'Business Profile')], onItemTap: {'Business Profile': openBusiness}),
+        SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials')], onItemTap: {'Menu Master': openMenu, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials}),
+        SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees}),
+        SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')]),
+        SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')]),
+        const Center(child: Padding(padding: EdgeInsets.all(18), child: Text('Logout', style: TextStyle(color: Cp.error, fontSize: 16, fontWeight: FontWeight.w800)))),
+      ],
+    );
+  }
+}
+
+class SettingsGroup extends StatelessWidget {
+  const SettingsGroup({super.key, required this.title, required this.items, this.onItemTap = const {}});
+  final String title;
+  final List<(IconData, String)> items;
+  final Map<String, VoidCallback> onItemTap;
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(padding: const EdgeInsets.only(left: 8, bottom: 8), child: Text(title, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w800))),
+        Material(
+          color: Cp.surfaceLow,
+          borderRadius: BorderRadius.circular(12),
+          child: Column(children: List.generate(items.length, (i) => ListTile(onTap: onItemTap[items[i].$2], leading: Icon(items[i].$1, color: Cp.onVariant), title: Text(items[i].$2, style: const TextStyle(fontWeight: FontWeight.w700)), trailing: const Icon(Icons.chevron_right, color: Cp.outline), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+        ),
+      ]),
+    );
+  }
+}
+
+void showAdditionalServiceManager(
+  BuildContext context, {
+  required List<AdditionalServiceItem> services,
+  required ValueChanged<AdditionalServiceItem> onSave,
+  required ValueChanged<String> onDelete,
+}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => AdditionalServiceManagerSheet(services: services, onSave: onSave, onDelete: onDelete),
+  );
+}
+
+class AdditionalServiceManagerSheet extends StatelessWidget {
+  const AdditionalServiceManagerSheet({super.key, required this.services, required this.onSave, required this.onDelete});
+  final List<AdditionalServiceItem> services;
+  final ValueChanged<AdditionalServiceItem> onSave;
+  final ValueChanged<String> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .82),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            Row(children: [
+              const Expanded(child: Text('Additional Services', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900))),
+              IconButton(onPressed: () => showServiceEditor(context, onSave: onSave), icon: const Icon(Icons.add_circle, color: Cp.primary)),
+            ]),
+            const Text('Add, update, or remove services used in event menu configuration.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: services.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final service = services[index];
+                  return CpCard(
+                    color: Cp.card,
+                    child: Row(children: [
+                      const Icon(Icons.room_service, color: Cp.secondary),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                      IconButton(onPressed: () => showServiceEditor(context, service: service, onSave: onSave), icon: const Icon(Icons.edit, color: Cp.primary)),
+                      IconButton(onPressed: () => onDelete(service.id), icon: const Icon(Icons.delete, color: Cp.error)),
+                    ]),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+void showServiceEditor(BuildContext context, {AdditionalServiceItem? service, required ValueChanged<AdditionalServiceItem> onSave}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => ServiceEditorSheet(service: service, onSave: onSave),
+  );
+}
+
+class ServiceEditorSheet extends StatefulWidget {
+  const ServiceEditorSheet({super.key, this.service, required this.onSave});
+  final AdditionalServiceItem? service;
+  final ValueChanged<AdditionalServiceItem> onSave;
+
+  @override
+  State<ServiceEditorSheet> createState() => _ServiceEditorSheetState();
+}
+
+class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
+  late final TextEditingController id;
+  late final TextEditingController name;
+  late final TextEditingController unit;
+  late final TextEditingController quantity;
+  late final TextEditingController price;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = widget.service;
+    id = TextEditingController(text: service?.id ?? 'SRV-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}');
+    name = TextEditingController(text: service?.name ?? '');
+    unit = TextEditingController(text: service?.unit ?? 'pcs');
+    quantity = TextEditingController(text: '${service?.quantity ?? 0}');
+    price = TextEditingController(text: '${service?.price ?? 0}');
+  }
+
+  @override
+  void dispose() {
+    id.dispose();
+    name.dispose();
+    unit.dispose();
+    quantity.dispose();
+    price.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+          Text(widget.service == null ? 'Add Service' : 'Update Service', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 16),
+          EditableInlineField(label: 'Service ID', controller: id),
+          EditableInlineField(label: 'Service Name', controller: name),
+          Row(children: [Expanded(child: EditableInlineField(label: 'Quantity', controller: quantity, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Unit', controller: unit))]),
+          EditableInlineField(label: 'Price', controller: price, keyboardType: TextInputType.number),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
+              onPressed: () {
+                widget.onSave(AdditionalServiceItem(id: id.text.trim(), name: name.text.trim(), unit: unit.text.trim(), quantity: int.tryParse(quantity.text) ?? 0, price: int.tryParse(price.text) ?? 0));
+                Navigator.pop(context);
+              },
+              child: const Text('Save Service', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class EditableInlineField extends StatelessWidget {
+  const EditableInlineField({super.key, required this.label, required this.controller, this.keyboardType});
+  final String label;
+  final TextEditingController controller;
+  final TextInputType? keyboardType;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: controller,
+          keyboardType: keyboardType,
+          decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+        ),
+      );
+}
+
+class CreateEventScreen extends StatefulWidget {
+  const CreateEventScreen({super.key, required this.onClose, required this.services, required this.onSaveService, required this.onDeleteService});
+  final VoidCallback onClose;
+  final List<AdditionalServiceItem> services;
+  final ValueChanged<AdditionalServiceItem> onSaveService;
+  final ValueChanged<String> onDeleteService;
+
+  @override
+  State<CreateEventScreen> createState() => _CreateEventScreenState();
+}
+
+class _CreateEventScreenState extends State<CreateEventScreen> {
+  int step = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      bottomPadding: 24,
+      topBar: TopBar(title: step == 2 ? 'Menu Configuration' : 'Create Event', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+      children: [
+        StepperHeader(active: step),
+        const SizedBox(height: 24),
+        if (step == 0) const CreateDetailsStep(),
+        if (step == 1) const CreateDatesStep(),
+        if (step == 2) CreateMenuStep(services: widget.services, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
+        if (step == 3) const CreateReviewStep(),
+        const SizedBox(height: 20),
+        Row(
+          children: [
+            if (step > 0) Expanded(child: OutlinedButton.icon(onPressed: () => setState(() => step--), icon: const Icon(Icons.arrow_back), label: const Text('Back'))),
+            if (step > 0) const SizedBox(width: 12),
+            Expanded(
+              flex: 2,
+              child: SizedBox(
+                height: 56,
+                child: FilledButton.icon(
+                  onPressed: () => step == 3 ? widget.onClose() : setState(() => step++),
+                  style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
+                  label: Text(step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : 'Create Event', style: const TextStyle(fontWeight: FontWeight.w900)),
+                  icon: Icon(step == 3 ? Icons.check : Icons.arrow_forward),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class CreateDetailsStep extends StatelessWidget {
+  const CreateDetailsStep({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      CpCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [Icon(Icons.assignment, color: Cp.primary), SizedBox(width: 8), Text('Event Fundamentals', style: TextStyle(fontSize: 20, color: Cp.primary, fontWeight: FontWeight.w800))]),
+          const SizedBox(height: 20),
+          FormFieldBox(label: 'Event Name', value: 'Summer Gala 2025'),
+          FormFieldBox(label: 'Primary Client', value: 'Priya Sharma', icon: Icons.person_search),
+          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: '+91 98765 43210', icon: Icons.phone_iphone),
+          FormFieldBox(label: 'Venue', value: 'Hyatt Regency, Ballroom B', icon: Icons.location_on),
+          FormFieldBox(label: 'Event Notes & Logistics', value: '', height: 98),
+        ]),
+      ),
+      const SizedBox(height: 20),
+      Container(height: 180, decoration: BoxDecoration(color: Cp.primaryContainer, borderRadius: BorderRadius.circular(12)), padding: const EdgeInsets.all(16), alignment: Alignment.bottomLeft, child: const Text('Selected Venue Visual\nHyatt Regency Ballroom', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800))),
+    ]);
+  }
+}
+
+class CreateDatesStep extends StatelessWidget {
+  const CreateDatesStep({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Event Dates', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+      const Text('Add every date in the event schedule. Pax is configured later for each date and menu type.', style: TextStyle(color: Cp.onVariant)),
+      const SizedBox(height: 16),
+      const DateScheduleCard(month: 'JUN', day: '12', title: 'Day 1: Mehendi', summary: '12 Jun 2025'),
+      const DateScheduleCard(month: 'JUN', day: '13', title: 'Day 2: Sangeet', summary: '13 Jun 2025'),
+      DashedAction(label: 'Add Date', icon: Icons.add_circle, onTap: () => showAddDateSheet(context)),
+    ]);
+  }
+}
+
+void showAddDateSheet(BuildContext context) {
+  showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    builder: (context) => SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+          const Text('Add Event Date', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+          const Text('Select the mandatory date for this sub-event.', style: TextStyle(color: Cp.onVariant)),
+          const SizedBox(height: 18),
+          const FormFieldBox(label: 'Event Date', value: '14 Jun 2025', icon: Icons.calendar_today),
+          Row(children: [Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))), const SizedBox(width: 12), Expanded(child: FilledButton(onPressed: () => Navigator.pop(context), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), child: const Text('Save Date')))]),
+        ]),
+      ),
+    ),
+  );
+}
+
+class DateScheduleCard extends StatelessWidget {
+  const DateScheduleCard({super.key, required this.month, required this.day, required this.title, required this.summary});
+  final String month, day, title, summary;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(child: Row(children: [Container(width: 52, padding: const EdgeInsets.symmetric(vertical: 8), decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(10)), child: Column(children: [Text(month, style: const TextStyle(color: Cp.primary, fontSize: 11, fontWeight: FontWeight.w900)), Text(day, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)), Text(summary, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), IconButton(onPressed: () => showCpSnack(context, 'Edit $title'), icon: const Icon(Icons.edit, color: Cp.primary)), IconButton(onPressed: () => showCpSnack(context, 'Delete $title'), icon: const Icon(Icons.delete, color: Cp.error))])),
+      );
+}
+
+class CreateMenuStep extends StatefulWidget {
+  const CreateMenuStep({super.key, required this.services, required this.onSaveService, required this.onDeleteService});
+  final List<AdditionalServiceItem> services;
+  final ValueChanged<AdditionalServiceItem> onSaveService;
+  final ValueChanged<String> onDeleteService;
+
+  @override
+  State<CreateMenuStep> createState() => _CreateMenuStepState();
+}
+
+class _CreateMenuStepState extends State<CreateMenuStep> {
+  int selectedDateIndex = 0;
+  final dateLabels = ['12 Jun', '13 Jun', '14 Jun'];
+  late final List<DateMenuConfig> dateConfigs = [
+    DateMenuConfig(
+      label: '12 Jun',
+      slots: [
+        MealSlotConfig(type: 'Breakfast', time: '8:00 AM', pax: '250', price: '₹450/pax', selectedMenuIds: {'MNU-003'}),
+        MealSlotConfig(type: 'Lunch', time: '1:30 PM', pax: '250', price: '₹850/pax', selectedMenuIds: {'MNU-001'}),
+      ],
+      selectedServiceIds: {'SRV-001'},
+    ),
+    DateMenuConfig(
+      label: '13 Jun',
+      slots: [
+        MealSlotConfig(type: 'Dinner', time: '8:00 PM', pax: '300', price: '₹950/pax', selectedMenuIds: {'MNU-002', 'MNU-005'}),
+        MealSlotConfig(type: 'Juice', time: '5:00 PM', pax: '180', price: '₹120/pax', selectedMenuIds: const <String>{}, enabled: false),
+      ],
+      selectedServiceIds: {'SRV-002'},
+    ),
+    DateMenuConfig(label: '14 Jun'),
+  ];
+
+  DateMenuConfig get currentConfig => dateConfigs[selectedDateIndex];
+
+  @override
+  Widget build(BuildContext context) {
+    final config = currentConfig;
+    final selectedServices = widget.services.where((service) => config.selectedServiceIds.contains(service.id)).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Wrap(
+        spacing: 10,
+        children: List.generate(dateLabels.length, (index) {
+          final selected = index == selectedDateIndex;
+          return ChoiceChip(
+            selected: selected,
+            label: Text(dateLabels[index]),
+            selectedColor: Cp.primaryContainer,
+            labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
+            onSelected: (_) => setState(() => selectedDateIndex = index),
+          );
+        }),
+      ),
+      const SizedBox(height: 16),
+      if (config.slots.isEmpty)
+        CpCard(
+          color: Cp.surfaceLow,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
+            Icon(Icons.event_note, color: Cp.outline),
+            SizedBox(height: 10),
+            Text('No menu configured for this date yet.', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            Text('Add only the menu types and services needed for this date.', style: TextStyle(color: Cp.onVariant)),
+          ]),
+        )
+      else
+        ...config.slots.map((slot) => MealSlotCard(
+              key: ValueKey('${config.label}-${slot.type}'),
+              slot: slot,
+              items: selectedMenuTitles(slot),
+              onEnabledChanged: (value) => setState(() => slot.enabled = value),
+              onPaxChanged: (value) => setState(() => slot.pax = value),
+              onEditMenu: () => openMenuPicker(slot),
+              onDelete: () => setState(() => config.slots.remove(slot)),
+            )),
+      const SizedBox(height: 4),
+      DashedAction(label: 'Add Menu Type', icon: Icons.add_circle, onTap: openMealTypePicker),
+      const SizedBox(height: 12),
+      const Text('Additional Services', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w900)),
+      const SizedBox(height: 8),
+      if (selectedServices.isEmpty)
+        const Padding(padding: EdgeInsets.only(bottom: 10), child: Text('No additional services for this date.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic)))
+      else
+        ...selectedServices.map((service) => AdditionalServiceCard(service: service, onDelete: (id) => setState(() => config.selectedServiceIds.remove(id)))),
+      const SizedBox(height: 12),
+      DashedAction(label: 'Add Service', icon: Icons.add_circle, onTap: openServicePicker),
+    ]);
+  }
+
+  List<String> selectedMenuTitles(MealSlotConfig slot) {
+    return MenuMasterScreen.menuItems.where((item) => slot.selectedMenuIds.contains(item.id)).map((item) => item.english).toList();
+  }
+
+  void openMenuPicker(MealSlotConfig slot) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => MenuPickerScreen(
+          meal: slot.type,
+          selectedIds: slot.selectedMenuIds,
+          onChanged: (ids) => setState(() => slot.selectedMenuIds = {...ids}),
+        ),
+      ),
+    );
+  }
+
+  void openMealTypePicker() {
+    const availableTypes = [
+      ('Breakfast', '8:00 AM', '₹450/pax'),
+      ('Juice', '5:00 PM', '₹120/pax'),
+      ('Lunch', '1:30 PM', '₹850/pax'),
+      ('Snack', '4:30 PM', '₹300/pax'),
+      ('Dinner', '8:00 PM', '₹950/pax'),
+    ];
+    final config = currentConfig;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            Text('Add Menu Type for ${config.label}', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 14),
+            ...availableTypes.map((type) {
+              final exists = config.slots.any((slot) => slot.type == type.$1);
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: CpCard(
+                  color: exists ? Cp.surfaceLow : Cp.card,
+                  onTap: exists
+                      ? null
+                      : () {
+                          setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', price: type.$3)));
+                          Navigator.pop(context);
+                        },
+                  child: Row(children: [
+                    Icon(exists ? Icons.check_circle : Icons.add_circle, color: exists ? Cp.outline : Cp.primary),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text(exists ? '${type.$1} already added' : type.$1, style: const TextStyle(fontWeight: FontWeight.w900))),
+                    Text(type.$2, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              );
+            }),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  void openServicePicker() {
+    final config = currentConfig;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ServicePickerSheet(
+        services: widget.services,
+        selectedIds: config.selectedServiceIds,
+        onChanged: (ids) => setState(() {
+          config.selectedServiceIds
+            ..clear()
+            ..addAll(ids);
+        }),
+      ),
+    );
+  }
+}
+
+class DateMenuConfig {
+  DateMenuConfig({required this.label, List<MealSlotConfig>? slots, Set<String>? selectedServiceIds})
+      : slots = slots ?? <MealSlotConfig>[],
+        selectedServiceIds = selectedServiceIds ?? <String>{};
+
+  final String label;
+  final List<MealSlotConfig> slots;
+  final Set<String> selectedServiceIds;
+}
+
+class MealSlotConfig {
+  MealSlotConfig({required this.type, required this.time, required this.pax, required this.price, Set<String>? selectedMenuIds, this.enabled = true}) : selectedMenuIds = selectedMenuIds ?? <String>{};
+
+  final String type;
+  final String time;
+  String pax;
+  final String price;
+  Set<String> selectedMenuIds;
+  bool enabled;
+}
+
+class ServicePickerSheet extends StatefulWidget {
+  const ServicePickerSheet({super.key, required this.services, required this.selectedIds, required this.onChanged});
+  final List<AdditionalServiceItem> services;
+  final Set<String> selectedIds;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  State<ServicePickerSheet> createState() => _ServicePickerSheetState();
+}
+
+class _ServicePickerSheetState extends State<ServicePickerSheet> {
+  late Set<String> selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedIds = {...widget.selectedIds};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final services = [...widget.services]..sort((a, b) {
+        final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0).compareTo(selectedIds.contains(a.id) ? 1 : 0);
+        if (selectedCompare != 0) return selectedCompare;
+        return a.name.compareTo(b.name);
+      });
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .75),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+          const Text('Add Service', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+          const Text('Choose services from Settings > Additional Services.', style: TextStyle(color: Cp.onVariant)),
+          const SizedBox(height: 16),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: services.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final service = services[index];
+                final selected = selectedIds.contains(service.id);
+                return CpCard(
+                  color: selected ? Cp.primaryFixed : Cp.card,
+                  onTap: () => setState(() => selected ? selectedIds.remove(service.id) : selectedIds.add(service.id)),
+                  child: Row(children: [
+                    Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? Cp.primary : Cp.outline),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                  ]),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
+              onPressed: () {
+                widget.onChanged(selectedIds);
+                Navigator.pop(context);
+              },
+              child: const Text('Apply Services', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class AdditionalServiceCard extends StatelessWidget {
+  const AdditionalServiceCard({super.key, required this.service, required this.onDelete});
+  final AdditionalServiceItem service;
+  final ValueChanged<String> onDelete;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: CpCard(
+          color: Cp.surfaceLow,
+          child: Row(children: [
+            const Icon(Icons.flatware, color: Cp.secondary),
+            const SizedBox(width: 12),
+            Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+            IconButton(onPressed: () => onDelete(service.id), icon: const Icon(Icons.delete, color: Cp.error)),
+          ]),
+        ),
+      );
+}
+
+class MenuPickerScreen extends StatefulWidget {
+  const MenuPickerScreen({super.key, required this.meal, required this.selectedIds, required this.onChanged});
+  final String meal;
+  final Set<String> selectedIds;
+  final ValueChanged<Set<String>> onChanged;
+
+  @override
+  State<MenuPickerScreen> createState() => _MenuPickerScreenState();
+}
+
+class _MenuPickerScreenState extends State<MenuPickerScreen> {
+  late Set<String> selectedIds;
+  String query = '';
+
+  @override
+  void initState() {
+    super.initState();
+    selectedIds = {...widget.selectedIds};
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final items = MenuMasterScreen.menuItems.where((item) => item.title.toLowerCase().contains(query.toLowerCase()) || item.english.toLowerCase().contains(query.toLowerCase()) || item.kannada.contains(query)).toList()
+      ..sort((a, b) {
+        final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0).compareTo(selectedIds.contains(a.id) ? 1 : 0);
+        if (selectedCompare != 0) return selectedCompare;
+        return a.english.compareTo(b.english);
+      });
+
+    return Scaffold(
+      backgroundColor: Cp.background,
+      appBar: AppBar(
+        backgroundColor: Cp.surface,
+        foregroundColor: Cp.primary,
+        title: Text('Select ${widget.meal} Menu'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              widget.onChanged(selectedIds);
+              Navigator.pop(context);
+            },
+            child: const Text('Done', style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          TextField(
+            decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search menu items', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+            onChanged: (value) => setState(() => query = value),
+          ),
+          const SizedBox(height: 16),
+          ...items.map((item) {
+            final selected = selectedIds.contains(item.id);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: CpCard(
+                color: selected ? Cp.primaryFixed : Cp.card,
+                onTap: () => setState(() => selected ? selectedIds.remove(item.id) : selectedIds.add(item.id)),
+                child: Row(children: [
+                  Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? Cp.primary : Cp.outline),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.title, style: const TextStyle(fontWeight: FontWeight.w900)), Text('${item.id} • ${item.category} • ${item.meals}', style: const TextStyle(color: Cp.onVariant))])),
+                ]),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class MealSlotCard extends StatelessWidget {
+  const MealSlotCard({super.key, required this.slot, required this.items, required this.onEnabledChanged, required this.onPaxChanged, required this.onEditMenu, required this.onDelete});
+  final MealSlotConfig slot;
+  final List<String> items;
+  final ValueChanged<bool> onEnabledChanged;
+  final ValueChanged<String> onPaxChanged;
+  final VoidCallback onEditMenu;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = slot.enabled;
+    return Opacity(
+      opacity: enabled ? 1 : .58,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          color: enabled ? Cp.card : Cp.surfaceLow,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Icon(Icons.restaurant_menu, color: enabled ? Cp.primary : Cp.outline),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(slot.type, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)), Text(enabled ? '${slot.time} • ${slot.pax.isEmpty ? 0 : slot.pax} pax' : 'Not Scheduled • 0 pax', style: const TextStyle(color: Cp.onVariant))])),
+              IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline, color: Cp.error)),
+              Switch(value: enabled, activeThumbColor: Cp.primary, onChanged: onEnabledChanged),
+            ]),
+            if (enabled) ...[
+              const SizedBox(height: 12),
+              FormFieldBox(label: '${slot.type} Pax', value: slot.pax, icon: Icons.person, onChanged: onPaxChanged),
+            ],
+            if (enabled) ...[
+              const SizedBox(height: 12),
+              if (items.isEmpty) const Text('No menu items selected.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic)) else Wrap(spacing: 8, runSpacing: 8, children: items.map((e) => Pill(e, color: Cp.surfaceHigh)).toList()),
+              const Divider(height: 24),
+              Row(children: [Text(slot.price, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)), const Spacer(), InkWell(onTap: onEditMenu, child: const Row(children: [Icon(Icons.edit, color: Cp.primary, size: 18), Text(' Edit Menu', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800))]))]),
+            ],
+            if (!enabled) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Menu slot is currently disabled.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic))),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class CreateReviewStep extends StatelessWidget {
+  const CreateReviewStep({super.key});
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Summer Gala 2025', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('Priya Sharma â€¢ Hyatt Regency, Ballroom B', style: TextStyle(color: Cp.onVariant)), Divider(), InfoTile(Icons.calendar_today, 'Dates', '12-14 Jun 2025'), SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Meal Pax', '12 Jun: Breakfast 250, Lunch 250'), SizedBox(height: 10), InfoTile(Icons.restaurant, 'Menus', 'Breakfast, Lunch, Dinner')])),
+        const SizedBox(height: 12),
+        CpCard(color: Cp.primaryContainer, child: const Text('Estimated Event Value\n₹3,50,000', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))),
+      ]);
+}
+
+class DashedAction extends StatelessWidget {
+  const DashedAction({super.key, required this.label, required this.icon, this.onTap});
+  final String label;
+  final IconData icon;
+  final VoidCallback? onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(width: double.infinity, padding: const EdgeInsets.all(16), decoration: BoxDecoration(border: Border.all(color: Cp.outlineVariant, width: 2, style: BorderStyle.solid), borderRadius: BorderRadius.circular(12)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: Cp.primary), const SizedBox(width: 8), Text(label, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))])),
+      );
+}
+
+class StepperHeader extends StatelessWidget {
+  const StepperHeader({super.key, required this.active});
+  final int active;
+  @override
+  Widget build(BuildContext context) {
+    final labels = ['Details', 'Dates', 'Menu', 'Review'];
+    return Row(children: List.generate(labels.length, (i) => Expanded(child: Column(children: [CircleAvatar(radius: 16, backgroundColor: i <= active ? Cp.primaryContainer : Cp.surfaceHigh, child: Text('${i + 1}', style: TextStyle(color: i <= active ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w900))), const SizedBox(height: 4), Text(labels[i], style: TextStyle(color: i <= active ? Cp.primary : Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800))]))));
+  }
+}
+
+class FormFieldBox extends StatefulWidget {
+  const FormFieldBox({super.key, required this.label, required this.value, this.icon, this.height = 56, this.onChanged});
+  final String label, value;
+  final IconData? icon;
+  final double height;
+  final ValueChanged<String>? onChanged;
+
+  @override
+  State<FormFieldBox> createState() => _FormFieldBoxState();
+}
+
+class _FormFieldBoxState extends State<FormFieldBox> {
+  late final TextEditingController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = TextEditingController(text: widget.value);
+  }
+
+  @override
+  void didUpdateWidget(covariant FormFieldBox oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value != widget.value && controller.text != widget.value) {
+      controller.text = widget.value;
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  TextInputType get keyboardType {
+    final label = widget.label.toLowerCase();
+    if (label.contains('phone') || label.contains('mobile') || label.contains('pax') || label.contains('amount') || label.contains('number')) {
+      return TextInputType.phone;
+    }
+    if (label.contains('email')) return TextInputType.emailAddress;
+    return widget.height > 70 ? TextInputType.multiline : TextInputType.text;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final multiline = widget.height > 70;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        constraints: BoxConstraints(minHeight: widget.height),
+        padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
+        decoration: BoxDecoration(border: Border.all(color: Cp.outline), borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          crossAxisAlignment: multiline ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: controller,
+                keyboardType: keyboardType,
+                onChanged: widget.onChanged,
+                maxLines: multiline ? null : 1,
+                minLines: multiline ? 3 : 1,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                decoration: InputDecoration(
+                  labelText: widget.label,
+                  labelStyle: const TextStyle(color: Cp.primary, fontSize: 13, fontWeight: FontWeight.w700),
+                  floatingLabelBehavior: FloatingLabelBehavior.always,
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+            if (widget.icon != null) Padding(padding: const EdgeInsets.only(left: 8, top: 8), child: Icon(widget.icon, color: Cp.outline)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EventDetailsScreen extends StatelessWidget {
+  const EventDetailsScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  Future<void> handleAction(BuildContext context, EventScreenAction action) async {
+    switch (action) {
+      case EventScreenAction.downloadQuotation:
+        showCpSnack(context, 'Quotation download started');
+        break;
+      case EventScreenAction.downloadInvoice:
+        showCpSnack(context, 'Invoice download started');
+        break;
+      case EventScreenAction.currentDayMenu:
+        showCpSnack(context, 'Current day menu opened');
+        break;
+      case EventScreenAction.allDaysMenu:
+        showCpSnack(context, 'All days menu opened');
+        break;
+      case EventScreenAction.shareMenu:
+        showCpSnack(context, 'Menu share sheet opened');
+        break;
+      case EventScreenAction.deleteEvent:
+        if (await confirmEventAction(context, 'Delete Event?', 'This will remove Sharma Wedding and all linked dates, menus, payments, and documents.')) {
+          if (!context.mounted) return;
+          showCpSnack(context, 'Event deleted');
+          onClose();
+        }
+        break;
+      case EventScreenAction.deleteDate:
+        if (await confirmEventAction(context, 'Delete Date?', 'This will remove the selected event date and its menus.')) {
+          if (!context.mounted) return;
+          showCpSnack(context, 'Selected date deleted');
+        }
+        break;
+      case EventScreenAction.deleteMenu:
+        if (await confirmEventAction(context, 'Delete Menu?', 'This will remove the selected menu configuration for this event.')) {
+          if (!context.mounted) return;
+          showCpSnack(context, 'Selected menu deleted');
+        }
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ScreenFrame(
+        topBar: TopBar(
+          title: 'Sharma Wedding',
+          avatar: false,
+          leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+          actions: [
+            PopupMenuButton<EventScreenAction>(
+              icon: const Icon(Icons.more_vert, color: Cp.onVariant),
+              tooltip: 'Event menu',
+              onSelected: (action) => handleAction(context, action),
+              itemBuilder: (context) => [
+                for (final action in eventScreenActions) ...[
+                  if (action.value == EventScreenAction.deleteEvent) const PopupMenuDivider(),
+                  PopupMenuItem<EventScreenAction>(
+                    value: action.value,
+                    child: Row(
+                      children: [
+                        Icon(action.icon, color: action.destructive ? Cp.error : Cp.primary),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(
+                            action.label,
+                            style: TextStyle(color: action.destructive ? Cp.error : Cp.onSurface, fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+        children: const [EventDetailsContent()],
+      );
+}
+
+class EventDetailsContent extends StatefulWidget {
+  const EventDetailsContent({super.key});
+
+  @override
+  State<EventDetailsContent> createState() => _EventDetailsContentState();
+}
+
+class _EventDetailsContentState extends State<EventDetailsContent> {
+  int selectedTab = 0;
+  static const tabs = ['Overview', 'Dates & Menus', 'Payments'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text('Priya Sharma', style: TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))])), Pill('CONFIRMED', color: Cp.tertiaryFixed, textColor: Color(0xff00210c))]),
+        const SizedBox(height: 16),
+        const Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', '12-14 Jun 2025'), InfoTile(Icons.location_on, 'Venue', 'Hyatt Regency'), InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', '₹1,25,000', color: Cp.error)]),
+        const SizedBox(height: 18),
+        const Text('Payment Progress', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        ClipRRect(borderRadius: BorderRadius.circular(99), child: LinearProgressIndicator(value: .64, minHeight: 12, color: Cp.primaryContainer, backgroundColor: Cp.surfaceHigh)),
+      ])),
+      const SizedBox(height: 16),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: List.generate(tabs.length, (index) {
+            final selected = index == selectedTab;
+            return Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: ChoiceChip(
+                selected: selected,
+                label: Text(tabs[index]),
+                selectedColor: Cp.primaryContainer,
+                labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
+                onSelected: (_) => setState(() => selectedTab = index),
+              ),
+            );
+          }),
+        ),
+      ),
+      const SizedBox(height: 16),
+      EventDetailsTabContent(tab: selectedTab),
+    ]);
+  }
+}
+
+class EventDetailsTabContent extends StatelessWidget {
+  const EventDetailsTabContent({super.key, required this.tab});
+  final int tab;
+
+  @override
+  Widget build(BuildContext context) {
+    switch (tab) {
+      case 1:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: const [
+          EventDateMenuCard(date: '12 Jun 2025', title: 'Day 1: Mehendi', meals: 'Breakfast, Lunch'),
+          EventDateMenuCard(date: '13 Jun 2025', title: 'Day 2: Sangeet', meals: 'Dinner, Juice'),
+          EventDateMenuCard(date: '14 Jun 2025', title: 'Day 3: Reception', meals: 'Breakfast, Lunch, Dinner'),
+        ]);
+      case 2:
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [Text('Payment Summary', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), SizedBox(height: 8), Text('Total: ₹3,50,000'), Text('Paid: ₹2,25,000'), Text('Balance: ₹1,25,000', style: TextStyle(color: Cp.error, fontWeight: FontWeight.w800))])),
+          const SizedBox(height: 16),
+          SizedBox(height: 52, child: FilledButton.icon(onPressed: () => showRecordPaymentSheet(context), style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), icon: const Icon(Icons.payments), label: const Text('Record Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
+        ]);
+      default:
+        return CpCard(color: Cp.primaryContainer, child: const Text('Event Notes\nHigh profile corporate guests attending. Focus on premium fusion menu. Strict allergy control for seafood requested. VIP lounge setup required.', style: TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700)));
+    }
+  }
+}
+
+class EventDateMenuCard extends StatelessWidget {
+  const EventDateMenuCard({super.key, required this.date, required this.title, required this.meals});
+  final String date, title, meals;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 58,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(10)),
+                child: Text(date.replaceAll(' 2025', '').replaceFirst(' ', '\n'), textAlign: TextAlign.center, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900, height: 1.1)),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 2),
+                    Text(meals, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+              ),
+              IconButton(
+                onPressed: () => showCpSnack(context, 'Downloading menu for $date'),
+                icon: const Icon(Icons.download, color: Cp.primary),
+                tooltip: 'Download menu',
+              ),
+            ],
+          ),
+        ),
+      );
+}
+
+class DocumentRow extends StatelessWidget {
+  const DocumentRow({super.key, required this.title, required this.subtitle});
+  final String title, subtitle;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(child: Row(children: [const Icon(Icons.description, color: Cp.primary), const SizedBox(width: 12), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontWeight: FontWeight.w900)), Text(subtitle, style: const TextStyle(color: Cp.onVariant))])), const Icon(Icons.download, color: Cp.primary)])),
+      );
+}
+
+class InfoTile extends StatelessWidget {
+  const InfoTile(this.icon, this.label, this.value, {super.key, this.color = Cp.primary});
+  final IconData icon;
+  final String label, value;
+  final Color color;
+  @override
+  Widget build(BuildContext context) => SizedBox(width: 150, child: Row(children: [Icon(icon, color: color, size: 20), const SizedBox(width: 8), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 10, color: Cp.outline, fontWeight: FontWeight.w900)), Text(value, style: TextStyle(color: color == Cp.error ? color : Cp.onSurface, fontWeight: FontWeight.w800))]))]));
+}
+
+class MenuMasterItem {
+  const MenuMasterItem({required this.id, required this.english, required this.kannada, required this.category, required this.meals, required this.veg});
+  final String id;
+  final String english;
+  final String kannada;
+  final String category;
+  final String meals;
+  final bool veg;
+
+  String get title => '$kannada/$english';
+}
+
+class MenuMasterScreen extends StatefulWidget {
+  const MenuMasterScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  static final List<MenuMasterItem> menuItems = [
+    MenuMasterItem(id: 'MNU-001', english: 'Paneer Butter Masala', kannada: 'ಪನೀರ್ ಬಟರ್ ಮಸಾಲಾ', category: 'Main Course', meals: 'Lunch, Dinner', veg: true),
+    MenuMasterItem(id: 'MNU-002', english: 'Chicken Biryani', kannada: 'ಚಿಕನ್ ಬಿರಿಯಾನಿ', category: 'Main Course', meals: 'Lunch, Dinner', veg: false),
+    MenuMasterItem(id: 'MNU-003', english: 'Idli', kannada: 'ಇಡ್ಲಿ', category: 'South Indian', meals: 'Breakfast', veg: true),
+    MenuMasterItem(id: 'MNU-004', english: 'Masala Dosa', kannada: 'ಮಸಾಲೆ ದೋಸೆ', category: 'South Indian', meals: 'Breakfast', veg: true),
+    MenuMasterItem(id: 'MNU-005', english: 'Gulab Jamun', kannada: 'ಗುಲಾಬ್ ಜಾಮೂನ್', category: 'Dessert', meals: 'Lunch, Dinner', veg: true),
+  ];
+
+  @override
+  State<MenuMasterScreen> createState() => _MenuMasterScreenState();
+}
+
+class _MenuMasterScreenState extends State<MenuMasterScreen> {
+  String query = '';
+  String selectedMealFilter = 'All';
+  bool vegOnly = false;
+
+  List<MenuMasterItem> get visibleItems {
+    final normalized = query.trim().toLowerCase();
+    return MenuMasterScreen.menuItems.where((item) {
+      final text = '${item.id} ${item.english} ${item.kannada} ${item.category} ${item.meals}'.toLowerCase();
+      final matchesSearch = normalized.isEmpty || text.contains(normalized);
+      final matchesMeal = selectedMealFilter == 'All' || item.meals.split(',').map((meal) => meal.trim()).contains(selectedMealFilter);
+      final matchesVeg = !vegOnly || item.veg;
+      return matchesSearch && matchesMeal && matchesVeg;
+    }).toList();
+  }
+
+  void upsertMenuItem(MenuMasterItem item) {
+    setState(() {
+      final index = MenuMasterScreen.menuItems.indexWhere((existing) => existing.id == item.id);
+      if (index == -1) {
+        MenuMasterScreen.menuItems.add(item);
+      } else {
+        MenuMasterScreen.menuItems[index] = item;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => ScreenFrame(topBar: TopBar(title: 'Menu Master', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)), actions: [IconButton(onPressed: () => showMenuItemEditor(context, onSave: upsertMenuItem), icon: const Icon(Icons.add))]), children: [
+        CpCard(color: Cp.primaryFixed, child: const Row(children: [Icon(Icons.public, color: Cp.primary), SizedBox(width: 10), Expanded(child: Text('Universal menu catalog. Add/edit only. Every user can access these items.', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)))])),
+        const SizedBox(height: 12),
+        TextField(
+          decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search menu items', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+          onChanged: (value) => setState(() => query = value),
+        ),
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              ...['All', 'Breakfast', 'Juice', 'Lunch', 'Snack', 'Dinner'].map((filter) {
+                final selected = selectedMealFilter == filter;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: () => setState(() => selectedMealFilter = filter),
+                    child: Pill(filter, color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                  ),
+                );
+              }),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => setState(() => vegOnly = !vegOnly),
+                  child: Pill('Veg Only', color: vegOnly ? Cp.tertiaryContainer : Cp.surfaceHigh, textColor: vegOnly ? Colors.white : Cp.onVariant, icon: vegOnly ? Icons.check : Icons.eco),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        ...visibleItems.map((item) => MenuItemCard(item: item, onEdit: () => showMenuItemEditor(context, item: item, onSave: upsertMenuItem))),
+        const SizedBox(height: 18),
+        CpCard(color: Cp.primaryContainer, child: Text('Universal Menu Items\n${MenuMasterScreen.menuItems.length} Items', style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))),
+      ]);
+}
+
+class MenuItemCard extends StatefulWidget {
+  const MenuItemCard({super.key, required this.item, required this.onEdit});
+  final MenuMasterItem item;
+  final VoidCallback onEdit;
+
+  @override
+  State<MenuItemCard> createState() => _MenuItemCardState();
+}
+
+class _MenuItemCardState extends State<MenuItemCard> {
+  bool active = true;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          onTap: widget.onEdit,
+          child: Row(children: [
+            Container(width: 64, height: 64, decoration: BoxDecoration(color: widget.item.veg ? Cp.tertiaryFixed.withValues(alpha: .3) : Cp.errorContainer, borderRadius: BorderRadius.circular(8)), child: Icon(Icons.restaurant, color: widget.item.veg ? Cp.tertiary : Cp.error)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(widget.item.id, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w900)),
+                Row(children: [Container(width: 8, height: 8, decoration: BoxDecoration(color: widget.item.veg ? Colors.green : Colors.red, shape: BoxShape.circle)), const SizedBox(width: 8), Expanded(child: Text(widget.item.title, style: const TextStyle(fontWeight: FontWeight.w900)))]),
+                Text('English: ${widget.item.english}', style: const TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+                Text('Kannada: ${widget.item.kannada}', style: const TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w700)),
+                Text('${widget.item.category} • ${widget.item.meals}', style: const TextStyle(color: Cp.onVariant)),
+              ]),
+            ),
+            IconButton(onPressed: widget.onEdit, icon: const Icon(Icons.edit, color: Cp.primary)),
+            Switch(value: active, activeThumbColor: Cp.primaryContainer, onChanged: (value) => setState(() => active = value)),
+          ]),
+        ),
+      );
+}
+
+void showMenuItemEditor(BuildContext context, {MenuMasterItem? item, required ValueChanged<MenuMasterItem> onSave}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => MenuItemEditorSheet(item: item, onSave: onSave),
+  );
+}
+
+class MenuItemEditorSheet extends StatefulWidget {
+  const MenuItemEditorSheet({super.key, this.item, required this.onSave});
+  final MenuMasterItem? item;
+  final ValueChanged<MenuMasterItem> onSave;
+
+  @override
+  State<MenuItemEditorSheet> createState() => _MenuItemEditorSheetState();
+}
+
+class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
+  static const categoryOptions = ['Starter', 'Main Course', 'Dessert', 'South Indian', 'Beverage', 'Snack', 'Other'];
+  static const mealOptions = ['Breakfast', 'Lunch', 'Dinner', 'Other', 'Snack', 'Juice'];
+  late final id = TextEditingController(text: widget.item?.id ?? 'MNU-${(MenuMasterScreen.menuItems.length + 1).toString().padLeft(3, '0')}');
+  late final english = TextEditingController(text: widget.item?.english ?? '');
+  late final kannada = TextEditingController(text: widget.item?.kannada ?? '');
+  late String category = categoryOptions.contains(widget.item?.category) ? widget.item!.category : categoryOptions.first;
+  late Set<String> selectedMeals = {
+    if (widget.item != null)
+      ...widget.item!.meals.split(',').map((meal) => meal.trim()).where((meal) => mealOptions.contains(meal)),
+  };
+  late bool veg = widget.item?.veg ?? true;
+  String? error;
+
+  @override
+  void dispose() {
+    id.dispose();
+    english.dispose();
+    kannada.dispose();
+    super.dispose();
+  }
+
+  void save() {
+    if (id.text.trim().isEmpty || english.text.trim().isEmpty || kannada.text.trim().isEmpty || selectedMeals.isEmpty) {
+      setState(() => error = 'Fill ID, English, Kannada, Category, and at least one Meal.');
+      return;
+    }
+    final meals = mealOptions.where(selectedMeals.contains).join(', ');
+    widget.onSave(MenuMasterItem(id: id.text.trim(), english: english.text.trim(), kannada: kannada.text.trim(), category: category, meals: meals, veg: veg));
+    Navigator.pop(context);
+  }
+
+  Future<void> pickMeals() async {
+    final result = await showModalBottomSheet<Set<String>>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => MealCheckboxSheet(options: mealOptions, selected: selectedMeals),
+    );
+    if (result != null) setState(() => selectedMeals = result);
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        top: false,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+          decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+              Text(widget.item == null ? 'Add Menu Item' : 'Edit Menu Item', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+              const Text('Universal item, available to every user.', style: TextStyle(color: Cp.onVariant)),
+              const SizedBox(height: 16),
+              EditableInlineField(label: 'ID', controller: id),
+              Row(children: [Expanded(child: EditableInlineField(label: 'English', controller: english)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Kannada', controller: kannada))]),
+              Row(children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: category,
+                    decoration: InputDecoration(labelText: 'Category', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                    items: categoryOptions.map((value) => DropdownMenuItem(value: value, child: Text(value))).toList(),
+                    onChanged: (value) => setState(() => category = value ?? category),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: pickMeals,
+                    child: InputDecorator(
+                      decoration: InputDecoration(labelText: 'Meals', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                      child: Row(children: [
+                        Expanded(child: Text(selectedMeals.isEmpty ? 'Select meals' : mealOptions.where(selectedMeals.contains).join(', '), overflow: TextOverflow.ellipsis)),
+                        const Icon(Icons.arrow_drop_down, color: Cp.primary),
+                      ]),
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              SwitchListTile(contentPadding: EdgeInsets.zero, value: veg, activeThumbColor: Cp.primary, onChanged: (value) => setState(() => veg = value), title: const Text('Vegetarian', style: TextStyle(fontWeight: FontWeight.w900))),
+              if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+              SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Menu Item', style: TextStyle(fontWeight: FontWeight.w900)))),
+            ]),
+          ),
+        ),
+      );
+}
+
+class MealCheckboxSheet extends StatefulWidget {
+  const MealCheckboxSheet({super.key, required this.options, required this.selected});
+  final List<String> options;
+  final Set<String> selected;
+
+  @override
+  State<MealCheckboxSheet> createState() => _MealCheckboxSheetState();
+}
+
+class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
+  late final Set<String> selected = {...widget.selected};
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .78),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+          const Text('Select Meals', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: widget.options.map((meal) => CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: selected.contains(meal),
+                    activeColor: Cp.primary,
+                    onChanged: (value) => setState(() => value == true ? selected.add(meal) : selected.remove(meal)),
+                    title: Text(meal, style: const TextStyle(fontWeight: FontWeight.w800)),
+                  )).toList(),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
+              onPressed: () => Navigator.pop(context, selected),
+              child: const Text('Apply Meals', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class RawMaterialItem {
+  const RawMaterialItem({required this.id, required this.name, required this.category, required this.unit});
+  final String id;
+  final String name;
+  final String category;
+  final String unit;
+}
+
+class RawMaterialScreen extends StatefulWidget {
+  const RawMaterialScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  static final List<RawMaterialItem> items = [
+    const RawMaterialItem(id: 'RAW-001', name: 'Basmati Rice', category: 'Ration', unit: 'kg'),
+    const RawMaterialItem(id: 'RAW-002', name: 'Toor Dal', category: 'Ration', unit: 'kg'),
+    const RawMaterialItem(id: 'RAW-003', name: 'Cooking Oil', category: 'Grocery', unit: 'litre'),
+    const RawMaterialItem(id: 'RAW-004', name: 'Tomato', category: 'Vegetables', unit: 'kg'),
+    const RawMaterialItem(id: 'RAW-005', name: 'Onion', category: 'Vegetables', unit: 'kg'),
+  ];
+
+  @override
+  State<RawMaterialScreen> createState() => _RawMaterialScreenState();
+}
+
+class _RawMaterialScreenState extends State<RawMaterialScreen> {
+  String query = '';
+  String selectedCategory = 'All';
+
+  List<String> get categories {
+    final values = RawMaterialScreen.items.map((item) => item.category).toSet().toList()..sort();
+    return ['All', ...values];
+  }
+
+  List<RawMaterialItem> get visibleItems {
+    final normalized = query.trim().toLowerCase();
+    return RawMaterialScreen.items.where((item) {
+      final matchesCategory = selectedCategory == 'All' || item.category == selectedCategory;
+      final text = '${item.id} ${item.name} ${item.category} ${item.unit}'.toLowerCase();
+      return matchesCategory && (normalized.isEmpty || text.contains(normalized));
+    }).toList();
+  }
+
+  void upsertRawMaterial(RawMaterialItem item) {
+    setState(() {
+      final index = RawMaterialScreen.items.indexWhere((existing) => existing.id == item.id);
+      if (index == -1) {
+        RawMaterialScreen.items.add(item);
+      } else {
+        RawMaterialScreen.items[index] = item;
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          ScreenFrame(
+            bottomPadding: 92,
+            topBar: TopBar(title: 'Raw Materials', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+            children: [
+              CpCard(color: Cp.primaryFixed, child: const Row(children: [Icon(Icons.public, color: Cp.primary), SizedBox(width: 10), Expanded(child: Text('Universal raw material catalog. Add/edit only. Every user can access these items.', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)))])),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search raw materials', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                onChanged: (value) => setState(() => query = value),
+              ),
+              const SizedBox(height: 12),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: categories.map((category) {
+                    final selected = category == selectedCategory;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => setState(() => selectedCategory = category),
+                        child: Pill(category, color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              ...visibleItems.map((item) => RawMaterialCard(item: item, onEdit: () => showRawMaterialEditor(context, item: item, onSave: upsertRawMaterial))),
+            ],
+          ),
+          Positioned(
+            right: 18,
+            bottom: 24,
+            child: FloatingActionButton.extended(
+              heroTag: 'addRawMaterial',
+              backgroundColor: Cp.secondaryContainer,
+              foregroundColor: const Color(0xff694000),
+              onPressed: () => showRawMaterialEditor(context, onSave: upsertRawMaterial),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ],
+      );
+}
+
+class RawMaterialCard extends StatelessWidget {
+  const RawMaterialCard({super.key, required this.item, required this.onEdit});
+  final RawMaterialItem item;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          onTap: onEdit,
+          child: Row(children: [
+            Container(width: 52, height: 52, decoration: BoxDecoration(color: Cp.primaryFixed, borderRadius: BorderRadius.circular(8)), child: const Icon(Icons.inventory_2, color: Cp.primary)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(item.name, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)), Text('${item.id} • ${item.category}', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])),
+            Pill(item.unit),
+            IconButton(onPressed: onEdit, icon: const Icon(Icons.edit, color: Cp.primary)),
+          ]),
+        ),
+      );
+}
+
+void showRawMaterialEditor(BuildContext context, {RawMaterialItem? item, required ValueChanged<RawMaterialItem> onSave}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => RawMaterialEditorSheet(item: item, onSave: onSave),
+  );
+}
+
+class RawMaterialEditorSheet extends StatefulWidget {
+  const RawMaterialEditorSheet({super.key, this.item, required this.onSave});
+  final RawMaterialItem? item;
+  final ValueChanged<RawMaterialItem> onSave;
+
+  @override
+  State<RawMaterialEditorSheet> createState() => _RawMaterialEditorSheetState();
+}
+
+class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
+  late final id = TextEditingController(text: widget.item?.id ?? 'RAW-${(RawMaterialScreen.items.length + 1).toString().padLeft(3, '0')}');
+  late final name = TextEditingController(text: widget.item?.name ?? '');
+  late final category = TextEditingController(text: widget.item?.category ?? '');
+  late final unit = TextEditingController(text: widget.item?.unit ?? '');
+  String? error;
+
+  @override
+  void dispose() {
+    id.dispose();
+    name.dispose();
+    category.dispose();
+    unit.dispose();
+    super.dispose();
+  }
+
+  void save() {
+    if (id.text.trim().isEmpty || name.text.trim().isEmpty || category.text.trim().isEmpty || unit.text.trim().isEmpty) {
+      setState(() => error = 'Fill ID, Name, Category, and Unit.');
+      return;
+    }
+    widget.onSave(RawMaterialItem(id: id.text.trim(), name: name.text.trim(), category: category.text.trim(), unit: unit.text.trim()));
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => SafeArea(
+        top: false,
+        child: Container(
+          padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+          decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+              Text(widget.item == null ? 'Add Raw Material' : 'Edit Raw Material', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+              const Text('Universal item, available to every user.', style: TextStyle(color: Cp.onVariant)),
+              const SizedBox(height: 16),
+              EditableInlineField(label: 'ID', controller: id),
+              EditableInlineField(label: 'Name', controller: name),
+              Row(children: [Expanded(child: EditableInlineField(label: 'Category', controller: category)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Unit', controller: unit))]),
+              if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+              SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Raw Material', style: TextStyle(fontWeight: FontWeight.w900)))),
+            ]),
+          ),
+        ),
+      );
+}
+
+class Employee {
+  const Employee({required this.name, required this.age, required this.mobile, required this.designation, required this.payPerDay});
+  final String name;
+  final int age;
+  final String mobile;
+  final String designation;
+  final int payPerDay;
+}
+
+class EmployeeScreen extends StatefulWidget {
+  const EmployeeScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  State<EmployeeScreen> createState() => _EmployeeScreenState();
+}
+
+class _EmployeeScreenState extends State<EmployeeScreen> {
+  final search = TextEditingController();
+  final employees = <Employee>[
+    const Employee(name: 'Ramesh Gowda', age: 34, mobile: '+91 98765 11001', designation: 'Chef', payPerDay: 2200),
+    const Employee(name: 'Anita Rao', age: 29, mobile: '+91 98765 11002', designation: 'Supervisor', payPerDay: 1800),
+    const Employee(name: 'Imran Khan', age: 26, mobile: '+91 98765 11003', designation: 'Server', payPerDay: 950),
+    const Employee(name: 'Lakshmi Devi', age: 31, mobile: '+91 98765 11004', designation: 'Cleaner', payPerDay: 800),
+  ];
+  String selectedFilter = 'All';
+  String query = '';
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  List<String> get filters {
+    final designations = employees.map((employee) => employee.designation).toSet().toList()..sort();
+    return ['All', ...designations];
+  }
+
+  List<Employee> get visibleEmployees {
+    final normalizedQuery = query.trim().toLowerCase();
+    return employees.where((employee) {
+      final matchesFilter = selectedFilter == 'All' || employee.designation == selectedFilter;
+      final text = '${employee.name} ${employee.mobile} ${employee.designation}'.toLowerCase();
+      return matchesFilter && (normalizedQuery.isEmpty || text.contains(normalizedQuery));
+    }).toList();
+  }
+
+  void addEmployee(Employee employee) {
+    setState(() {
+      employees.add(employee);
+      selectedFilter = 'All';
+    });
+    showCpSnack(context, '${employee.name} added');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = visibleEmployees;
+    return Stack(
+      children: [
+        ScreenFrame(
+          bottomPadding: 92,
+          topBar: TopBar(title: 'Employees', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+          children: [
+            TextField(
+              controller: search,
+              onChanged: (value) => setState(() => query = value),
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.search, color: Cp.primary),
+                hintText: 'Search employees',
+                filled: true,
+                fillColor: Cp.card,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Cp.outlineVariant.withValues(alpha: .5))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Cp.outlineVariant.withValues(alpha: .5))),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: filters.map((filter) {
+                  final selected = selectedFilter == filter;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(999),
+                      onTap: () => setState(() => selectedFilter = filter),
+                      child: Pill(filter, color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(children: [Expanded(child: Text('${visible.length} employees', style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900))), Pill(selectedFilter)]),
+            const SizedBox(height: 12),
+            if (visible.isEmpty)
+              CpCard(color: Cp.surfaceLow, child: const Text('No employees match this search/filter.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w800)))
+            else
+              ...visible.map((employee) => EmployeeCard(employee: employee, onTap: () => showCpSnack(context, '${employee.name} selected'))),
+          ],
+        ),
+        Positioned(
+          right: 18,
+          bottom: 24,
+          child: FloatingActionButton.extended(
+            heroTag: 'addEmployee',
+            backgroundColor: Cp.secondaryContainer,
+            foregroundColor: const Color(0xff694000),
+            onPressed: () => showEmployeeEditor(context, onSave: addEmployee),
+            icon: const Icon(Icons.person_add),
+            label: const Text('Add Employee', style: TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class EmployeeCard extends StatelessWidget {
+  const EmployeeCard({super.key, required this.employee, required this.onTap});
+  final Employee employee;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        onTap: onTap,
+        child: Row(children: [
+          CircleAvatar(radius: 24, backgroundColor: Cp.primaryFixed, child: Text(employee.name.split(' ').map((part) => part[0]).take(2).join(), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(employee.name, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
+              Text('${employee.designation} • Age ${employee.age}', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+              Text(employee.mobile, style: const TextStyle(color: Cp.onVariant)),
+            ]),
+          ),
+          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+            const Text('Pay/Day', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)),
+            Text('₹${employee.payPerDay}', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+void showEmployeeEditor(BuildContext context, {required ValueChanged<Employee> onSave}) {
+  showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => EmployeeEditorSheet(onSave: onSave),
+  );
+}
+
+class EmployeeEditorSheet extends StatefulWidget {
+  const EmployeeEditorSheet({super.key, required this.onSave});
+  final ValueChanged<Employee> onSave;
+
+  @override
+  State<EmployeeEditorSheet> createState() => _EmployeeEditorSheetState();
+}
+
+class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
+  final name = TextEditingController();
+  final age = TextEditingController();
+  final mobile = TextEditingController();
+  final designation = TextEditingController();
+  final payPerDay = TextEditingController();
+  String? error;
+
+  @override
+  void dispose() {
+    name.dispose();
+    age.dispose();
+    mobile.dispose();
+    designation.dispose();
+    payPerDay.dispose();
+    super.dispose();
+  }
+
+  void save() {
+    final parsedAge = int.tryParse(age.text.trim());
+    final parsedPay = int.tryParse(payPerDay.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (name.text.trim().isEmpty || parsedAge == null || mobile.text.trim().isEmpty || designation.text.trim().isEmpty || parsedPay == null) {
+      setState(() => error = 'Fill Name, Age, Mobile, Designation, and Pay/Day.');
+      return;
+    }
+    widget.onSave(Employee(name: name.text.trim(), age: parsedAge, mobile: mobile.text.trim(), designation: designation.text.trim(), payPerDay: parsedPay));
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        decoration: const BoxDecoration(color: Cp.card, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            const Text('Add Employee', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 16),
+            EditableInlineField(label: 'Name', controller: name),
+            Row(children: [Expanded(child: EditableInlineField(label: 'Age', controller: age, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Pay/Day', controller: payPerDay, keyboardType: TextInputType.number))]),
+            EditableInlineField(label: 'Mobile', controller: mobile, keyboardType: TextInputType.phone),
+            EditableInlineField(label: 'Designation', controller: designation),
+            if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+            SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Employee', style: TextStyle(fontWeight: FontWeight.w900)))),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class BusinessProfileScreen extends StatelessWidget {
+  const BusinessProfileScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+  @override
+  Widget build(BuildContext context) => ScreenFrame(topBar: TopBar(title: 'Business Profile', avatar: false, leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)), actions: [TextButton(onPressed: onClose, child: const Text('Save', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)))]), children: [
+        CpCard(child: Column(children: const [CircleAvatar(radius: 44, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))), SizedBox(height: 12), Text('Royal Caterers', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), Text('Premium Event Catering Services', style: TextStyle(color: Cp.onVariant))])),
+        const SizedBox(height: 16),
+        Row(children: const [Expanded(child: UploadBox(label: 'Logo', icon: Icons.storefront, filled: true)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Signature', icon: Icons.draw)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Payment QR', icon: Icons.qr_code_2))]),
+        const SizedBox(height: 16),
+        const SectionTitle('Basic Info', Icons.business),
+        FormFieldBox(label: 'Business Name', value: 'Royal Caterers'),
+        FormFieldBox(label: 'Service Type', value: 'Event Services'),
+        const SectionTitle('Tax & Legal', Icons.gavel),
+        Row(children: const [Expanded(child: FormFieldBox(label: 'GSTIN', value: '27AAAAA0000A1Z5')), SizedBox(width: 12), Expanded(child: FormFieldBox(label: 'PAN', value: 'AXXXX0000X'))]),
+        const SectionTitle('Business Address', Icons.location_on),
+        FormFieldBox(label: 'Full Address', value: '123, MG Road, Mumbai, Maharashtra, 400001', height: 82),
+        const SectionTitle('Contact Information', Icons.contact_phone),
+        FormFieldBox(label: 'Phone Number', value: '+91 9876543210'),
+        FormFieldBox(label: 'Email Address', value: 'info@royalcaterers.com'),
+        const SectionTitle('Settlement Bank', Icons.account_balance),
+        FormFieldBox(label: 'Bank Name', value: 'HDFC Bank'),
+        FormFieldBox(label: 'Account Number', value: '50100012345678'),
+        const SectionTitle('Terms & Conditions', Icons.description),
+        FormFieldBox(label: 'Standard Terms', value: '50% advance required. Final guest count must be shared 48 hours prior. Taxes applicable as per government norms.', height: 112),
+      ]);
+}
+
+class UploadBox extends StatelessWidget {
+  const UploadBox({super.key, required this.label, required this.icon, this.filled = false});
+  final String label;
+  final IconData icon;
+  final bool filled;
+  @override
+  Widget build(BuildContext context) => AspectRatio(
+        aspectRatio: 1,
+        child: Container(
+          decoration: BoxDecoration(color: filled ? Cp.primaryContainer : Cp.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: filled ? Cp.primaryContainer : Cp.outlineVariant, width: 1.4)),
+          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: filled ? Colors.white : Cp.outline, size: 30), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, style: TextStyle(color: filled ? Colors.white : Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800)), if (!filled) const Icon(Icons.add_circle, color: Cp.primary, size: 16)]),
+        ),
+      );
+}
+
+class SectionTitle extends StatelessWidget {
+  const SectionTitle(this.title, this.icon, {super.key});
+  final String title;
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 8, bottom: 12),
+        child: Row(children: [Icon(icon, color: Cp.primary, size: 20), const SizedBox(width: 8), Text(title, style: const TextStyle(color: Cp.primary, fontSize: 16, fontWeight: FontWeight.w900))]),
+      );
+}

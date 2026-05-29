@@ -1,0 +1,11 @@
+{
+  "name": "CaterPro",
+  "short_name": "CaterPro",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#003857",
+  "description": "Catering management frontend",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}

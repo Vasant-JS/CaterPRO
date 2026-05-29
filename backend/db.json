@@ -1,0 +1,23 @@
+{
+  "users": [
+    {
+      "id": "usr_demo_admin",
+      "name": "Ravi Caterer",
+      "email": "admin@caterpro.in",
+      "password": "password"
+    }
+  ],
+  "universal": {
+    "menuItems": [],
+    "rawMaterials": []
+  },
+  "userData": {
+    "usr_demo_admin": {
+      "events": [],
+      "clients": [],
+      "employees": [],
+      "additionalServices": [],
+      "payments": []
+    }
+  }
+}
