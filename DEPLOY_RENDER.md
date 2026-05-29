@@ -25,6 +25,9 @@ Open:
 http://127.0.0.1:8787/api/docs
 ```
 
+Swagger UI is served at `/api/docs`.
+OpenAPI JSON is served at `/api/openapi.json`.
+
 Demo login:
 
 ```text
@@ -53,6 +56,8 @@ password
 https://YOUR-RENDER-SERVICE.onrender.com/api/docs
 ```
 
+You can test APIs from Swagger UI using **Authorize** after calling login and copying the returned token.
+
 ## Flutter Frontend API URL
 
 For local web:
@@ -75,3 +80,13 @@ For Android emulator, use your computer IP instead of `127.0.0.1`, or use a host
 - User-owned data: events, clients, employees, additional services, payments.
 
 The current local backend uses `backend/db.json`. Render free instances have ephemeral filesystem behavior, so production should move this to PostgreSQL before real use.
+
+## Accessing The Current DB
+
+Local DB file:
+
+```text
+backend/db.json
+```
+
+On Render, `db.json` is inside the deployed service filesystem and should be treated as temporary. For real access, create a Render PostgreSQL database and connect the API with `DATABASE_URL`.

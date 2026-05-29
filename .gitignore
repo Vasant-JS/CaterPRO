@@ -8,6 +8,7 @@ frontend/android/.kotlin/
 frontend/ios/Flutter/ephemeral/
 
 # Backend
+backend/node_modules/
 backend/api*.log
 
 # Local tooling
