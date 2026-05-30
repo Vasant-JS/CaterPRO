@@ -2956,7 +2956,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
   }
 
   List<String> selectedMenuTitles(MealSlotConfig slot) {
-    return MenuMasterScreen.menuItems.where((item) => slot.selectedMenuIds.contains(item.id)).map((item) => item.english).toList();
+    return slot.selectedMenuIds.map((id) => menuItemById(id)?.english ?? id).toList();
   }
 
   void openMenuPicker(MealSlotConfig slot) {
@@ -3211,6 +3211,9 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
   Widget build(BuildContext context) {
     final items = MenuMasterScreen.menuItems.where((item) => item.title.toLowerCase().contains(query.toLowerCase()) || item.english.toLowerCase().contains(query.toLowerCase()) || item.kannada.contains(query)).toList()
       ..sort((a, b) {
+        final aOrder = selectedOrder(a.id, selectedIds);
+        final bOrder = selectedOrder(b.id, selectedIds);
+        if (aOrder != -1 && bOrder != -1) return aOrder.compareTo(bOrder);
         final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0).compareTo(selectedIds.contains(a.id) ? 1 : 0);
         if (selectedCompare != 0) return selectedCompare;
         return a.english.compareTo(b.english);
@@ -3873,6 +3876,22 @@ class MenuMasterItem {
   }
 }
 
+MenuMasterItem? menuItemById(String id) {
+  for (final item in MenuMasterScreen.menuItems) {
+    if (item.id == id) return item;
+  }
+  return null;
+}
+
+int selectedOrder(String id, Set<String> selectedIds) {
+  var index = 0;
+  for (final selectedId in selectedIds) {
+    if (selectedId == id) return index;
+    index++;
+  }
+  return -1;
+}
+
 class MenuMasterScreen extends StatefulWidget {
   const MenuMasterScreen({super.key, required this.onClose});
   final VoidCallback onClose;
@@ -4225,7 +4244,7 @@ class _CustomMenuScreenState extends State<CustomMenuScreen> {
           EmptyStateCard(title: 'No $selectedType custom menus', message: 'Tap + to create a ready made $selectedType menu.')
         else
           ...visibleMenus.map((menu) {
-            final names = MenuMasterScreen.menuItems.where((item) => menu.itemIds.contains(item.id)).map((item) => item.english).take(5).join(', ');
+            final names = menu.itemIds.map((id) => menuItemById(id)?.english ?? id).take(5).join(', ');
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: CpCard(
@@ -4279,6 +4298,9 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
       return typeMatches && (normalized.isEmpty || text.contains(normalized));
     }).toList()
       ..sort((a, b) {
+        final aOrder = selectedOrder(a.id, selectedIds);
+        final bOrder = selectedOrder(b.id, selectedIds);
+        if (aOrder != -1 && bOrder != -1) return aOrder.compareTo(bOrder);
         final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0).compareTo(selectedIds.contains(a.id) ? 1 : 0);
         if (selectedCompare != 0) return selectedCompare;
         return a.english.compareTo(b.english);
