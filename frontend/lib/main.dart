@@ -340,6 +340,33 @@ class CustomerSuggestion {
   final String mobile;
 }
 
+const _monthShortNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+DateTime? parseIsoDate(String value) {
+  final parts = value.split('-');
+  if (parts.length != 3) return null;
+  final year = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (year == null || month == null || day == null || month < 1 || month > 12) return null;
+  return DateTime(year, month, day);
+}
+
+String shortMonthLabel(String isoDate) {
+  final date = parseIsoDate(isoDate);
+  return date == null ? '--' : _monthShortNames[date.month - 1];
+}
+
+String dayLabel(String isoDate) {
+  final date = parseIsoDate(isoDate);
+  return date == null ? '--' : date.day.toString().padLeft(2, '0');
+}
+
+String readableDateLabel(String isoDate) {
+  final date = parseIsoDate(isoDate);
+  return date == null ? isoDate : '${date.day.toString().padLeft(2, '0')} ${_monthShortNames[date.month - 1]} ${date.year}';
+}
+
 class DraftDateConfig {
   DraftDateConfig({required this.date, this.label = ''});
   String date;
@@ -2530,7 +2557,7 @@ class CreateDatesStep extends StatelessWidget {
       const Text('Add every date in the event schedule. Pax is configured later for each date and menu type.', style: TextStyle(color: Cp.onVariant)),
       const SizedBox(height: 16),
       if (dates.isEmpty) const EmptyStateCard(title: 'No dates added', message: 'Add each event date. Pax is configured per menu type later.'),
-      ...dates.map((date) => DateScheduleCard(month: date.date.length >= 7 ? date.date.substring(5, 7) : '--', day: date.date.length >= 10 ? date.date.substring(8, 10) : '--', title: date.label.isEmpty ? 'Event Date' : date.label, summary: date.date, onDelete: () { dates.remove(date); onChanged(); })),
+      ...dates.map((date) => DateScheduleCard(month: shortMonthLabel(date.date), day: dayLabel(date.date), title: date.label.isEmpty ? 'Event Date' : date.label, summary: readableDateLabel(date.date), onDelete: () { dates.remove(date); onChanged(); })),
       DashedAction(label: 'Add Date', icon: Icons.add_circle, onTap: () async {
         final date = await showAddDateSheet(context);
         if (date != null) {
@@ -2639,7 +2666,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           final selected = index == selectedDateIndex;
           return ChoiceChip(
             selected: selected,
-            label: Text(widget.dates[index].date),
+            label: Text(readableDateLabel(widget.dates[index].date)),
             selectedColor: Cp.primaryContainer,
             labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
             onSelected: (_) => setState(() => selectedDateIndex = index),
@@ -2714,37 +2741,44 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
     if (config == null) return;
     showModalBottomSheet<void>(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => SafeArea(
         top: false,
         child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .78),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-            Text('Add Menu Type for ${config.date}', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            Text('Add Menu Type for ${readableDateLabel(config.date)}', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
             const SizedBox(height: 14),
-            ...availableTypes.map((type) {
-              final exists = config.slots.any((slot) => slot.type == type.$1);
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: CpCard(
-                  color: exists ? Cp.surfaceLow : Cp.card,
-                  onTap: exists
-                      ? null
-                      : () {
-                          setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', pricePerPax: type.$3)));
-                          Navigator.pop(context);
-                        },
-                  child: Row(children: [
-                    Icon(exists ? Icons.check_circle : Icons.add_circle, color: exists ? Cp.outline : Cp.primary),
-                    const SizedBox(width: 12),
-                    Expanded(child: Text(exists ? '${type.$1} already added' : type.$1, style: const TextStyle(fontWeight: FontWeight.w900))),
-                    Text(type.$2, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
-                  ]),
-                ),
-              );
-            }),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: availableTypes.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final type = availableTypes[index];
+                  final exists = config.slots.any((slot) => slot.type == type.$1);
+                  return CpCard(
+                    color: exists ? Cp.surfaceLow : Cp.card,
+                    onTap: exists
+                        ? null
+                        : () {
+                            setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', pricePerPax: type.$3)));
+                            Navigator.pop(context);
+                          },
+                    child: Row(children: [
+                      Icon(exists ? Icons.check_circle : Icons.add_circle, color: exists ? Cp.outline : Cp.primary),
+                      const SizedBox(width: 12),
+                      Expanded(child: Text(exists ? '${type.$1} already added' : type.$1, style: const TextStyle(fontWeight: FontWeight.w900))),
+                      Text(type.$2, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                    ]),
+                  );
+                },
+              ),
+            ),
           ]),
         ),
       ),
