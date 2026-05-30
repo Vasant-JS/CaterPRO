@@ -1437,6 +1437,12 @@ class _BillingScreenState extends State<BillingScreen> {
     showCpSnack(context, launched ? '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started' : 'Unable to start download');
   }
 
+  void openDocumentDetails(AppEvent event, String type, {AppPayment? payment}) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => BillingDocumentDetailsScreen(event: event, payment: payment, type: type, api: widget.api),
+    ));
+  }
+
   Widget tabChip(int index, String label, int count) {
     final selected = selectedTab == index;
     return ChoiceChip(
@@ -1479,6 +1485,7 @@ class _BillingScreenState extends State<BillingScreen> {
                   icon: Icons.request_quote,
                   buttonLabel: 'Download Quotation',
                   onDownload: () => downloadDocument(context, event, 'quotation'),
+                  onTap: () => openDocumentDetails(event, 'quotation'),
                 )),
         ] else ...[
           if (invoicePayments.isEmpty)
@@ -1496,6 +1503,7 @@ class _BillingScreenState extends State<BillingScreen> {
                   icon: Icons.receipt_long,
                   buttonLabel: 'Download Invoice',
                   onDownload: () => downloadDocument(context, item.event, 'invoice'),
+                  onTap: () => openDocumentDetails(item.event, 'invoice', payment: item.payment),
                 )),
         ],
       ],
@@ -1522,16 +1530,18 @@ class BillingSummaryCell extends StatelessWidget {
 }
 
 class BillingDocumentCard extends StatelessWidget {
-  const BillingDocumentCard({super.key, required this.title, required this.subtitle, required this.code, required this.amountLabel, required this.amount, required this.dateLabel, required this.status, required this.statusColor, required this.icon, required this.buttonLabel, required this.onDownload});
+  const BillingDocumentCard({super.key, required this.title, required this.subtitle, required this.code, required this.amountLabel, required this.amount, required this.dateLabel, required this.status, required this.statusColor, required this.icon, required this.buttonLabel, required this.onDownload, this.onTap});
   final String title, subtitle, code, amountLabel, amount, dateLabel, status, buttonLabel;
   final Color statusColor;
   final IconData icon;
   final VoidCallback onDownload;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: CpCard(
+          onTap: onTap,
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Icon(icon, color: Cp.primary),
@@ -1548,6 +1558,172 @@ class BillingDocumentCard extends StatelessWidget {
             SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: onDownload, icon: const Icon(Icons.download), label: Text(buttonLabel, style: const TextStyle(fontWeight: FontWeight.w900)))),
           ]),
         ),
+      );
+}
+
+class BillingDocumentDetailsScreen extends StatelessWidget {
+  const BillingDocumentDetailsScreen({super.key, required this.event, required this.type, required this.api, this.payment});
+  final AppEvent event;
+  final String type;
+  final ApiService api;
+  final AppPayment? payment;
+
+  bool get isInvoice => type == 'invoice';
+  String get title => isInvoice ? 'Invoice Details' : 'Quotation Details';
+  String get docCode => isInvoice ? 'INV-${(payment?.id ?? event.id).toUpperCase()}' : 'QUOTE-${event.id.toUpperCase()}';
+
+  Future<Uri> documentUri() => api.documentUri(event.id, isInvoice ? 'invoice' : 'quotation');
+
+  Future<void> download(BuildContext context) async {
+    final uri = await documentUri();
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (context.mounted) showCpSnack(context, launched ? '${isInvoice ? 'Invoice' : 'Quotation'} download started' : 'Unable to start download');
+  }
+
+  Future<void> shareOverWhatsApp(BuildContext context) async {
+    final uri = await documentUri();
+    final label = isInvoice ? 'invoice' : 'quotation';
+    final text = 'CaterPro $label for ${event.name}: $uri';
+    await launchUrl(Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  Future<void> requestPayment(BuildContext context) async {
+    final pending = eventBalance(event);
+    final client = event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
+    final text = 'Hello $client, pending payment for ${event.name} is ${money(pending)}. Please complete the payment. - CaterPro';
+    await launchUrl(Uri.parse('https://wa.me/${event.mobile}?text=${Uri.encodeComponent(text)}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = eventTotal(event);
+    final paid = eventPaid(event);
+    final currentPayment = payment?.amount ?? 0;
+    final pending = eventBalance(event);
+    final clientName = event.primaryClient.isEmpty ? event.mobile : event.primaryClient;
+    final menuCount = event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.length);
+    final menuItems = event.dates.expand((date) => date.menuSlots).expand((slot) => slot.menuItemIds).length;
+    return Scaffold(
+      backgroundColor: Cp.background,
+      body: ScreenFrame(
+        topBar: TopBar(title: title, avatar: false, leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+        bottomPadding: 98,
+        children: [
+          CpCard(
+            color: isInvoice ? Cp.tertiaryFixed.withValues(alpha: .28) : Cp.primaryFixed.withValues(alpha: .42),
+            child: Column(children: [
+              CircleAvatar(radius: 28, backgroundColor: isInvoice ? Cp.tertiaryFixed : Cp.primaryFixed, child: Icon(isInvoice ? Icons.check : Icons.request_quote, color: isInvoice ? Cp.tertiaryContainer : Cp.primary, size: 34)),
+              const SizedBox(height: 12),
+              Text(isInvoice ? 'Payment recorded' : 'Quotation ready', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w900)),
+              Text(isInvoice ? money(currentPayment) : money(total), style: const TextStyle(color: Cp.onSurface, fontSize: 30, fontWeight: FontWeight.w900)),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          DetailNavTile(iconText: clientName.isEmpty ? 'C' : clientName[0].toUpperCase(), label: 'Client Name', value: clientName),
+          DetailNavTile(iconText: event.name.isEmpty ? 'E' : event.name[0].toUpperCase(), label: 'Event Name', value: event.name),
+          CpCard(
+            color: const Color(0xfffff7ff),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Event Date: ${event.dates.isEmpty ? '-' : event.dates.map((date) => date.date).join(', ')}', style: const TextStyle(fontWeight: FontWeight.w900)),
+              const Text('Terms: Due of Receipt', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 14),
+              Row(children: [
+                Expanded(child: SmallInfoBlock(label: isInvoice ? 'Invoice#' : 'Quotation#', value: docCode)),
+                const SizedBox(width: 12),
+                Expanded(child: SmallInfoBlock(label: isInvoice ? 'Invoice Date' : 'Quotation Date', value: payment?.date ?? DateTime.now().toIso8601String().substring(0, 10))),
+              ]),
+              const Divider(height: 24),
+              SmallInfoBlock(label: 'Event#', value: event.id.toUpperCase()),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            color: const Color(0xfffff7ff),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: const [Expanded(child: Text('Menu Items', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900))), Icon(Icons.chevron_right)]),
+              const SizedBox(height: 8),
+              Text('$menuCount menu slots • $menuItems selected items', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              ...event.dates.take(4).map((date) => Text('${date.date}: ${date.menuSlots.map((slot) => '${slot.type} ${slot.pax} pax').join(', ')}', style: const TextStyle(fontWeight: FontWeight.w700))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            color: const Color(0xfffff7ff),
+            child: Column(children: [
+              AmountLine('Subtotal', money(total)),
+              const AmountLine('Tax', '₹0'),
+              const Divider(height: 18),
+              AmountLine('Grand Total', money(total), strong: true),
+              AmountLine('Advance / Paid Till Now', money(paid), color: Cp.tertiaryContainer),
+              if (isInvoice) AmountLine('Payment Made', money(currentPayment), color: Cp.tertiaryContainer),
+              const Divider(height: 18),
+              AmountLine('Pending', money(pending), color: pending == 0 ? Cp.tertiaryContainer : Cp.error, strong: true),
+            ]),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          color: Cp.surface,
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Row(children: [
+            Expanded(
+              child: FilledButton(
+                onPressed: pending == 0 ? null : () => requestPayment(context),
+                style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000), disabledBackgroundColor: Cp.surfaceHigh),
+                child: Text(pending == 0 ? 'Payment Complete' : 'Request Payment', style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ),
+            const SizedBox(width: 10),
+            IconButton.filledTonal(onPressed: () => download(context), icon: const Icon(Icons.download)),
+            const SizedBox(width: 8),
+            IconButton.filledTonal(onPressed: () => shareOverWhatsApp(context), icon: const Icon(Icons.chat)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class DetailNavTile extends StatelessWidget {
+  const DetailNavTile({super.key, required this.iconText, required this.label, required this.value});
+  final String iconText, label, value;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          color: const Color(0xfffff7ff),
+          child: Row(children: [
+            CircleAvatar(backgroundColor: Cp.surfaceHigh, child: Text(iconText, style: const TextStyle(fontWeight: FontWeight.w900))),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800)), Text(value, style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800))])),
+            const Icon(Icons.chevron_right, color: Cp.onVariant),
+          ]),
+        ),
+      );
+}
+
+class SmallInfoBlock extends StatelessWidget {
+  const SmallInfoBlock({super.key, required this.label, required this.value});
+  final String label, value;
+  @override
+  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontWeight: FontWeight.w900)), Text(value, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))]);
+}
+
+class AmountLine extends StatelessWidget {
+  const AmountLine(this.label, this.value, {super.key, this.color, this.strong = false});
+  final String label, value;
+  final Color? color;
+  final bool strong;
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5),
+        child: Row(children: [
+          Expanded(child: Text(label, style: TextStyle(color: color ?? Cp.onVariant, fontWeight: strong ? FontWeight.w900 : FontWeight.w700))),
+          Text(value, style: TextStyle(color: color ?? Cp.onSurface, fontWeight: strong ? FontWeight.w900 : FontWeight.w700)),
+        ]),
       );
 }
 
