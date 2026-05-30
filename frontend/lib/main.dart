@@ -30,7 +30,7 @@ class CaterProApp extends StatelessWidget {
         ),
         textTheme: textTheme.apply(bodyColor: Cp.onSurface, displayColor: Cp.onSurface),
       ),
-      home: const LoginScreen(),
+      home: const AuthGate(),
     );
   }
 }
@@ -119,6 +119,16 @@ class AuthSession {
 }
 
 class AuthService {
+  Future<AuthSession?> savedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token');
+    final userId = prefs.getString('auth.userId');
+    final email = prefs.getString('auth.email');
+    final name = prefs.getString('auth.name');
+    if (token == null || token.isEmpty || userId == null || email == null || name == null) return null;
+    return AuthSession(token: token, userId: userId, email: email, name: name);
+  }
+
   Future<AuthSession> login({required String email, required String password}) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/login'),
@@ -145,6 +155,50 @@ class AuthService {
       headers: const {'Content-Type': 'application/json'},
       body: jsonEncode({'email': email}),
     );
+  }
+
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth.token');
+    await prefs.remove('auth.userId');
+    await prefs.remove('auth.email');
+    await prefs.remove('auth.name');
+  }
+}
+
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  final auth = AuthService();
+  bool checking = true;
+  bool loggedIn = false;
+
+  @override
+  void initState() {
+    super.initState();
+    restore();
+  }
+
+  Future<void> restore() async {
+    final session = await auth.savedSession();
+    if (!mounted) return;
+    setState(() {
+      loggedIn = session != null;
+      checking = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (checking) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator(color: Cp.primary)));
+    }
+    return loggedIn ? const AppShell() : const LoginScreen();
   }
 }
 
@@ -218,19 +272,23 @@ class AppEventDate {
 }
 
 class AppMenuSlot {
-  const AppMenuSlot({required this.id, required this.type, required this.pax, required this.pricePerPax, required this.menuItemIds});
+  const AppMenuSlot({required this.id, required this.type, required this.time, required this.pax, required this.pricePerPax, required this.enabled, required this.menuItemIds});
   final String id;
   final String type;
+  final String time;
   final int pax;
   final int pricePerPax;
+  final bool enabled;
   final List<String> menuItemIds;
 
   factory AppMenuSlot.fromJson(Map<String, dynamic> json) {
     return AppMenuSlot(
       id: json['id'] as String? ?? '',
       type: json['type'] as String? ?? '',
+      time: json['time'] as String? ?? '',
       pax: (json['pax'] as num?)?.toInt() ?? 0,
       pricePerPax: (json['pricePerPax'] as num?)?.toInt() ?? 0,
+      enabled: json['enabled'] != false,
       menuItemIds: ((json['menuItemIds'] as List?) ?? []).map((item) => item.toString()).toList(),
     );
   }
@@ -326,6 +384,16 @@ class ApiService {
     return AppEvent.fromJson(jsonDecode(loaded.body) as Map<String, dynamic>);
   }
 
+  Future<AppEvent> saveEventDraft(EventDraft draft, {String? eventId}) async {
+    final headers = await authHeaders();
+    final body = jsonEncode(draft.toJson());
+    final response = eventId == null || eventId.isEmpty
+        ? await http.post(Uri.parse('${ApiConfig.baseUrl}/events'), headers: headers, body: body)
+        : await http.put(Uri.parse('${ApiConfig.baseUrl}/events/$eventId'), headers: headers, body: body);
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save event draft');
+    return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<AppEvent> recordPayment(String eventId, {required int amount, required String date, required String mode, required String reference, required bool settled, required int settledDiscount}) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/events/$eventId/payments'),
@@ -355,12 +423,38 @@ int eventSettledDiscount(AppEvent event) => event.payments.fold(0, (sum, payment
 int eventBalance(AppEvent event) => (eventTotal(event) - eventPaid(event) - eventSettledDiscount(event)).clamp(0, eventTotal(event));
 
 class EventDraft {
+  String? id;
   String name = '';
   String client = '';
   String mobile = '';
   String venue = '';
   String notes = '';
   final List<DraftDateConfig> dates = [];
+
+  EventDraft();
+
+  factory EventDraft.fromEvent(AppEvent event) {
+    final draft = EventDraft()
+      ..id = event.id
+      ..name = event.name
+      ..client = event.primaryClient
+      ..mobile = event.mobile
+      ..venue = event.venue
+      ..notes = event.notes;
+    draft.dates.addAll(event.dates.map(DraftDateConfig.fromEventDate));
+    return draft;
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (id != null && id!.isNotEmpty) 'id': id,
+        'name': name,
+        'primaryClient': client,
+        'mobile': mobile,
+        'venue': venue,
+        'notes': notes,
+        'status': 'draft',
+        'dates': dates.map((date) => date.toJson()).toList(),
+      };
 }
 
 String normalizeMobileNumber(String value) {
@@ -404,11 +498,27 @@ String readableDateLabel(String isoDate) {
 }
 
 class DraftDateConfig {
-  DraftDateConfig({required this.date, this.label = ''});
+  DraftDateConfig({this.id, required this.date, this.label = ''});
+  String? id;
   String date;
   String label;
   final List<MealSlotConfig> slots = [];
   final List<Map<String, dynamic>> additionalServices = [];
+
+  factory DraftDateConfig.fromEventDate(AppEventDate date) {
+    final config = DraftDateConfig(id: date.id, date: date.date, label: date.label);
+    config.slots.addAll(date.menuSlots.map(MealSlotConfig.fromEventSlot));
+    config.additionalServices.addAll(date.additionalServices.map((service) => Map<String, dynamic>.from(service)));
+    return config;
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (id != null && id!.isNotEmpty) 'id': id,
+        'date': date,
+        'label': label,
+        'menuSlots': slots.map((slot) => slot.toJson()).toList(),
+        'additionalServices': additionalServices,
+      };
 }
 
 class LoginScreen extends StatefulWidget {
@@ -562,6 +672,8 @@ class _AppShellState extends State<AppShell> {
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
   String? selectedEventId;
+  AppEvent? editingEvent;
+  int createSession = 0;
 
   @override
   void initState() {
@@ -603,11 +715,17 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> createEvent(EventDraft draft) async {
-    final event = await api.createEvent(draft);
+    final event = await api.saveEventDraft(draft, eventId: draft.id);
     setState(() {
-      events.add(event);
+      final index = events.indexWhere((item) => item.id == event.id);
+      if (index == -1) {
+        events.add(event);
+      } else {
+        events[index] = event;
+      }
       selectedEventId = event.id;
       tab = 1;
+      editingEvent = null;
     });
   }
 
@@ -627,6 +745,24 @@ class _AppShellState extends State<AppShell> {
         events[index] = event;
       }
       selectedEventId = event.id;
+    });
+  }
+
+  void openCreateEvent() {
+    setState(() {
+      editingEvent = null;
+      selectedEventId = null;
+      createSession++;
+      tab = 5;
+    });
+  }
+
+  void openEditEvent(AppEvent event) {
+    setState(() {
+      editingEvent = event;
+      selectedEventId = event.id;
+      createSession++;
+      tab = 5;
     });
   }
 
@@ -658,13 +794,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   List<Widget> get pages => <Widget>[
-    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), openDetails: openEventDetails, refresh: refreshEvents),
-    EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
+    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
+    EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     const ClientsScreen(),
     BillingScreen(events: events, api: api),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
-    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
-    EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
+    CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
+    EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
     EmployeeScreen(onClose: () => setState(() => tab = 4)),
@@ -689,7 +825,7 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: Cp.secondaryContainer,
       foregroundColor: Color(0xff694000),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onPressed: () => setState(() => tab = tab == 0 || tab == 1 ? 5 : tab),
+      onPressed: () => tab == 0 || tab == 1 ? openCreateEvent() : setState(() => tab = tab),
       child: Icon(icons[tab]),
     );
   }
@@ -2070,7 +2206,15 @@ class SettingsScreen extends StatelessWidget {
         SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees}),
         SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')]),
         SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')]),
-        const Center(child: Padding(padding: EdgeInsets.all(18), child: Text('Logout', style: TextStyle(color: Cp.error, fontSize: 16, fontWeight: FontWeight.w800)))),
+        Center(
+          child: TextButton(
+            onPressed: () async {
+              await AuthService().logout();
+              if (context.mounted) Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+            },
+            child: const Padding(padding: EdgeInsets.all(18), child: Text('Logout', style: TextStyle(color: Cp.error, fontSize: 16, fontWeight: FontWeight.w800))),
+          ),
+        ),
       ],
     );
   }
@@ -2410,7 +2554,9 @@ class EditableInlineField extends StatelessWidget {
 }
 
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.customMenus, required this.customerEvents, required this.onSaveService, required this.onDeleteService});
+  const CreateEventScreen({super.key, this.initialEvent, required this.onDraftSaved, required this.onClose, required this.onCreate, required this.services, required this.customMenus, required this.customerEvents, required this.onSaveService, required this.onDeleteService});
+  final AppEvent? initialEvent;
+  final ValueChanged<AppEvent> onDraftSaved;
   final VoidCallback onClose;
   final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
@@ -2424,10 +2570,18 @@ class CreateEventScreen extends StatefulWidget {
 }
 
 class _CreateEventScreenState extends State<CreateEventScreen> {
+  final api = ApiService();
   int step = 0;
   bool saving = false;
+  bool autosaving = false;
   String? error;
-  final draft = EventDraft();
+  late final EventDraft draft;
+
+  @override
+  void initState() {
+    super.initState();
+    draft = widget.initialEvent == null ? EventDraft() : EventDraft.fromEvent(widget.initialEvent!);
+  }
 
   List<CustomerSuggestion> get customerSuggestions {
     final byMobile = <String, CustomerSuggestion>{};
@@ -2455,7 +2609,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     try {
       await widget.onCreate(draft);
       if (!mounted) return;
-      showCpSnack(context, 'Event created');
+      showCpSnack(context, widget.initialEvent == null ? 'Event created' : 'Event updated');
     } catch (e) {
       if (!mounted) return;
       setState(() => error = e.toString().replaceFirst('Exception: ', ''));
@@ -2473,7 +2627,31 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return null;
   }
 
-  void goNext() {
+  Future<bool> autosaveDraft() async {
+    if (autosaving) return true;
+    final detailsError = validateDetails();
+    if (detailsError != null) {
+      setState(() => error = detailsError);
+      return false;
+    }
+    setState(() {
+      autosaving = true;
+      error = null;
+    });
+    try {
+      final saved = await api.saveEventDraft(draft, eventId: draft.id);
+      draft.id = saved.id;
+      widget.onDraftSaved(saved);
+      return true;
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      return false;
+    } finally {
+      if (mounted) setState(() => autosaving = false);
+    }
+  }
+
+  Future<void> goNext() async {
     if (step == 0) {
       final detailsError = validateDetails();
       if (detailsError != null) {
@@ -2481,6 +2659,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         return;
       }
     }
+    final saved = await autosaveDraft();
+    if (!saved || !mounted) return;
     setState(() {
       error = null;
       step++;
@@ -2491,14 +2671,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Widget build(BuildContext context) {
     return ScreenFrame(
       bottomPadding: 24,
-      topBar: TopBar(title: step == 2 ? 'Menu Configuration' : 'Create Event', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+      topBar: TopBar(
+        title: step == 2 ? 'Menu Configuration' : widget.initialEvent == null ? 'Create Event' : 'Edit Event',
+        avatar: false,
+        leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+        actions: [if (autosaving) const Padding(padding: EdgeInsets.only(right: 14), child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Cp.primary))))],
+      ),
       children: [
         StepperHeader(active: step),
         const SizedBox(height: 24),
         if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
         if (step == 0) CreateDetailsStep(draft: draft, customers: customerSuggestions, onChanged: () => setState(() => error = null)),
-        if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () => setState(() {})),
-        if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, customMenus: widget.customMenus, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
+        if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () { setState(() {}); autosaveDraft(); }),
+        if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, customMenus: widget.customMenus, onChanged: () => autosaveDraft(), onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
         if (step == 3) CreateReviewStep(draft: draft),
         const SizedBox(height: 20),
         Row(
@@ -2510,9 +2695,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               child: SizedBox(
                 height: 56,
                 child: FilledButton.icon(
-                  onPressed: saving ? null : () => step == 3 ? save() : goNext(),
+                  onPressed: saving || autosaving ? null : () => step == 3 ? save() : goNext(),
                   style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
-                  label: Text(saving ? 'Saving...' : step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : 'Create Event', style: const TextStyle(fontWeight: FontWeight.w900)),
+                  label: Text(saving ? 'Saving...' : step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : widget.initialEvent == null ? 'Create Event' : 'Save Event', style: const TextStyle(fontWeight: FontWeight.w900)),
                   icon: Icon(step == 3 ? Icons.check : Icons.arrow_forward),
                 ),
               ),
@@ -2694,10 +2879,11 @@ class DateScheduleCard extends StatelessWidget {
 }
 
 class CreateMenuStep extends StatefulWidget {
-  const CreateMenuStep({super.key, required this.dates, required this.services, required this.customMenus, required this.onSaveService, required this.onDeleteService});
+  const CreateMenuStep({super.key, required this.dates, required this.services, required this.customMenus, required this.onChanged, required this.onSaveService, required this.onDeleteService});
   final List<DraftDateConfig> dates;
   final List<AdditionalServiceItem> services;
   final List<CustomMenu> customMenus;
+  final VoidCallback onChanged;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
 
@@ -2746,11 +2932,11 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
               key: ValueKey('${config.label}-${slot.type}'),
               slot: slot,
               items: selectedMenuTitles(slot),
-              onEnabledChanged: (value) => setState(() => slot.enabled = value),
-              onPaxChanged: (value) => setState(() => slot.pax = value),
-              onPriceChanged: (value) => setState(() => slot.pricePerPax = int.tryParse(value) ?? 0),
+              onEnabledChanged: (value) { setState(() => slot.enabled = value); widget.onChanged(); },
+              onPaxChanged: (value) { setState(() => slot.pax = value); widget.onChanged(); },
+              onPriceChanged: (value) { setState(() => slot.pricePerPax = int.tryParse(value) ?? 0); widget.onChanged(); },
               onEditMenu: () => openMenuPicker(slot),
-              onDelete: () => setState(() => config.slots.remove(slot)),
+              onDelete: () { setState(() => config.slots.remove(slot)); widget.onChanged(); },
             )),
       const SizedBox(height: 4),
       DashedAction(label: 'Add Menu Type', icon: Icons.add_circle, onTap: openMealTypePicker),
@@ -2762,7 +2948,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       else
         ...config.additionalServices.map((service) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: CpCard(child: Row(children: [Expanded(child: Text('${service['name'] ?? ''}\n${service['quantity'] ?? 0} ${service['unit'] ?? ''} • ₹${service['price'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () => setState(() => config.additionalServices.remove(service)), icon: const Icon(Icons.delete, color: Cp.error))])),
+              child: CpCard(child: Row(children: [Expanded(child: Text('${service['name'] ?? ''}\n${service['quantity'] ?? 0} ${service['unit'] ?? ''} • ₹${service['price'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () { setState(() => config.additionalServices.remove(service)); widget.onChanged(); }, icon: const Icon(Icons.delete, color: Cp.error))])),
             )),
       const SizedBox(height: 12),
       DashedAction(label: 'Add Service', icon: Icons.add_circle, onTap: openServicePicker),
@@ -2781,7 +2967,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           meal: slot.type,
           selectedIds: slot.selectedMenuIds,
           customMenus: widget.customMenus,
-          onChanged: (ids) => setState(() => slot.selectedMenuIds = {...ids}),
+          onChanged: (ids) { setState(() => slot.selectedMenuIds = {...ids}); widget.onChanged(); },
         ),
       ),
     );
@@ -2825,6 +3011,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                         ? null
                         : () {
                             setState(() => config.slots.add(MealSlotConfig(type: type.$1, time: type.$2, pax: '', pricePerPax: type.$3)));
+                            widget.onChanged();
                             Navigator.pop(context);
                           },
                     child: Row(children: [
@@ -2853,11 +3040,14 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       builder: (_) => ServicePickerSheet(
         services: widget.services,
         selectedIds: config.additionalServices.map((service) => service['serviceId'].toString()).toSet(),
-        onChanged: (ids) => setState(() {
-          config.additionalServices
-            ..clear()
-            ..addAll(widget.services.where((service) => ids.contains(service.id)).map((service) => {'serviceId': service.id, 'name': service.name, 'quantity': service.quantity, 'unit': service.unit, 'price': service.price}));
-        }),
+        onChanged: (ids) {
+          setState(() {
+            config.additionalServices
+              ..clear()
+              ..addAll(widget.services.where((service) => ids.contains(service.id)).map((service) => {'serviceId': service.id, 'name': service.name, 'quantity': service.quantity, 'unit': service.unit, 'price': service.price}));
+          });
+          widget.onChanged();
+        },
       ),
     );
   }
@@ -2874,14 +3064,29 @@ class DateMenuConfig {
 }
 
 class MealSlotConfig {
-  MealSlotConfig({required this.type, required this.time, required this.pax, required this.pricePerPax, Set<String>? selectedMenuIds, this.enabled = true}) : selectedMenuIds = selectedMenuIds ?? <String>{};
+  MealSlotConfig({this.id, required this.type, required this.time, required this.pax, required this.pricePerPax, Set<String>? selectedMenuIds, this.enabled = true}) : selectedMenuIds = selectedMenuIds ?? <String>{};
 
+  String? id;
   final String type;
   final String time;
   String pax;
   int pricePerPax;
   Set<String> selectedMenuIds;
   bool enabled;
+
+  factory MealSlotConfig.fromEventSlot(AppMenuSlot slot) {
+    return MealSlotConfig(id: slot.id, type: slot.type, time: slot.time, pax: slot.pax.toString(), pricePerPax: slot.pricePerPax, selectedMenuIds: slot.menuItemIds.toSet(), enabled: slot.enabled);
+  }
+
+  Map<String, dynamic> toJson() => {
+        if (id != null && id!.isNotEmpty) 'id': id,
+        'type': type,
+        'time': time,
+        'pax': int.tryParse(pax) ?? 0,
+        'pricePerPax': pricePerPax,
+        'enabled': enabled,
+        'menuItemIds': selectedMenuIds.toList(),
+      };
 }
 
 class ServicePickerSheet extends StatefulWidget {
@@ -3297,9 +3502,10 @@ class ShareMenuTile extends StatelessWidget {
 }
 
 class EventDetailsScreen extends StatelessWidget {
-  const EventDetailsScreen({super.key, required this.event, required this.api, required this.onEventUpdated, required this.onClose});
+  const EventDetailsScreen({super.key, required this.event, required this.api, required this.onEdit, required this.onEventUpdated, required this.onClose});
   final AppEvent? event;
   final ApiService api;
+  final ValueChanged<AppEvent> onEdit;
   final ValueChanged<AppEvent> onEventUpdated;
   final VoidCallback onClose;
 
@@ -3444,6 +3650,7 @@ class EventDetailsScreen extends StatelessWidget {
           avatar: false,
           leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
           actions: [
+            if (event != null) IconButton(onPressed: () => onEdit(event!), icon: const Icon(Icons.edit, color: Cp.primary), tooltip: 'Edit event'),
             PopupMenuButton<EventScreenAction>(
               icon: const Icon(Icons.more_vert, color: Cp.onVariant),
               tooltip: 'Event menu',
