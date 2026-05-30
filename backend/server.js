@@ -133,6 +133,11 @@ function money(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN')}`;
 }
 
+function serviceQuantityText(service) {
+  const quantity = Number(service.quantity || 0);
+  return quantity > 0 ? `${quantity} ${service.unit || ''}`.trim() : '';
+}
+
 function eventTotals(event) {
   const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
   const serviceTotal = event.dates.reduce((dateSum, date) => dateSum + date.additionalServices.reduce((svcSum, service) => svcSum + Number(service.price || 0), 0), 0);
@@ -164,17 +169,29 @@ function firstExistingPath(paths) {
 }
 
 function configurePdfFonts(doc) {
+  const latinRegular = firstExistingPath([
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans', 'files', 'noto-sans-latin-400-normal.woff'),
+    'C:\\Windows\\Fonts\\segoeui.ttf',
+    'C:\\Windows\\Fonts\\arial.ttf',
+  ]);
+  const latinBold = firstExistingPath([
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans', 'files', 'noto-sans-latin-700-normal.woff'),
+    'C:\\Windows\\Fonts\\segoeuib.ttf',
+    'C:\\Windows\\Fonts\\arialbd.ttf',
+  ]);
   const kannadaRegular = firstExistingPath([
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-400-normal.woff'),
   ]);
   const kannadaBold = firstExistingPath([
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-700-normal.woff'),
   ]);
+  if (latinRegular) doc.registerFont('LatinRegular', latinRegular);
+  if (latinBold) doc.registerFont('LatinBold', latinBold);
   if (kannadaRegular) doc.registerFont('KannadaRegular', kannadaRegular);
   if (kannadaBold) doc.registerFont('KannadaBold', kannadaBold);
   return {
-    regular: 'Helvetica',
-    bold: 'Helvetica-Bold',
+    regular: latinRegular ? 'LatinRegular' : 'Helvetica',
+    bold: latinBold ? 'LatinBold' : 'Helvetica-Bold',
     kannada: kannadaRegular ? 'KannadaRegular' : 'Helvetica',
     kannadaBold: kannadaBold ? 'KannadaBold' : 'Helvetica-Bold',
   };
@@ -243,9 +260,10 @@ function generateEventPdf({ res, db, event, type }) {
     }
     for (const service of date.additionalServices) {
       y = ensurePageSpace(doc, y, 30);
+      const quantityText = serviceQuantityText(service);
       doc.fillColor('#202124').font(fonts.regular).fontSize(9)
         .text(`Additional Service: ${service.name}`, 52, y, { width: 250 })
-        .text(`${service.quantity || 0} ${service.unit || ''}`, 312, y, { width: 45, align: 'right' })
+        .text(quantityText, 312, y, { width: 45, align: 'right' })
         .text('-', 370, y, { width: 70, align: 'right' })
         .text(money(service.price), 456, y, { width: 86, align: 'right' });
       y += 24;
@@ -351,7 +369,8 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel }) {
     y += 16;
     doc.fillColor('#202124').font(fonts.regular).fontSize(8);
     date.additionalServices.forEach((service) => {
-      doc.text(`• ${service.name} - ${service.quantity || 0} ${service.unit || ''}`, 60, y, { width: 430 });
+      const quantityText = serviceQuantityText(service);
+      doc.text(`• ${service.name}${quantityText ? ` - ${quantityText}` : ''}`, 60, y, { width: 430 });
       y += 13;
     });
   }

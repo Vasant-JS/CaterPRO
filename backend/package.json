@@ -12,6 +12,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@fontsource/noto-sans": "^5.2.10",
     "@fontsource/noto-sans-kannada": "^5.2.9",
     "express": "^5.2.1",
     "pdfkit": "^0.18.0",

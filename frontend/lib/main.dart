@@ -415,6 +415,17 @@ class ApiService {
 
 String money(int value) => '₹${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (match) => ',')}';
 
+String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
+  final count = quantity is num ? quantity.toInt() : int.tryParse(quantity?.toString() ?? '') ?? 0;
+  final amount = price is num ? price.toInt() : int.tryParse(price?.toString() ?? '') ?? 0;
+  final parts = <String>[];
+  if (count > 0) parts.add('$count ${unit?.toString() ?? ''}'.trim());
+  if (amount > 0) parts.add(money(amount));
+  return parts.isEmpty ? name : '$name\n${parts.join(' • ')}';
+}
+
+String additionalServiceLine(Map<String, dynamic> service) => serviceLine(service['name']?.toString() ?? '', service['quantity'], service['unit'], service['price']);
+
 int eventMenuTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.menuSlots.fold(0, (slotSum, slot) => slotSum + slot.pax * slot.pricePerPax));
 int eventServiceTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.additionalServices.fold(0, (sum, service) => sum + ((service['price'] as num?)?.toInt() ?? 0)));
 int eventTotal(AppEvent event) => eventMenuTotal(event) + eventServiceTotal(event);
@@ -1572,7 +1583,7 @@ class EventListCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 18, color: Cp.primary, fontWeight: FontWeight.w800)), Row(children: [const Icon(Icons.person, size: 16, color: Cp.onVariant), Flexible(child: Text(' $client â€¢ $phone', overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600)))])])),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 18, color: Cp.primary, fontWeight: FontWeight.w800)), Row(children: [const Icon(Icons.person, size: 16, color: Cp.onVariant), Flexible(child: Text(' $client • $phone', overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600)))])])),
               Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Pill(status, color: pending ? Cp.secondaryContainer : Cp.tertiaryFixed, textColor: pending ? Color(0xff694000) : Color(0xff00210c)), const SizedBox(height: 6), Text(amount, style: const TextStyle(color: Cp.primaryContainer, fontWeight: FontWeight.w900)), Text(balance, style: TextStyle(color: balance.startsWith('Paid') ? Cp.tertiary : Cp.error, fontWeight: FontWeight.w800, fontSize: 12))]),
             ]),
             const SizedBox(height: 14),
@@ -2441,7 +2452,7 @@ class AdditionalServiceManagerSheet extends StatelessWidget {
                     child: Row(children: [
                       const Icon(Icons.room_service, color: Cp.secondary),
                       const SizedBox(width: 12),
-                      Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                      Expanded(child: Text(serviceLine(service.name, service.quantity, service.unit, service.price), style: const TextStyle(fontWeight: FontWeight.w800))),
                       IconButton(onPressed: () => showServiceEditor(context, service: service, onSave: onSave), icon: const Icon(Icons.edit, color: Cp.primary)),
                       IconButton(onPressed: () => onDelete(service.id), icon: const Icon(Icons.delete, color: Cp.error)),
                     ]),
@@ -2948,7 +2959,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       else
         ...config.additionalServices.map((service) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: CpCard(child: Row(children: [Expanded(child: Text('${service['name'] ?? ''}\n${service['quantity'] ?? 0} ${service['unit'] ?? ''} • ₹${service['price'] ?? 0}', style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () { setState(() => config.additionalServices.remove(service)); widget.onChanged(); }, icon: const Icon(Icons.delete, color: Cp.error))])),
+              child: CpCard(child: Row(children: [Expanded(child: Text(additionalServiceLine(service), style: const TextStyle(fontWeight: FontWeight.w800))), IconButton(onPressed: () { setState(() => config.additionalServices.remove(service)); widget.onChanged(); }, icon: const Icon(Icons.delete, color: Cp.error))])),
             )),
       const SizedBox(height: 12),
       DashedAction(label: 'Add Service', icon: Icons.add_circle, onTap: openServicePicker),
@@ -3039,12 +3050,12 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       backgroundColor: Colors.transparent,
       builder: (_) => ServicePickerSheet(
         services: widget.services,
-        selectedIds: config.additionalServices.map((service) => service['serviceId'].toString()).toSet(),
-        onChanged: (ids) {
+        selectedServices: config.additionalServices,
+        onChanged: (selectedServices) {
           setState(() {
             config.additionalServices
               ..clear()
-              ..addAll(widget.services.where((service) => ids.contains(service.id)).map((service) => {'serviceId': service.id, 'name': service.name, 'quantity': service.quantity, 'unit': service.unit, 'price': service.price}));
+              ..addAll(selectedServices);
           });
           widget.onChanged();
         },
@@ -3090,10 +3101,10 @@ class MealSlotConfig {
 }
 
 class ServicePickerSheet extends StatefulWidget {
-  const ServicePickerSheet({super.key, required this.services, required this.selectedIds, required this.onChanged});
+  const ServicePickerSheet({super.key, required this.services, required this.selectedServices, required this.onChanged});
   final List<AdditionalServiceItem> services;
-  final Set<String> selectedIds;
-  final ValueChanged<Set<String>> onChanged;
+  final List<Map<String, dynamic>> selectedServices;
+  final ValueChanged<List<Map<String, dynamic>>> onChanged;
 
   @override
   State<ServicePickerSheet> createState() => _ServicePickerSheetState();
@@ -3101,11 +3112,25 @@ class ServicePickerSheet extends StatefulWidget {
 
 class _ServicePickerSheetState extends State<ServicePickerSheet> {
   late Set<String> selectedIds;
+  final quantityControllers = <String, TextEditingController>{};
 
   @override
   void initState() {
     super.initState();
-    selectedIds = {...widget.selectedIds};
+    selectedIds = widget.selectedServices.map((service) => service['serviceId'].toString()).toSet();
+    for (final service in widget.services) {
+      final selected = widget.selectedServices.where((item) => item['serviceId'] == service.id).firstOrNull;
+      final quantity = (selected?['quantity'] as num?)?.toInt() ?? service.quantity;
+      quantityControllers[service.id] = TextEditingController(text: quantity > 0 ? '$quantity' : '');
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final controller in quantityControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
   }
 
   @override
@@ -3138,10 +3163,23 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                 return CpCard(
                   color: selected ? Cp.primaryFixed : Cp.card,
                   onTap: () => setState(() => selected ? selectedIds.remove(service.id) : selectedIds.add(service.id)),
-                  child: Row(children: [
-                    Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? Cp.primary : Cp.outline),
+                  child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Padding(padding: const EdgeInsets.only(top: 10), child: Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? Cp.primary : Cp.outline)),
                     const SizedBox(width: 12),
-                    Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                    Expanded(child: Text(serviceLine(service.name, int.tryParse(quantityControllers[service.id]?.text ?? '') ?? service.quantity, service.unit, service.price), style: const TextStyle(fontWeight: FontWeight.w800))),
+                    if (selected) ...[
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 96,
+                        child: TextField(
+                          controller: quantityControllers[service.id],
+                          keyboardType: TextInputType.number,
+                          decoration: InputDecoration(labelText: 'Count', isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(10))),
+                          onTap: () {},
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
                   ]),
                 );
               },
@@ -3154,7 +3192,10 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
               onPressed: () {
-                widget.onChanged(selectedIds);
+                widget.onChanged(widget.services.where((service) => selectedIds.contains(service.id)).map((service) {
+                  final quantity = int.tryParse(quantityControllers[service.id]?.text.trim() ?? '') ?? 0;
+                  return {'serviceId': service.id, 'name': service.name, 'quantity': quantity, 'unit': service.unit, 'price': service.price};
+                }).toList());
                 Navigator.pop(context);
               },
               child: const Text('Apply Services', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -3179,7 +3220,7 @@ class AdditionalServiceCard extends StatelessWidget {
           child: Row(children: [
             const Icon(Icons.flatware, color: Cp.secondary),
             const SizedBox(width: 12),
-            Expanded(child: Text('${service.name}\n${service.quantity} ${service.unit} • ₹${service.price}', style: const TextStyle(fontWeight: FontWeight.w800))),
+            Expanded(child: Text(serviceLine(service.name, service.quantity, service.unit, service.price), style: const TextStyle(fontWeight: FontWeight.w800))),
             IconButton(onPressed: () => onDelete(service.id), icon: const Icon(Icons.delete, color: Cp.error)),
           ]),
         ),
