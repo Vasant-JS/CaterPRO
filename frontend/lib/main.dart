@@ -902,6 +902,7 @@ class DashboardScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final totalDates = events.fold<int>(0, (sum, event) => sum + event.dates.length);
     final totalSlots = events.fold<int>(0, (sum, event) => sum + event.dates.fold<int>(0, (dateSum, date) => dateSum + date.menuSlots.length));
+    final paidTotal = events.fold<int>(0, (sum, event) => sum + eventPaid(event));
     return ScreenFrame(
       topBar: TopBar(
         title: 'CaterPro',
@@ -913,21 +914,23 @@ class DashboardScreen extends StatelessWidget {
           CpCard(color: Cp.errorContainer, child: Text(loadError!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
           const SizedBox(height: 12),
         ],
-        GridView.count(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          crossAxisCount: 2,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 1.3,
-          children: [
-            MetricCard(label: 'Events', value: '${events.length}', note: loading ? 'Loading...' : 'Created by you', icon: Icons.calendar_month, color: Cp.card, valueColor: Cp.primary),
-            MetricCard(label: 'Dates', value: '$totalDates', note: 'Across events', icon: Icons.today, color: Cp.primaryFixed.withValues(alpha: .5), valueColor: Cp.primary),
-            MetricCard(label: 'Menus', value: '$totalSlots', note: 'Configured slots', icon: Icons.restaurant_menu, color: Cp.secondaryFixed, valueColor: Cp.secondary),
-            MetricCard(label: 'Payments', value: '0', note: 'API-backed', icon: Icons.payments, color: Cp.tertiaryFixed.withValues(alpha: .4), valueColor: Cp.tertiary),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) => GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: constraints.maxWidth > 720 ? 4 : 2,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+            childAspectRatio: constraints.maxWidth > 720 ? 2.7 : 2.35,
+            children: [
+              MetricCard(label: 'Events', value: '${events.length}', note: loading ? 'Loading...' : 'Created', icon: Icons.calendar_month, color: Cp.card, valueColor: Cp.primary),
+              MetricCard(label: 'Dates', value: '$totalDates', note: 'Event dates', icon: Icons.today, color: Cp.primaryFixed.withValues(alpha: .5), valueColor: Cp.primary),
+              MetricCard(label: 'Menus', value: '$totalSlots', note: 'Menu slots', icon: Icons.restaurant_menu, color: Cp.secondaryFixed, valueColor: Cp.secondary),
+              MetricCard(label: 'Payments', value: money(paidTotal), note: 'Collected', icon: Icons.payments, color: Cp.tertiaryFixed.withValues(alpha: .4), valueColor: Cp.tertiary),
+            ],
+          ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 18),
         Row(
           children: [
             const Expanded(child: Text('Events', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
@@ -983,15 +986,18 @@ class MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return CpCard(
       color: color,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
         children: [
-          Row(children: [Expanded(child: Text(label, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))), Icon(icon, color: valueColor)]),
-          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(value, style: TextStyle(fontSize: 21, color: valueColor, fontWeight: FontWeight.w800)),
-            Text(note, style: TextStyle(fontSize: 10, color: valueColor, fontWeight: FontWeight.w800)),
-          ]),
+          Container(width: 34, height: 34, decoration: BoxDecoration(color: valueColor.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: valueColor, size: 19)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800)),
+              Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 17, color: valueColor, fontWeight: FontWeight.w900)),
+              Text(note, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 9, color: valueColor, fontWeight: FontWeight.w800)),
+            ]),
+          ),
         ],
       ),
     );
