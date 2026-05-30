@@ -52,7 +52,7 @@ function requireUser(req, res, db) {
 }
 
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], additionalServices: [], payments: [] };
+  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [] };
 }
 
 function ensureUniversal(db) {
@@ -401,6 +401,7 @@ const openApiSpec = {
     schemas: {
       LoginRequest: { type: 'object', required: ['email', 'password'], properties: { email: { type: 'string', example: 'admin@caterpro.in' }, password: { type: 'string', example: 'password' } } },
       MenuItem: { type: 'object', properties: { id: { type: 'string' }, english: { type: 'string' }, kannada: { type: 'string' }, title: { type: 'string' }, category: { type: 'string' }, meals: { type: 'array', items: { type: 'string' } }, veg: { type: 'boolean' } } },
+      CustomMenu: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } } } },
       RawMaterial: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, unit: { type: 'string' } } },
       Event: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, mobile: { type: 'string' }, venue: { type: 'string' }, dates: { type: 'array' } } },
     },
@@ -411,6 +412,8 @@ const openApiSpec = {
     '/api/bootstrap': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Load universal and user-owned data', responses: { 200: { description: 'Bootstrap data' }, 401: { description: 'Unauthorized' } } } },
     '/api/menu-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal menu items', responses: { 200: { description: 'Menu items' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal menu item', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/MenuItem' } } } }, responses: { 201: { description: 'Created' } } } },
     '/api/menu-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal menu item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
+    '/api/custom-menus': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List ready made custom menus for the logged-in user', responses: { 200: { description: 'Custom menus' } } }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create ready made custom menu', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomMenu' } } } }, responses: { 201: { description: 'Created' } } } },
+    '/api/custom-menus/{id}': { put: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Update ready made custom menu', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/raw-materials': { get: { tags: ['Universal Catalogs'], summary: 'List universal raw materials', responses: { 200: { description: 'Raw materials' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal raw material', responses: { 201: { description: 'Created' } } } },
     '/api/raw-materials/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal raw material', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/events': { get: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'List user events', responses: { 200: { description: 'Events' } } }, post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Create full event shell', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Event' } } } }, responses: { 201: { description: 'Created' } } } },
@@ -431,7 +434,7 @@ const apiDocs = {
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
     universal: ['menuItems', 'rawMaterials'],
-    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'payments'],
+    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'payments'],
   },
 };
 
@@ -470,7 +473,52 @@ app.get('/api/bootstrap', (req, res) => {
   ensureUniversal(db);
   const user = requireUser(req, res, db);
   if (!user) return;
+  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
   res.json({ universal: db.universal, userData: db.userData[user.id] });
+});
+
+app.get('/api/custom-menus', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
+  res.json(db.userData[user.id].customMenus);
+});
+
+app.post('/api/custom-menus', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const menu = {
+    id: req.body.id || makeId('cmenu'),
+    name: req.body.name || '',
+    type: req.body.type || '',
+    itemIds: Array.isArray(req.body.itemIds) ? req.body.itemIds : [],
+    updatedAt: new Date().toISOString(),
+  };
+  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
+  upsertById(db.userData[user.id].customMenus, menu);
+  writeDb(db);
+  res.status(201).json(menu);
+});
+
+app.put('/api/custom-menus/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
+  const existing = db.userData[user.id].customMenus.find((menu) => menu.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Custom menu not found' });
+  const menu = {
+    ...existing,
+    ...req.body,
+    id: req.params.id,
+    itemIds: Array.isArray(req.body.itemIds) ? req.body.itemIds : existing.itemIds,
+    updatedAt: new Date().toISOString(),
+  };
+  upsertById(db.userData[user.id].customMenus, menu);
+  writeDb(db);
+  res.json(menu);
 });
 
 app.get('/api/menu-items', (req, res) => {

@@ -10,6 +10,7 @@ frontend/ios/Flutter/ephemeral/
 # Backend
 backend/node_modules/
 backend/api*.log
+backend/backend-run*.log
 
 # Local tooling
 .DS_Store

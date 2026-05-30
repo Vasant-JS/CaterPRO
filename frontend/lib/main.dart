@@ -87,6 +87,25 @@ class AdditionalServiceItem {
   }
 }
 
+class CustomMenu {
+  const CustomMenu({required this.id, required this.name, required this.type, required this.itemIds});
+  final String id;
+  final String name;
+  final String type;
+  final Set<String> itemIds;
+
+  factory CustomMenu.fromJson(Map<String, dynamic> json) {
+    return CustomMenu(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      itemIds: ((json['itemIds'] as List?) ?? []).map((item) => item.toString()).toSet(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'type': type, 'itemIds': itemIds.toList()};
+}
+
 class ApiConfig {
   static const baseUrl = String.fromEnvironment('CATERPRO_API_URL', defaultValue: 'http://127.0.0.1:8787/api');
 }
@@ -248,6 +267,23 @@ class ApiService {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final userData = (body['userData'] as Map?) ?? {};
     return ((userData['additionalServices'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AdditionalServiceItem.fromJson).toList();
+  }
+
+  Future<List<CustomMenu>> getCustomMenus() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/custom-menus'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load custom menus');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(CustomMenu.fromJson).toList();
+  }
+
+  Future<CustomMenu> saveCustomMenu(CustomMenu menu) async {
+    final creating = menu.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/custom-menus${creating ? '' : '/${menu.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(menu.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save custom menu');
+    return CustomMenu.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<AppEvent> createEvent(EventDraft draft) async {
@@ -524,6 +560,7 @@ class _AppShellState extends State<AppShell> {
   String? loadError;
   final List<AppEvent> events = [];
   final List<AdditionalServiceItem> services = [];
+  final List<CustomMenu> customMenus = [];
   String? selectedEventId;
 
   @override
@@ -541,6 +578,7 @@ class _AppShellState extends State<AppShell> {
       final loaded = await api.getEvents();
       final menuItems = await api.getMenuItems();
       final additionalServices = await api.getAdditionalServices();
+      final loadedCustomMenus = await api.getCustomMenus();
       if (!mounted) return;
       setState(() {
         events
@@ -552,6 +590,9 @@ class _AppShellState extends State<AppShell> {
         services
           ..clear()
           ..addAll(additionalServices);
+        customMenus
+          ..clear()
+          ..addAll(loadedCustomMenus);
       });
     } catch (e) {
       if (!mounted) return;
@@ -604,18 +645,31 @@ class _AppShellState extends State<AppShell> {
     setState(() => services.removeWhere((item) => item.id == id));
   }
 
+  Future<void> saveCustomMenu(CustomMenu menu) async {
+    final saved = await api.saveCustomMenu(menu);
+    setState(() {
+      final index = customMenus.indexWhere((item) => item.id == saved.id);
+      if (index == -1) {
+        customMenus.add(saved);
+      } else {
+        customMenus[index] = saved;
+      }
+    });
+  }
+
   List<Widget> get pages => <Widget>[
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
     const ClientsScreen(),
     BillingScreen(events: events, api: api),
-    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
-    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
+    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
+    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
     EmployeeScreen(onClose: () => setState(() => tab = 4)),
     RawMaterialScreen(onClose: () => setState(() => tab = 4)),
+    CustomMenuScreen(onClose: () => setState(() => tab = 4), customMenus: customMenus, onSave: saveCustomMenu),
   ];
 
   @override
@@ -1984,9 +2038,10 @@ class _MoneyCell extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openEmployees, required this.openRawMaterials, required this.services, required this.onSaveService, required this.onDeleteService});
+  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openCustomMenus, required this.openEmployees, required this.openRawMaterials, required this.services, required this.onSaveService, required this.onDeleteService});
   final VoidCallback openBusiness;
   final VoidCallback openMenu;
+  final VoidCallback openCustomMenus;
   final VoidCallback openEmployees;
   final VoidCallback openRawMaterials;
   final List<AdditionalServiceItem> services;
@@ -2011,7 +2066,7 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         SettingsGroup(title: 'Business', items: [(Icons.storefront, 'Business Profile')], onItemTap: {'Business Profile': openBusiness}),
-        SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials')], onItemTap: {'Menu Master': openMenu, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials}),
+        SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.fact_check, 'Custom Menus'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials')], onItemTap: {'Menu Master': openMenu, 'Custom Menus': openCustomMenus, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials}),
         SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees}),
         SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')]),
         SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')]),
@@ -2355,10 +2410,11 @@ class EditableInlineField extends StatelessWidget {
 }
 
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.customerEvents, required this.onSaveService, required this.onDeleteService});
+  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.customMenus, required this.customerEvents, required this.onSaveService, required this.onDeleteService});
   final VoidCallback onClose;
   final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
+  final List<CustomMenu> customMenus;
   final List<AppEvent> customerEvents;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
@@ -2442,7 +2498,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
         if (step == 0) CreateDetailsStep(draft: draft, customers: customerSuggestions, onChanged: () => setState(() => error = null)),
         if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () => setState(() {})),
-        if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
+        if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, customMenus: widget.customMenus, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
         if (step == 3) CreateReviewStep(draft: draft),
         const SizedBox(height: 20),
         Row(
@@ -2638,9 +2694,10 @@ class DateScheduleCard extends StatelessWidget {
 }
 
 class CreateMenuStep extends StatefulWidget {
-  const CreateMenuStep({super.key, required this.dates, required this.services, required this.onSaveService, required this.onDeleteService});
+  const CreateMenuStep({super.key, required this.dates, required this.services, required this.customMenus, required this.onSaveService, required this.onDeleteService});
   final List<DraftDateConfig> dates;
   final List<AdditionalServiceItem> services;
+  final List<CustomMenu> customMenus;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
 
@@ -2723,6 +2780,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
         builder: (_) => MenuPickerScreen(
           meal: slot.type,
           selectedIds: slot.selectedMenuIds,
+          customMenus: widget.customMenus,
           onChanged: (ids) => setState(() => slot.selectedMenuIds = {...ids}),
         ),
       ),
@@ -2924,9 +2982,10 @@ class AdditionalServiceCard extends StatelessWidget {
 }
 
 class MenuPickerScreen extends StatefulWidget {
-  const MenuPickerScreen({super.key, required this.meal, required this.selectedIds, required this.onChanged});
+  const MenuPickerScreen({super.key, required this.meal, required this.selectedIds, required this.customMenus, required this.onChanged});
   final String meal;
   final Set<String> selectedIds;
+  final List<CustomMenu> customMenus;
   final ValueChanged<Set<String>> onChanged;
 
   @override
@@ -2971,6 +3030,8 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          DashedAction(label: 'Select From Ready Made Menus', icon: Icons.fact_check, onTap: openReadyMadeMenuPicker),
+          const SizedBox(height: 12),
           TextField(
             decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search menu items', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
             onChanged: (value) => setState(() => query = value),
@@ -2992,6 +3053,54 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
             );
           }),
         ],
+      ),
+    );
+  }
+
+  void openReadyMadeMenuPicker() {
+    final menus = widget.customMenus.where((menu) => menu.type == widget.meal).toList()..sort((a, b) => a.name.compareTo(b.name));
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .72),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            Text('Ready Made ${widget.meal} Menus', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+            const Text('Selecting one will add all its items. You can still add extra items below.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 14),
+            if (menus.isEmpty)
+              const EmptyStateCard(title: 'No ready made menus', message: 'Add custom menus from Settings > Custom Menus.')
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: menus.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final menu = menus[index];
+                    return CpCard(
+                      onTap: () {
+                        setState(() => selectedIds.addAll(menu.itemIds));
+                        Navigator.pop(context);
+                        showCpSnack(context, '${menu.name} items selected');
+                      },
+                      child: Row(children: [
+                        const Icon(Icons.playlist_add_check, color: Cp.primary),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text('${menu.name}\n${menu.itemIds.length} items', style: const TextStyle(fontWeight: FontWeight.w900))),
+                      ]),
+                    );
+                  },
+                ),
+              ),
+          ]),
+        ),
       ),
     );
   }
@@ -3826,6 +3935,204 @@ class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
               child: const Text('Apply Meals', style: TextStyle(fontWeight: FontWeight.w900)),
             ),
           ),
+        ]),
+      ),
+    );
+  }
+}
+
+class CustomMenuScreen extends StatefulWidget {
+  const CustomMenuScreen({super.key, required this.onClose, required this.customMenus, required this.onSave});
+  final VoidCallback onClose;
+  final List<CustomMenu> customMenus;
+  final Future<void> Function(CustomMenu menu) onSave;
+
+  static const types = ['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Juice', 'Other'];
+
+  @override
+  State<CustomMenuScreen> createState() => _CustomMenuScreenState();
+}
+
+class _CustomMenuScreenState extends State<CustomMenuScreen> {
+  int selectedTypeIndex = 0;
+  bool saving = false;
+
+  String get selectedType => CustomMenuScreen.types[selectedTypeIndex];
+
+  List<CustomMenu> get visibleMenus {
+    return widget.customMenus.where((menu) => menu.type == selectedType).toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  Future<void> openEditor([CustomMenu? menu]) async {
+    final saved = await showModalBottomSheet<CustomMenu>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CustomMenuEditorSheet(type: selectedType, menu: menu),
+    );
+    if (saved == null) return;
+    setState(() => saving = true);
+    try {
+      await widget.onSave(saved);
+      if (mounted) showCpSnack(context, 'Custom menu saved');
+    } catch (e) {
+      if (mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(
+        title: 'Custom Menus',
+        avatar: false,
+        leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+        actions: [IconButton(onPressed: saving ? null : () => openEditor(), icon: const Icon(Icons.add, color: Cp.primary))],
+      ),
+      children: [
+        CpCard(color: Cp.primaryFixed, child: const Row(children: [Icon(Icons.fact_check, color: Cp.primary), SizedBox(width: 10), Expanded(child: Text('Ready made menu sets are saved under your user and can be applied during event menu selection.', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)))])),
+        const SizedBox(height: 14),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: List.generate(CustomMenuScreen.types.length, (index) {
+              final type = CustomMenuScreen.types[index];
+              final selected = index == selectedTypeIndex;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => setState(() => selectedTypeIndex = index),
+                  child: Pill(type, color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 14),
+        DashedAction(label: 'Add $selectedType Custom Menu', icon: Icons.add_circle, onTap: saving ? null : () => openEditor()),
+        const SizedBox(height: 14),
+        if (visibleMenus.isEmpty)
+          EmptyStateCard(title: 'No $selectedType custom menus', message: 'Tap + to create a ready made $selectedType menu.')
+        else
+          ...visibleMenus.map((menu) {
+            final names = MenuMasterScreen.menuItems.where((item) => menu.itemIds.contains(item.id)).map((item) => item.english).take(5).join(', ');
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: CpCard(
+                onTap: () => openEditor(menu),
+                child: Row(children: [
+                  const Icon(Icons.playlist_add_check, color: Cp.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(menu.name, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
+                      Text('${menu.itemIds.length} items${names.isEmpty ? '' : ' • $names'}', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                    ]),
+                  ),
+                  const Icon(Icons.edit, color: Cp.primary),
+                ]),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+}
+
+class CustomMenuEditorSheet extends StatefulWidget {
+  const CustomMenuEditorSheet({super.key, required this.type, this.menu});
+  final String type;
+  final CustomMenu? menu;
+
+  @override
+  State<CustomMenuEditorSheet> createState() => _CustomMenuEditorSheetState();
+}
+
+class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
+  late final name = TextEditingController(text: widget.menu?.name ?? '');
+  late Set<String> selectedIds = {...?widget.menu?.itemIds};
+  String query = '';
+  String? error;
+
+  @override
+  void dispose() {
+    name.dispose();
+    super.dispose();
+  }
+
+  List<MenuMasterItem> get visibleItems {
+    final normalized = query.trim().toLowerCase();
+    return MenuMasterScreen.menuItems.where((item) {
+      final mealList = item.meals.split(',').map((meal) => meal.trim()).toSet();
+      final typeMatches = widget.type == 'Other' ? mealList.contains('Other') || mealList.isEmpty : mealList.contains(widget.type);
+      final text = '${item.id} ${item.title} ${item.category} ${item.meals}'.toLowerCase();
+      return typeMatches && (normalized.isEmpty || text.contains(normalized));
+    }).toList()
+      ..sort((a, b) {
+        final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0).compareTo(selectedIds.contains(a.id) ? 1 : 0);
+        if (selectedCompare != 0) return selectedCompare;
+        return a.english.compareTo(b.english);
+      });
+  }
+
+  void save() {
+    final trimmed = name.text.trim();
+    if (trimmed.isEmpty) {
+      setState(() => error = 'Menu name is required.');
+      return;
+    }
+    if (selectedIds.isEmpty) {
+      setState(() => error = 'Select at least one menu item.');
+      return;
+    }
+    Navigator.pop(context, CustomMenu(id: widget.menu?.id ?? '', name: trimmed, type: widget.type, itemIds: selectedIds));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .9),
+        padding: EdgeInsets.fromLTRB(20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+          Text(widget.menu == null ? 'Add ${widget.type} Custom Menu' : 'Edit ${widget.type} Custom Menu', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)),
+          const Text('Pick the items that should be selected together.', style: TextStyle(color: Cp.onVariant)),
+          const SizedBox(height: 14),
+          EditableInlineField(label: 'Menu Name', controller: name),
+          TextField(
+            decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search ${widget.type} items', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+            onChanged: (value) => setState(() => query = value),
+          ),
+          if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+          const SizedBox(height: 12),
+          Flexible(
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: visibleItems.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final item = visibleItems[index];
+                final selected = selectedIds.contains(item.id);
+                return CpCard(
+                  color: selected ? Cp.primaryFixed : Cp.card,
+                  onTap: () => setState(() => selected ? selectedIds.remove(item.id) : selectedIds.add(item.id)),
+                  child: Row(children: [
+                    Icon(selected ? Icons.check_circle : Icons.circle_outlined, color: selected ? Cp.primary : Cp.outline),
+                    const SizedBox(width: 12),
+                    Expanded(child: Text('${item.title}\n${item.id} • ${item.category}', style: const TextStyle(fontWeight: FontWeight.w800))),
+                  ]),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Custom Menu', style: TextStyle(fontWeight: FontWeight.w900)))),
         ]),
       ),
     );
