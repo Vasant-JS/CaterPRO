@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart' as fp;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/services.dart';
@@ -104,6 +105,73 @@ class CustomMenu {
   }
 
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'type': type, 'itemIds': itemIds.toList()};
+}
+
+class BusinessProfile {
+  const BusinessProfile({
+    this.businessName = '',
+    this.serviceType = '',
+    this.gstin = '',
+    this.pan = '',
+    this.address = '',
+    this.phone = '',
+    this.email = '',
+    this.bankName = '',
+    this.accountNumber = '',
+    this.terms = '',
+    this.logoBase64 = '',
+    this.signatureBase64 = '',
+    this.qrBase64 = '',
+  });
+
+  final String businessName;
+  final String serviceType;
+  final String gstin;
+  final String pan;
+  final String address;
+  final String phone;
+  final String email;
+  final String bankName;
+  final String accountNumber;
+  final String terms;
+  final String logoBase64;
+  final String signatureBase64;
+  final String qrBase64;
+
+  factory BusinessProfile.fromJson(Map<String, dynamic>? json) {
+    final data = json ?? {};
+    return BusinessProfile(
+      businessName: data['businessName']?.toString() ?? '',
+      serviceType: data['serviceType']?.toString() ?? '',
+      gstin: data['gstin']?.toString() ?? '',
+      pan: data['pan']?.toString() ?? '',
+      address: data['address']?.toString() ?? '',
+      phone: data['phone']?.toString() ?? '',
+      email: data['email']?.toString() ?? '',
+      bankName: data['bankName']?.toString() ?? '',
+      accountNumber: data['accountNumber']?.toString() ?? '',
+      terms: data['terms']?.toString() ?? '',
+      logoBase64: data['logoBase64']?.toString() ?? '',
+      signatureBase64: data['signatureBase64']?.toString() ?? '',
+      qrBase64: data['qrBase64']?.toString() ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'businessName': businessName,
+        'serviceType': serviceType,
+        'gstin': gstin,
+        'pan': pan,
+        'address': address,
+        'phone': phone,
+        'email': email,
+        'bankName': bankName,
+        'accountNumber': accountNumber,
+        'terms': terms,
+        'logoBase64': logoBase64,
+        'signatureBase64': signatureBase64,
+        'qrBase64': qrBase64,
+      };
 }
 
 class ApiConfig {
@@ -325,6 +393,24 @@ class ApiService {
     final body = jsonDecode(response.body) as Map<String, dynamic>;
     final userData = (body['userData'] as Map?) ?? {};
     return ((userData['additionalServices'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AdditionalServiceItem.fromJson).toList();
+  }
+
+  Future<BusinessProfile> getBusinessProfile() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/bootstrap'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load business profile');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final userData = (body['userData'] as Map?) ?? {};
+    return BusinessProfile.fromJson((userData['businessProfile'] as Map?)?.cast<String, dynamic>());
+  }
+
+  Future<BusinessProfile> saveBusinessProfile(BusinessProfile profile) async {
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/business-profile'),
+      headers: await authHeaders(),
+      body: jsonEncode(profile.toJson()),
+    );
+    if (response.statusCode != 200) throw Exception('Unable to save business profile');
+    return BusinessProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<List<CustomMenu>> getCustomMenus() async {
@@ -682,6 +768,7 @@ class _AppShellState extends State<AppShell> {
   final List<AppEvent> events = [];
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
+  BusinessProfile businessProfile = const BusinessProfile();
   String? selectedEventId;
   AppEvent? editingEvent;
   int createSession = 0;
@@ -702,6 +789,7 @@ class _AppShellState extends State<AppShell> {
       final menuItems = await api.getMenuItems();
       final additionalServices = await api.getAdditionalServices();
       final loadedCustomMenus = await api.getCustomMenus();
+      final loadedBusinessProfile = await api.getBusinessProfile();
       if (!mounted) return;
       setState(() {
         events
@@ -716,6 +804,7 @@ class _AppShellState extends State<AppShell> {
         customMenus
           ..clear()
           ..addAll(loadedCustomMenus);
+        businessProfile = loadedBusinessProfile;
       });
     } catch (e) {
       if (!mounted) return;
@@ -804,16 +893,21 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  Future<void> saveBusinessProfile(BusinessProfile profile) async {
+    final saved = await api.saveBusinessProfile(profile);
+    setState(() => businessProfile = saved);
+  }
+
   List<Widget> get pages => <Widget>[
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     const ClientsScreen(),
     BillingScreen(events: events, api: api),
-    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
+    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
-    BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
+    BusinessProfileScreen(profile: businessProfile, onSave: saveBusinessProfile, onClose: () => setState(() => tab = 4)),
     EmployeeScreen(onClose: () => setState(() => tab = 4)),
     RawMaterialScreen(onClose: () => setState(() => tab = 4)),
     CustomMenuScreen(onClose: () => setState(() => tab = 4), customMenus: customMenus, onSave: saveCustomMenu),
@@ -914,15 +1008,6 @@ class CaterSideDrawer extends StatelessWidget {
                     onTap: () {
                       Navigator.pop(context);
                       onChanged(7);
-                    },
-                  ),
-                  ListTile(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    leading: const Icon(Icons.storefront, color: Cp.onVariant),
-                    title: const Text('Business Profile', style: TextStyle(fontWeight: FontWeight.w700)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      onChanged(8);
                     },
                   ),
                 ],
@@ -2184,13 +2269,41 @@ class _MoneyCell extends StatelessWidget {
   Widget build(BuildContext context) => Column(children: [Text(label, style: const TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900))]);
 }
 
+Uint8List? bytesFromDataUrl(String value) {
+  if (value.isEmpty || !value.contains(',')) return null;
+  try {
+    return base64Decode(value.split(',').last);
+  } catch (_) {
+    return null;
+  }
+}
+
+class BusinessLogoAvatar extends StatelessWidget {
+  const BusinessLogoAvatar({super.key, required this.profile, this.radius = 24});
+  final BusinessProfile profile;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final logoBytes = bytesFromDataUrl(profile.logoBase64);
+    final initials = profile.businessName.trim().isEmpty ? 'RC' : profile.businessName.trim().split(RegExp(r'\s+')).map((part) => part[0]).take(2).join().toUpperCase();
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Cp.primaryContainer,
+      backgroundImage: logoBytes == null ? null : MemoryImage(logoBytes),
+      child: logoBytes == null ? Text(initials, style: TextStyle(color: Colors.white, fontSize: radius * .5, fontWeight: FontWeight.w900)) : null,
+    );
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openCustomMenus, required this.openEmployees, required this.openRawMaterials, required this.services, required this.onSaveService, required this.onDeleteService});
+  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openCustomMenus, required this.openEmployees, required this.openRawMaterials, required this.businessProfile, required this.services, required this.onSaveService, required this.onDeleteService});
   final VoidCallback openBusiness;
   final VoidCallback openMenu;
   final VoidCallback openCustomMenus;
   final VoidCallback openEmployees;
   final VoidCallback openRawMaterials;
+  final BusinessProfile businessProfile;
   final List<AdditionalServiceItem> services;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
@@ -2203,12 +2316,10 @@ class SettingsScreen extends StatelessWidget {
         CpCard(
           padding: const EdgeInsets.all(24),
           child: Column(children: [
-            Stack(alignment: Alignment.bottomRight, children: [const CircleAvatar(radius: 48, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900))), CircleAvatar(radius: 16, backgroundColor: Cp.primary, child: const Icon(Icons.edit, color: Colors.white, size: 15))]),
+            BusinessLogoAvatar(profile: businessProfile, radius: 48),
             const SizedBox(height: 12),
-            const Text('Business Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
-            const Text('Add your business details', style: TextStyle(color: Cp.onVariant)),
-            const SizedBox(height: 14),
-            Pill('Edit Profile', color: Cp.primaryContainer, textColor: Colors.white),
+            Text(businessProfile.businessName.isEmpty ? 'Business Profile' : businessProfile.businessName, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
+            Text(businessProfile.serviceType.isEmpty ? 'Add your business details' : businessProfile.serviceType, style: const TextStyle(color: Cp.onVariant)),
           ]),
         ),
         const SizedBox(height: 20),
@@ -4816,46 +4927,140 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
   }
 }
 
-class BusinessProfileScreen extends StatelessWidget {
-  const BusinessProfileScreen({super.key, required this.onClose});
+class BusinessProfileScreen extends StatefulWidget {
+  const BusinessProfileScreen({super.key, required this.profile, required this.onSave, required this.onClose});
+  final BusinessProfile profile;
+  final Future<void> Function(BusinessProfile profile) onSave;
   final VoidCallback onClose;
+
   @override
-  Widget build(BuildContext context) => ScreenFrame(topBar: TopBar(title: 'Business Profile', avatar: false, leading: IconButton(onPressed: onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)), actions: [TextButton(onPressed: onClose, child: const Text('Save', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)))]), children: [
-        CpCard(child: Column(children: const [CircleAvatar(radius: 44, backgroundColor: Cp.primaryContainer, child: Icon(Icons.business, color: Colors.white)), SizedBox(height: 12), Text('Business Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), Text('Enter your business information', style: TextStyle(color: Cp.onVariant))])),
+  State<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
+}
+
+class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
+  late final businessName = TextEditingController(text: widget.profile.businessName);
+  late final serviceType = TextEditingController(text: widget.profile.serviceType);
+  late final gstin = TextEditingController(text: widget.profile.gstin);
+  late final pan = TextEditingController(text: widget.profile.pan);
+  late final address = TextEditingController(text: widget.profile.address);
+  late final phone = TextEditingController(text: widget.profile.phone);
+  late final email = TextEditingController(text: widget.profile.email);
+  late final bankName = TextEditingController(text: widget.profile.bankName);
+  late final accountNumber = TextEditingController(text: widget.profile.accountNumber);
+  late final terms = TextEditingController(text: widget.profile.terms);
+  late String logoBase64 = widget.profile.logoBase64;
+  late String signatureBase64 = widget.profile.signatureBase64;
+  late String qrBase64 = widget.profile.qrBase64;
+  bool saving = false;
+  String? error;
+
+  @override
+  void dispose() {
+    for (final controller in [businessName, serviceType, gstin, pan, address, phone, email, bankName, accountNumber, terms]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  BusinessProfile currentProfile() => BusinessProfile(
+        businessName: businessName.text.trim(),
+        serviceType: serviceType.text.trim(),
+        gstin: gstin.text.trim(),
+        pan: pan.text.trim(),
+        address: address.text.trim(),
+        phone: phone.text.trim(),
+        email: email.text.trim(),
+        bankName: bankName.text.trim(),
+        accountNumber: accountNumber.text.trim(),
+        terms: terms.text.trim(),
+        logoBase64: logoBase64,
+        signatureBase64: signatureBase64,
+        qrBase64: qrBase64,
+      );
+
+  Future<void> save() async {
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      await widget.onSave(currentProfile());
+      if (!mounted) return;
+      showCpSnack(context, 'Business profile saved');
+      widget.onClose();
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ScreenFrame(topBar: TopBar(title: 'Business Profile', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)), actions: [TextButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving...' : 'Save', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)))]), children: [
+        CpCard(child: Column(children: [BusinessLogoAvatar(profile: currentProfile(), radius: 44), const SizedBox(height: 12), const Text('Business Profile', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)), const Text('Enter your business information', style: TextStyle(color: Cp.onVariant))])),
         const SizedBox(height: 16),
-        Row(children: const [Expanded(child: UploadBox(label: 'Logo', icon: Icons.storefront, filled: true)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Signature', icon: Icons.draw)), SizedBox(width: 12), Expanded(child: UploadBox(label: 'Payment QR', icon: Icons.qr_code_2))]),
+        Row(children: [
+          Expanded(child: UploadBox(label: 'Logo', icon: Icons.storefront, value: logoBase64, filled: true, onChanged: (value) => setState(() => logoBase64 = value))),
+          const SizedBox(width: 12),
+          Expanded(child: UploadBox(label: 'Signature', icon: Icons.draw, value: signatureBase64, onChanged: (value) => setState(() => signatureBase64 = value))),
+          const SizedBox(width: 12),
+          Expanded(child: UploadBox(label: 'Payment QR', icon: Icons.qr_code_2, value: qrBase64, onChanged: (value) => setState(() => qrBase64 = value))),
+        ]),
         const SizedBox(height: 16),
+        if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
         const SectionTitle('Basic Info', Icons.business),
-        FormFieldBox(label: 'Business Name', value: ''),
-        FormFieldBox(label: 'Service Type', value: ''),
+        EditableInlineField(label: 'Business Name', controller: businessName),
+        EditableInlineField(label: 'Service Type', controller: serviceType),
         const SectionTitle('Tax & Legal', Icons.gavel),
-        Row(children: const [Expanded(child: FormFieldBox(label: 'GSTIN', value: '')), SizedBox(width: 12), Expanded(child: FormFieldBox(label: 'PAN', value: ''))]),
+        Row(children: [Expanded(child: EditableInlineField(label: 'GSTIN', controller: gstin)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'PAN', controller: pan))]),
         const SectionTitle('Business Address', Icons.location_on),
-        FormFieldBox(label: 'Full Address', value: '', height: 82),
+        EditableInlineField(label: 'Full Address', controller: address),
         const SectionTitle('Contact Information', Icons.contact_phone),
-        FormFieldBox(label: 'Phone Number', value: ''),
-        FormFieldBox(label: 'Email Address', value: ''),
+        EditableInlineField(label: 'Phone Number', controller: phone, keyboardType: TextInputType.phone),
+        EditableInlineField(label: 'Email Address', controller: email, keyboardType: TextInputType.emailAddress),
         const SectionTitle('Settlement Bank', Icons.account_balance),
-        FormFieldBox(label: 'Bank Name', value: ''),
-        FormFieldBox(label: 'Account Number', value: ''),
+        EditableInlineField(label: 'Bank Name', controller: bankName),
+        EditableInlineField(label: 'Account Number', controller: accountNumber, keyboardType: TextInputType.number),
         const SectionTitle('Terms & Conditions', Icons.description),
-        FormFieldBox(label: 'Standard Terms', value: '', height: 112),
+        EditableInlineField(label: 'Standard Terms', controller: terms),
       ]);
 }
 
 class UploadBox extends StatelessWidget {
-  const UploadBox({super.key, required this.label, required this.icon, this.filled = false});
+  const UploadBox({super.key, required this.label, required this.icon, required this.value, required this.onChanged, this.filled = false});
   final String label;
   final IconData icon;
+  final String value;
+  final ValueChanged<String> onChanged;
   final bool filled;
+
+  Future<void> pickImage() async {
+    final result = await fp.FilePicker.pickFiles(type: fp.FileType.image, withData: true);
+    final file = result?.files.single;
+    final bytes = file?.bytes;
+    if (bytes == null) return;
+    final ext = (file!.extension ?? '').toLowerCase();
+    final mime = ext == 'jpg' || ext == 'jpeg' ? 'image/jpeg' : ext == 'webp' ? 'image/webp' : 'image/png';
+    onChanged('data:$mime;base64,${base64Encode(bytes)}');
+  }
+
   @override
-  Widget build(BuildContext context) => AspectRatio(
+  Widget build(BuildContext context) {
+    final bytes = bytesFromDataUrl(value);
+    return AspectRatio(
         aspectRatio: 1,
-        child: Container(
+        child: InkWell(
+          onTap: pickImage,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
           decoration: BoxDecoration(color: filled ? Cp.primaryContainer : Cp.card, borderRadius: BorderRadius.circular(12), border: Border.all(color: filled ? Cp.primaryContainer : Cp.outlineVariant, width: 1.4)),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: filled ? Colors.white : Cp.outline, size: 30), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, style: TextStyle(color: filled ? Colors.white : Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800)), if (!filled) const Icon(Icons.add_circle, color: Cp.primary, size: 16)]),
+          child: bytes == null
+              ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: filled ? Colors.white : Cp.outline, size: 30), const SizedBox(height: 6), Text(label, textAlign: TextAlign.center, style: TextStyle(color: filled ? Colors.white : Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800)), Icon(value.isEmpty ? Icons.add_circle : Icons.edit, color: filled ? Colors.white : Cp.primary, size: 16)])
+              : ClipRRect(borderRadius: BorderRadius.circular(11), child: Image.memory(bytes, fit: BoxFit.cover, width: double.infinity, height: double.infinity)),
+          ),
         ),
       );
+  }
 }
 
 class SectionTitle extends StatelessWidget {

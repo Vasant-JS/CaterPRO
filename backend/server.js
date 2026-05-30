@@ -9,7 +9,7 @@ const app = express();
 const dbPath = path.join(__dirname, 'db.json');
 const port = Number(process.env.PORT || 8787);
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
@@ -47,12 +47,27 @@ function requireUser(req, res, db) {
     res.status(401).json({ message: 'Unauthorized' });
     return null;
   }
-  db.userData[user.id] = db.userData[user.id] || emptyUserData();
+  db.userData[user.id] = ensureUserDataShape(db.userData[user.id] || emptyUserData());
   return user;
 }
 
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [] };
+  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [], businessProfile: emptyBusinessProfile() };
+}
+
+function emptyBusinessProfile() {
+  return { businessName: '', serviceType: '', gstin: '', pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '' };
+}
+
+function ensureUserDataShape(userData) {
+  userData.events = userData.events || [];
+  userData.clients = userData.clients || [];
+  userData.employees = userData.employees || [];
+  userData.additionalServices = userData.additionalServices || [];
+  userData.customMenus = userData.customMenus || [];
+  userData.payments = userData.payments || [];
+  userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
+  return userData;
 }
 
 function ensureUniversal(db) {
@@ -197,10 +212,33 @@ function configurePdfFonts(doc) {
   };
 }
 
-function writeDocumentHeader(doc, title, event, number, fonts) {
+function imageBufferFromDataUrl(value) {
+  if (!value || typeof value !== 'string' || !value.includes(',')) return null;
+  try {
+    return Buffer.from(value.split(',').pop(), 'base64');
+  } catch {
+    return null;
+  }
+}
+
+function drawProfileImage(doc, value, x, y, options) {
+  const buffer = imageBufferFromDataUrl(value);
+  if (!buffer) return false;
+  try {
+    doc.image(buffer, x, y, options);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function writeDocumentHeader(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
+  const businessName = businessProfile.businessName || 'CaterPro';
+  const serviceType = businessProfile.serviceType || 'Catering event management';
   doc.rect(0, 0, doc.page.width, 96).fill('#06445d');
-  doc.fillColor('white').fontSize(22).font(fonts.bold).text('CaterPro', 42, 28);
-  doc.fontSize(10).font(fonts.regular).text('Catering event management', 42, 56);
+  const hasLogo = drawProfileImage(doc, businessProfile.logoBase64, 42, 24, { fit: [52, 52] });
+  doc.fillColor('white').fontSize(22).font(fonts.bold).text(businessName, hasLogo ? 104 : 42, 26, { width: 210 });
+  doc.fontSize(10).font(fonts.regular).text(serviceType, hasLogo ? 104 : 42, 56, { width: 240 });
   doc.fontSize(20).font(fonts.bold).text(title, 360, 28, { align: 'right', width: 190 });
   doc.fontSize(9).font(fonts.regular).text(number, 360, 56, { align: 'right', width: 190 });
   doc.fillColor('#202124').fontSize(12).font(fonts.bold).text(event.name || 'Untitled Event', 42, 126);
@@ -209,6 +247,10 @@ function writeDocumentHeader(doc, title, event, number, fonts) {
     .text(`Mobile: ${event.mobile || '-'}`, 42, 162)
     .text(`Venue: ${event.venue || '-'}`, 42, 178)
     .text(`Date(s): ${event.dates.map((date) => date.date).join(', ') || '-'}`, 42, 194);
+  if (businessProfile.gstin || businessProfile.phone || businessProfile.email) {
+    doc.fontSize(8).fillColor('#5f6368')
+      .text([businessProfile.gstin ? `GSTIN: ${businessProfile.gstin}` : '', businessProfile.phone || '', businessProfile.email || ''].filter(Boolean).join(' • '), 315, 126, { width: 238, align: 'right' });
+  }
 }
 
 function tableHeader(doc, y, fonts) {
@@ -226,7 +268,7 @@ function ensurePageSpace(doc, y, needed = 44) {
   return 48;
 }
 
-function generateEventPdf({ res, db, event, type }) {
+function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile() }) {
   const isInvoice = type === 'invoice';
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
   const prefix = isInvoice ? 'INV' : 'QUOTE';
@@ -237,7 +279,7 @@ function generateEventPdf({ res, db, event, type }) {
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
   doc.pipe(res);
-  writeDocumentHeader(doc, title, event, number, fonts);
+  writeDocumentHeader(doc, title, event, number, fonts, businessProfile);
   let y = 232;
   tableHeader(doc, y, fonts);
   y += 32;
@@ -295,9 +337,16 @@ function generateEventPdf({ res, db, event, type }) {
     y += 30;
   }
 
-  doc.fillColor('#5f6368').font(fonts.regular).fontSize(9)
-    .text(isInvoice ? 'Thank you for your payment. This invoice is generated from CaterPro event records.' : 'This quotation is based on the selected menu, pax, and service configuration. Final billing may vary after confirmation.', 42, y, { width: 330 });
-  doc.fillColor('#06445d').font(fonts.bold).fontSize(10).text('Authorized Signature', 410, y + 48, { align: 'center', width: 130 });
+  const terms = businessProfile.terms || (isInvoice ? 'Thank you for your payment. This invoice is generated from CaterPro event records.' : 'This quotation is based on the selected menu, pax, and service configuration. Final billing may vary after confirmation.');
+  doc.fillColor('#5f6368').font(fonts.regular).fontSize(9).text(terms, 42, y, { width: 280 });
+  if (businessProfile.qrBase64) {
+    drawProfileImage(doc, businessProfile.qrBase64, 330, y, { fit: [60, 60] });
+    doc.fillColor('#5f6368').font(fonts.regular).fontSize(7).text('Payment QR', 330, y + 64, { width: 60, align: 'center' });
+  }
+  if (businessProfile.signatureBase64) {
+    drawProfileImage(doc, businessProfile.signatureBase64, 410, y + 6, { fit: [130, 42] });
+  }
+  doc.fillColor('#06445d').font(fonts.bold).fontSize(10).text('Authorized Signature', 410, y + 52, { align: 'center', width: 130 });
   doc.end();
 }
 
@@ -429,6 +478,7 @@ const openApiSpec = {
     '/health': { get: { summary: 'Health check', responses: { 200: { description: 'OK' } } } },
     '/api/auth/login': { post: { tags: ['Auth'], summary: 'Login', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } }, responses: { 200: { description: 'Token and user' }, 401: { description: 'Invalid credentials' } } } },
     '/api/bootstrap': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Load universal and user-owned data', responses: { 200: { description: 'Bootstrap data' }, 401: { description: 'Unauthorized' } } } },
+    '/api/business-profile': { put: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Save logged-in user business profile, including base64 logo/signature/QR', responses: { 200: { description: 'Saved business profile' }, 401: { description: 'Unauthorized' } } } },
     '/api/menu-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal menu items', responses: { 200: { description: 'Menu items' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal menu item', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/MenuItem' } } } }, responses: { 201: { description: 'Created' } } } },
     '/api/menu-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal menu item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/custom-menus': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List ready made custom menus for the logged-in user', responses: { 200: { description: 'Custom menus' } } }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create ready made custom menu', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomMenu' } } } }, responses: { 201: { description: 'Created' } } } },
@@ -453,7 +503,7 @@ const apiDocs = {
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
     universal: ['menuItems', 'rawMaterials'],
-    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'payments'],
+    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'businessProfile', 'payments'],
   },
 };
 
@@ -468,7 +518,7 @@ app.post('/api/auth/login', (req, res) => {
   const password = String(req.body.password || '');
   const user = db.users.find((item) => item.email.toLowerCase() === email && item.password === password);
   if (!user) return res.status(401).json({ message: 'Invalid email or password' });
-  db.userData[user.id] = db.userData[user.id] || emptyUserData();
+  db.userData[user.id] = ensureUserDataShape(db.userData[user.id] || emptyUserData());
   writeDb(db);
   const token = Buffer.from(`${user.id}:${crypto.randomUUID()}`).toString('base64url');
   return res.json({ token, user: { id: user.id, name: user.name, email: user.email } });
@@ -482,7 +532,7 @@ app.post('/api/dev/reset-user-data', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  db.userData[user.id] = emptyUserData();
+  db.userData[user.id] = ensureUserDataShape(emptyUserData());
   writeDb(db);
   res.json({ message: 'User data reset', userId: user.id, userData: db.userData[user.id] });
 });
@@ -492,15 +542,23 @@ app.get('/api/bootstrap', (req, res) => {
   ensureUniversal(db);
   const user = requireUser(req, res, db);
   if (!user) return;
-  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
   res.json({ universal: db.universal, userData: db.userData[user.id] });
+});
+
+app.put('/api/business-profile', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const profile = { ...emptyBusinessProfile(), ...req.body };
+  db.userData[user.id].businessProfile = profile;
+  writeDb(db);
+  res.json(profile);
 });
 
 app.get('/api/custom-menus', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
   res.json(db.userData[user.id].customMenus);
 });
 
@@ -515,7 +573,6 @@ app.post('/api/custom-menus', (req, res) => {
     itemIds: Array.isArray(req.body.itemIds) ? req.body.itemIds : [],
     updatedAt: new Date().toISOString(),
   };
-  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
   upsertById(db.userData[user.id].customMenus, menu);
   writeDb(db);
   res.status(201).json(menu);
@@ -525,7 +582,6 @@ app.put('/api/custom-menus/:id', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  db.userData[user.id].customMenus = db.userData[user.id].customMenus || [];
   const existing = db.userData[user.id].customMenus.find((menu) => menu.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Custom menu not found' });
   const menu = {
@@ -742,7 +798,7 @@ app.get('/api/events/:eventId/documents/:type', (req, res) => {
     return generateMenuPdf({ res, db, event, allDates: true });
   }
   if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation, invoice, menu, or all-menus' });
-  return generateEventPdf({ res, db, event, type: req.params.type });
+  return generateEventPdf({ res, db, event, type: req.params.type, businessProfile: db.userData[user.id].businessProfile });
 });
 
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
