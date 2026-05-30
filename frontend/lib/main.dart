@@ -568,7 +568,7 @@ class _AppShellState extends State<AppShell> {
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: () => setState(() => tab = 5), openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: () => setState(() => tab = 5), refresh: refreshEvents),
     const ClientsScreen(),
-    const BillingScreen(),
+    BillingScreen(events: events, api: api),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
@@ -1412,20 +1412,143 @@ class ClientCard extends StatelessWidget {
   }
 }
 
-class BillingScreen extends StatelessWidget {
-  const BillingScreen({super.key});
+class BillingScreen extends StatefulWidget {
+  const BillingScreen({super.key, required this.events, required this.api});
+  final List<AppEvent> events;
+  final ApiService api;
+
+  @override
+  State<BillingScreen> createState() => _BillingScreenState();
+}
+
+class _BillingScreenState extends State<BillingScreen> {
+  int selectedTab = 0;
+
+  List<AppEvent> get quotationEvents => widget.events.where((event) => event.payments.isEmpty).toList();
+  List<({AppEvent event, AppPayment payment})> get invoicePayments => [
+        for (final event in widget.events)
+          for (final payment in event.payments) (event: event, payment: payment),
+      ];
+
+  Future<void> downloadDocument(BuildContext context, AppEvent event, String type) async {
+    final uri = await widget.api.documentUri(event.id, type);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    showCpSnack(context, launched ? '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started' : 'Unable to start download');
+  }
+
+  Widget tabChip(int index, String label, int count) {
+    final selected = selectedTab == index;
+    return ChoiceChip(
+      selected: selected,
+      selectedColor: Cp.primaryContainer,
+      labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w900),
+      label: Text('$label ($count)'),
+      onSelected: (_) => setState(() => selectedTab = index),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final totalQuotationValue = quotationEvents.fold<int>(0, (sum, event) => sum + eventTotal(event));
+    final totalInvoiceValue = invoicePayments.fold<int>(0, (sum, item) => sum + item.payment.amount);
     return ScreenFrame(
-      topBar: TopBar(title: 'CaterPro', actions: [IconButton(onPressed: () => showCpSnack(context, 'Billing filters opened'), icon: const Icon(Icons.filter_list, color: Cp.primary)), IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary))]),
+      topBar: TopBar(title: 'Billing', subtitle: 'Quotations and invoices'),
       children: [
-        const ChipRow(['Invoices', 'Quotations', 'Advances', 'Standalone']),
-        const SizedBox(height: 18),
-        const EmptyStateCard(title: 'No billing records yet', message: 'Invoices, quotations, advances, and payments will appear after you create and bill events.'),
+        Row(children: [
+          Expanded(child: BillingSummaryCell(label: 'Quotation Value', value: money(totalQuotationValue), icon: Icons.request_quote, color: Cp.primary)),
+          const SizedBox(width: 10),
+          Expanded(child: BillingSummaryCell(label: 'Invoice Payments', value: money(totalInvoiceValue), icon: Icons.receipt_long, color: Cp.tertiaryContainer)),
+        ]),
+        const SizedBox(height: 16),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [tabChip(0, 'Quotations', quotationEvents.length), const SizedBox(width: 8), tabChip(1, 'Invoices', invoicePayments.length)])),
+        const SizedBox(height: 16),
+        if (selectedTab == 0) ...[
+          if (quotationEvents.isEmpty)
+            const EmptyStateCard(title: 'No quotations pending', message: 'Events move here only until the first payment is recorded.')
+          else
+            ...quotationEvents.map((event) => BillingDocumentCard(
+                  title: event.name,
+                  subtitle: '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} • ${event.mobile}',
+                  code: 'QUOTE-${event.id.toUpperCase()}',
+                  amountLabel: 'Event Total',
+                  amount: money(eventTotal(event)),
+                  dateLabel: event.dates.isEmpty ? 'No dates' : event.dates.map((date) => date.date).join(', '),
+                  status: 'Quotation',
+                  statusColor: Cp.primary,
+                  icon: Icons.request_quote,
+                  buttonLabel: 'Download Quotation',
+                  onDownload: () => downloadDocument(context, event, 'quotation'),
+                )),
+        ] else ...[
+          if (invoicePayments.isEmpty)
+            const EmptyStateCard(title: 'No invoices yet', message: 'Invoices appear here after any payment is recorded for an event.')
+          else
+            ...invoicePayments.map((item) => BillingDocumentCard(
+                  title: item.event.name,
+                  subtitle: '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} • ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' • ${item.payment.reference}'}',
+                  code: 'INV-${item.payment.id.toUpperCase()}',
+                  amountLabel: 'Payment Amount',
+                  amount: money(item.payment.amount),
+                  dateLabel: item.payment.date,
+                  status: item.payment.settled ? 'Settled' : 'Paid',
+                  statusColor: item.payment.settled ? Cp.tertiaryContainer : Cp.tertiary,
+                  icon: Icons.receipt_long,
+                  buttonLabel: 'Download Invoice',
+                  onDownload: () => downloadDocument(context, item.event, 'invoice'),
+                )),
+        ],
       ],
     );
   }
+}
+
+class BillingSummaryCell extends StatelessWidget {
+  const BillingSummaryCell({super.key, required this.label, required this.value, required this.icon, required this.color});
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => CpCard(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(children: [
+          Container(width: 34, height: 34, decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 19)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(color: Cp.onVariant, fontSize: 11, fontWeight: FontWeight.w800)), Text(value, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900))])),
+        ]),
+      );
+}
+
+class BillingDocumentCard extends StatelessWidget {
+  const BillingDocumentCard({super.key, required this.title, required this.subtitle, required this.code, required this.amountLabel, required this.amount, required this.dateLabel, required this.status, required this.statusColor, required this.icon, required this.buttonLabel, required this.onDownload});
+  final String title, subtitle, code, amountLabel, amount, dateLabel, status, buttonLabel;
+  final Color statusColor;
+  final IconData icon;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(icon, color: Cp.primary),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), Text(subtitle, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)), Text(code, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800))])),
+              Pill(status, color: statusColor.withValues(alpha: .14), textColor: statusColor),
+            ]),
+            const Divider(height: 22),
+            Row(children: [
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(amountLabel, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800)), Text(amount, style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900))])),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [const Text('Date', style: TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800)), Text(dateLabel, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w800))])),
+            ]),
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: onDownload, icon: const Icon(Icons.download), label: Text(buttonLabel, style: const TextStyle(fontWeight: FontWeight.w900)))),
+          ]),
+        ),
+      );
 }
 
 void showRecordPaymentSheet(BuildContext context) {
