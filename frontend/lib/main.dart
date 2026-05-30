@@ -327,6 +327,19 @@ class EventDraft {
   final List<DraftDateConfig> dates = [];
 }
 
+String normalizeMobileNumber(String value) {
+  var text = value.trim().replaceAll(RegExp(r'[\s()-]'), '');
+  if (text.startsWith('+91')) text = text.substring(3);
+  if (text.startsWith('91') && text.length == 12) text = text.substring(2);
+  return text.replaceAll(RegExp(r'[^0-9]'), '');
+}
+
+class CustomerSuggestion {
+  const CustomerSuggestion({required this.name, required this.mobile});
+  final String name;
+  final String mobile;
+}
+
 class DraftDateConfig {
   DraftDateConfig({required this.date, this.label = ''});
   String date;
@@ -570,7 +583,7 @@ class _AppShellState extends State<AppShell> {
     const ClientsScreen(),
     BillingScreen(events: events, api: api),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), services: services, onSaveService: upsertService, onDeleteService: removeService),
-    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, onSaveService: upsertService, onDeleteService: removeService),
+    CreateEventScreen(onClose: () => setState(() => tab = 1), onCreate: createEvent, services: services, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(onClose: () => setState(() => tab = 4)),
@@ -2315,10 +2328,11 @@ class EditableInlineField extends StatelessWidget {
 }
 
 class CreateEventScreen extends StatefulWidget {
-  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.onSaveService, required this.onDeleteService});
+  const CreateEventScreen({super.key, required this.onClose, required this.onCreate, required this.services, required this.customerEvents, required this.onSaveService, required this.onDeleteService});
   final VoidCallback onClose;
   final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
+  final List<AppEvent> customerEvents;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
 
@@ -2332,9 +2346,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   String? error;
   final draft = EventDraft();
 
+  List<CustomerSuggestion> get customerSuggestions {
+    final byMobile = <String, CustomerSuggestion>{};
+    for (final event in widget.customerEvents) {
+      final mobile = normalizeMobileNumber(event.mobile);
+      if (mobile.isEmpty) continue;
+      final name = event.primaryClient.isEmpty ? event.name : event.primaryClient;
+      byMobile[mobile] = CustomerSuggestion(name: name, mobile: mobile);
+    }
+    final list = byMobile.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+    return list;
+  }
+
   Future<void> save() async {
-    if (draft.name.trim().isEmpty || draft.mobile.trim().isEmpty) {
-      setState(() => error = 'Event name and mobile number are required.');
+    draft.mobile = normalizeMobileNumber(draft.mobile);
+    final detailsError = validateDetails();
+    if (detailsError != null) {
+      setState(() => error = detailsError);
       return;
     }
     setState(() {
@@ -2353,6 +2381,29 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     }
   }
 
+  String? validateDetails() {
+    draft.mobile = normalizeMobileNumber(draft.mobile);
+    if (draft.name.trim().isEmpty) return 'Event name is required.';
+    if (draft.client.trim().isEmpty) return 'Primary client is required.';
+    if (draft.mobile.trim().isEmpty) return 'Mobile number is required.';
+    if (draft.mobile.length != 10) return 'Mobile number must be 10 digits.';
+    return null;
+  }
+
+  void goNext() {
+    if (step == 0) {
+      final detailsError = validateDetails();
+      if (detailsError != null) {
+        setState(() => error = detailsError);
+        return;
+      }
+    }
+    setState(() {
+      error = null;
+      step++;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
@@ -2362,7 +2413,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         StepperHeader(active: step),
         const SizedBox(height: 24),
         if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
-        if (step == 0) CreateDetailsStep(draft: draft),
+        if (step == 0) CreateDetailsStep(draft: draft, customers: customerSuggestions, onChanged: () => setState(() => error = null)),
         if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () => setState(() {})),
         if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
         if (step == 3) CreateReviewStep(draft: draft),
@@ -2376,7 +2427,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               child: SizedBox(
                 height: 56,
                 child: FilledButton.icon(
-                  onPressed: saving ? null : () => step == 3 ? save() : setState(() => step++),
+                  onPressed: saving ? null : () => step == 3 ? save() : goNext(),
                   style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
                   label: Text(saving ? 'Saving...' : step == 0 ? 'Next: Add Dates' : step == 1 ? 'Next: Add Menus' : step == 2 ? 'Next: Review' : 'Create Event', style: const TextStyle(fontWeight: FontWeight.w900)),
                   icon: Icon(step == 3 ? Icons.check : Icons.arrow_forward),
@@ -2390,9 +2441,36 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   }
 }
 
-class CreateDetailsStep extends StatelessWidget {
-  const CreateDetailsStep({super.key, required this.draft});
+class CreateDetailsStep extends StatefulWidget {
+  const CreateDetailsStep({super.key, required this.draft, required this.customers, required this.onChanged});
   final EventDraft draft;
+  final List<CustomerSuggestion> customers;
+  final VoidCallback onChanged;
+
+  @override
+  State<CreateDetailsStep> createState() => _CreateDetailsStepState();
+}
+
+class _CreateDetailsStepState extends State<CreateDetailsStep> {
+  List<CustomerSuggestion> matches = [];
+
+  void updateMatches(String value) {
+    final q = value.trim().toLowerCase();
+    setState(() {
+      matches = q.isEmpty
+          ? []
+          : widget.customers.where((customer) => customer.name.toLowerCase().contains(q) || customer.mobile.contains(q)).take(6).toList();
+    });
+  }
+
+  void selectCustomer(CustomerSuggestion customer) {
+    setState(() {
+      widget.draft.client = customer.name;
+      widget.draft.mobile = customer.mobile;
+      matches = [];
+    });
+    widget.onChanged();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2401,11 +2479,39 @@ class CreateDetailsStep extends StatelessWidget {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Row(children: [Icon(Icons.assignment, color: Cp.primary), SizedBox(width: 8), Text('Event Fundamentals', style: TextStyle(fontSize: 20, color: Cp.primary, fontWeight: FontWeight.w800))]),
           const SizedBox(height: 20),
-          FormFieldBox(label: 'Event Name', value: draft.name, onChanged: (value) => draft.name = value),
-          FormFieldBox(label: 'Primary Client', value: draft.client, icon: Icons.person_search, onChanged: (value) => draft.client = value),
-          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: draft.mobile, icon: Icons.phone_iphone, onChanged: (value) => draft.mobile = value),
-          FormFieldBox(label: 'Venue', value: draft.venue, icon: Icons.location_on, onChanged: (value) => draft.venue = value),
-          FormFieldBox(label: 'Event Notes & Logistics', value: draft.notes, height: 98, onChanged: (value) => draft.notes = value),
+          FormFieldBox(label: 'Event Name', value: widget.draft.name, onChanged: (value) { widget.draft.name = value; widget.onChanged(); }),
+          FormFieldBox(
+            label: 'Primary Client',
+            value: widget.draft.client,
+            icon: Icons.person_search,
+            onChanged: (value) {
+              widget.draft.client = value;
+              updateMatches(value);
+              widget.onChanged();
+            },
+          ),
+          if (matches.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Material(
+                color: Cp.surfaceLow,
+                borderRadius: BorderRadius.circular(12),
+                child: Column(
+                  children: matches
+                      .map((customer) => ListTile(
+                            dense: true,
+                            leading: const Icon(Icons.person, color: Cp.primary),
+                            title: Text(customer.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+                            subtitle: Text(customer.mobile),
+                            onTap: () => selectCustomer(customer),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ),
+          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: widget.draft.mobile, icon: Icons.phone_iphone, onChanged: (value) { widget.draft.mobile = normalizeMobileNumber(value); updateMatches(widget.draft.mobile); widget.onChanged(); }),
+          FormFieldBox(label: 'Venue', value: widget.draft.venue, icon: Icons.location_on, onChanged: (value) { widget.draft.venue = value; widget.onChanged(); }),
+          FormFieldBox(label: 'Event Notes & Logistics', value: widget.draft.notes, height: 98, onChanged: (value) { widget.draft.notes = value; widget.onChanged(); }),
         ]),
       ),
     ]);
