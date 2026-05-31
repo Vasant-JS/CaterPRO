@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart' as fp;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 void main() => runApp(const CaterProApp());
@@ -179,7 +180,20 @@ class BusinessProfile {
 }
 
 class ApiConfig {
-  static const baseUrl = String.fromEnvironment('CATERPRO_API_URL', defaultValue: 'http://127.0.0.1:8787/api');
+  static const _definedBaseUrl = String.fromEnvironment('CATERPRO_API_URL');
+
+  static String get baseUrl {
+    if (_definedBaseUrl.isNotEmpty) {
+      return _definedBaseUrl;
+    }
+    if (kIsWeb) {
+      return 'http://127.0.0.1:8787/api';
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8787/api';
+    }
+    return 'http://127.0.0.1:8787/api';
+  }
 }
 
 class AuthSession {
@@ -2471,17 +2485,6 @@ class _BillingScreenState extends State<BillingScreen> {
         ]),
         const SizedBox(height: 16),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [tabChip(0, 'Quotations', quotationEvents.length), const SizedBox(width: 8), tabChip(1, 'Invoices', invoicePayments.length + widget.manualInvoices.length)])),
-        const SizedBox(height: 12),
-        if (selectedTab == 1)
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: widget.onAddManualInvoice,
-              style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000), padding: const EdgeInsets.symmetric(vertical: 14)),
-              icon: const Icon(Icons.add),
-              label: const Text('Add Manual Invoice', style: TextStyle(fontWeight: FontWeight.w900)),
-            ),
-          ),
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
           if (quotationEvents.isEmpty)
