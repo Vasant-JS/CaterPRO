@@ -271,7 +271,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 class AppEvent {
-  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.addOns, required this.dates, required this.payments});
+  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.addOns, required this.dates, required this.payments, required this.materialDocuments});
   final String id;
   final String name;
   final String primaryClient;
@@ -282,6 +282,7 @@ class AppEvent {
   final List<Map<String, dynamic>> addOns;
   final List<AppEventDate> dates;
   final List<AppPayment> payments;
+  final List<EventMaterialDocument> materialDocuments;
 
   factory AppEvent.fromJson(Map<String, dynamic> json) {
     return AppEvent(
@@ -295,8 +296,47 @@ class AppEvent {
       addOns: ((json['addOns'] as List?) ?? []).whereType<Map<String, dynamic>>().toList(),
       dates: ((json['dates'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppEventDate.fromJson).toList(),
       payments: ((json['payments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppPayment.fromJson).toList(),
+      materialDocuments: ((json['materialDocuments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(EventMaterialDocument.fromJson).toList(),
     );
   }
+}
+
+class EventMaterialLine {
+  const EventMaterialLine({required this.itemId, required this.name, required this.category, required this.quantity, required this.unit});
+  final String itemId;
+  final String name;
+  final String category;
+  final String quantity;
+  final String unit;
+
+  factory EventMaterialLine.fromJson(Map<String, dynamic> json) => EventMaterialLine(
+        itemId: json['itemId']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        category: json['category']?.toString() ?? '',
+        quantity: json['quantity']?.toString() ?? '',
+        unit: json['unit']?.toString() ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'itemId': itemId, 'name': name, 'category': category, 'quantity': quantity, 'unit': unit};
+}
+
+class EventMaterialDocument {
+  const EventMaterialDocument({required this.id, required this.type, required this.title, required this.items});
+  final String id;
+  final String type;
+  final String title;
+  final List<EventMaterialLine> items;
+
+  String get typeLabel => type == 'produce' ? 'Vegetables & Fruits' : 'Raw Materials';
+
+  factory EventMaterialDocument.fromJson(Map<String, dynamic> json) => EventMaterialDocument(
+        id: json['id']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'raw',
+        title: json['title']?.toString() ?? '',
+        items: ((json['items'] as List?) ?? []).whereType<Map<String, dynamic>>().map(EventMaterialLine.fromJson).toList(),
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'type': type, 'title': title, 'items': items.map((item) => item.toJson()).toList()};
 }
 
 class AppPayment {
@@ -406,6 +446,23 @@ class ApiService {
     return RawMaterialItem.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<List<RawMaterialItem>> getProduceItems() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/produce-items'));
+    if (response.statusCode != 200) throw Exception('Unable to load vegetables and fruits');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(RawMaterialItem.fromJson).toList();
+  }
+
+  Future<RawMaterialItem> saveProduceItem(RawMaterialItem item) async {
+    final creating = item.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/produce-items${creating ? '' : '/${item.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(item.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save vegetable/fruit item');
+    return RawMaterialItem.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<AdditionalServiceItem>> getAdditionalServices() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/bootstrap'), headers: await authHeaders());
     if (response.statusCode != 200) throw Exception('Unable to load additional services');
@@ -509,12 +566,29 @@ class ApiService {
     return getEvent(eventId);
   }
 
+  Future<AppEvent> saveMaterialDocument(String eventId, EventMaterialDocument document) async {
+    final creating = document.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/events/$eventId/material-documents${creating ? '' : '/${document.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(document.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save material document');
+    return getEvent(eventId);
+  }
+
   Future<Uri> documentUri(String eventId, String type, {String? dateId}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
     final query = <String, String>{'token': token};
     if (dateId != null && dateId.isNotEmpty) query['dateId'] = dateId;
     return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/documents/$type').replace(queryParameters: query);
+  }
+
+  Future<Uri> materialDocumentPdfUri(String eventId, String documentId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/material-documents/$documentId/pdf').replace(queryParameters: {'token': token});
   }
 }
 
@@ -933,7 +1007,7 @@ class _AppShellState extends State<AppShell> {
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     const ClientsScreen(),
     BillingScreen(events: events, api: api),
-    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
+    SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), openProduceItems: () => setState(() => tab = 12), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
@@ -941,6 +1015,7 @@ class _AppShellState extends State<AppShell> {
     EmployeeScreen(onClose: () => setState(() => tab = 4)),
     RawMaterialScreen(onClose: () => setState(() => tab = 4)),
     CustomMenuScreen(onClose: () => setState(() => tab = 4), customMenus: customMenus, onSave: saveCustomMenu),
+    ProduceItemScreen(onClose: () => setState(() => tab = 4)),
   ];
 
   @override
@@ -2326,12 +2401,13 @@ class BusinessLogoAvatar extends StatelessWidget {
 }
 
 class SettingsScreen extends StatelessWidget {
-  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openCustomMenus, required this.openEmployees, required this.openRawMaterials, required this.businessProfile, required this.services, required this.onSaveService, required this.onDeleteService});
+  const SettingsScreen({super.key, required this.openBusiness, required this.openMenu, required this.openCustomMenus, required this.openEmployees, required this.openRawMaterials, required this.openProduceItems, required this.businessProfile, required this.services, required this.onSaveService, required this.onDeleteService});
   final VoidCallback openBusiness;
   final VoidCallback openMenu;
   final VoidCallback openCustomMenus;
   final VoidCallback openEmployees;
   final VoidCallback openRawMaterials;
+  final VoidCallback openProduceItems;
   final BusinessProfile businessProfile;
   final List<AdditionalServiceItem> services;
   final ValueChanged<AdditionalServiceItem> onSaveService;
@@ -2353,7 +2429,7 @@ class SettingsScreen extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         SettingsGroup(title: 'Business', items: [(Icons.storefront, 'Business Profile')], onItemTap: {'Business Profile': openBusiness}),
-        SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.fact_check, 'Custom Menus'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials')], onItemTap: {'Menu Master': openMenu, 'Custom Menus': openCustomMenus, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials}),
+        SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.fact_check, 'Custom Menus'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials'), (Icons.eco, 'Vegetables & Fruits')], onItemTap: {'Menu Master': openMenu, 'Custom Menus': openCustomMenus, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials, 'Vegetables & Fruits': openProduceItems}),
         SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees}),
         SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')]),
         SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')]),
@@ -4062,9 +4138,225 @@ class EventDetailsTabContent extends StatelessWidget {
           ),
         ]);
       default:
-        return CpCard(color: Cp.primaryContainer, child: Text('Event Notes\n${event.notes.isEmpty ? 'No notes added.' : event.notes}', style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700)));
+        return MaterialDocumentsSection(event: event, api: api, onEventUpdated: onEventUpdated);
     }
   }
+}
+
+class MaterialDocumentsSection extends StatelessWidget {
+  const MaterialDocumentsSection({super.key, required this.event, required this.api, required this.onEventUpdated});
+  final AppEvent event;
+  final ApiService api;
+  final ValueChanged<AppEvent> onEventUpdated;
+
+  Future<void> openEditor(BuildContext context, String type, {EventMaterialDocument? document}) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => MaterialDocumentDialog(event: event, api: api, type: type, document: document, onSaved: onEventUpdated),
+    );
+  }
+
+  Future<void> download(BuildContext context, EventMaterialDocument document) async {
+    final uri = await api.materialDocumentPdfUri(event.id, document.id);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (context.mounted) showCpSnack(context, launched ? 'Material PDF download started' : 'Unable to start download');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      CpCard(color: Cp.primaryContainer, child: Text('Event Notes\n${event.notes.isEmpty ? 'No notes added.' : event.notes}', style: const TextStyle(color: Colors.white, height: 1.45, fontWeight: FontWeight.w700))),
+      const SizedBox(height: 14),
+      Row(children: [
+        const Expanded(child: Text('Event Material Documents', style: TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900))),
+        Pill('${event.materialDocuments.length} lists'),
+      ]),
+      const SizedBox(height: 10),
+      if (event.materialDocuments.isEmpty)
+        const EmptyStateCard(title: 'No material documents', message: 'Create raw material, vegetables, or fruits lists for this event.')
+      else
+        ...event.materialDocuments.map((document) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: CpCard(
+                onTap: () => openEditor(context, document.type, document: document),
+                child: Row(children: [
+                  Icon(document.type == 'produce' ? Icons.eco : Icons.inventory_2, color: Cp.primary),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(document.title.isEmpty ? document.typeLabel : document.title, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+                    Text('${document.typeLabel} • ${document.items.length} items', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                  ])),
+                  IconButton(onPressed: () => download(context, document), icon: const Icon(Icons.picture_as_pdf, color: Cp.primary), tooltip: 'Download PDF'),
+                ]),
+              ),
+            )),
+      const SizedBox(height: 6),
+      Wrap(spacing: 10, runSpacing: 10, children: [
+        OutlinedButton.icon(onPressed: () => openEditor(context, 'raw'), icon: const Icon(Icons.inventory_2), label: const Text('Create Raw Material List')),
+        OutlinedButton.icon(onPressed: () => openEditor(context, 'produce'), icon: const Icon(Icons.eco), label: const Text('Create Vegetables & Fruits List')),
+      ]),
+    ]);
+  }
+}
+
+class MaterialDocumentDialog extends StatefulWidget {
+  const MaterialDocumentDialog({super.key, required this.event, required this.api, required this.type, this.document, required this.onSaved});
+  final AppEvent event;
+  final ApiService api;
+  final String type;
+  final EventMaterialDocument? document;
+  final ValueChanged<AppEvent> onSaved;
+
+  @override
+  State<MaterialDocumentDialog> createState() => _MaterialDocumentDialogState();
+}
+
+class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
+  final titleController = TextEditingController();
+  final queryController = TextEditingController();
+  final items = <RawMaterialItem>[];
+  final quantityControllers = <String, TextEditingController>{};
+  final unitControllers = <String, TextEditingController>{};
+  bool loading = true;
+  bool saving = false;
+  String query = '';
+  String? error;
+
+  String get typeLabel => widget.type == 'produce' ? 'Vegetables & Fruits' : 'Raw Materials';
+
+  @override
+  void initState() {
+    super.initState();
+    final count = widget.event.materialDocuments.where((document) => document.type == widget.type).length + 1;
+    titleController.text = widget.document?.title ?? '$typeLabel List $count';
+    loadCatalog();
+  }
+
+  @override
+  void dispose() {
+    titleController.dispose();
+    queryController.dispose();
+    for (final controller in quantityControllers.values) {
+      controller.dispose();
+    }
+    for (final controller in unitControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> loadCatalog() async {
+    try {
+      final loaded = widget.type == 'produce' ? await widget.api.getProduceItems() : await widget.api.getRawMaterials();
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(loaded);
+        for (final item in items) {
+          quantityControllers[item.id] = TextEditingController();
+          unitControllers[item.id] = TextEditingController(text: item.unit);
+        }
+        for (final line in widget.document?.items ?? const <EventMaterialLine>[]) {
+          quantityControllers[line.itemId]?.text = line.quantity;
+          unitControllers[line.itemId]?.text = line.unit;
+        }
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  List<RawMaterialItem> get visibleItems {
+    final normalized = query.trim().toLowerCase();
+    final filtered = items.where((item) {
+      final text = '${item.id} ${item.name} ${item.category}'.toLowerCase();
+      return normalized.isEmpty || text.contains(normalized);
+    }).toList();
+    filtered.sort((a, b) {
+      final aSelected = (quantityControllers[a.id]?.text.trim().isNotEmpty ?? false) ? 0 : 1;
+      final bSelected = (quantityControllers[b.id]?.text.trim().isNotEmpty ?? false) ? 0 : 1;
+      if (aSelected != bSelected) return aSelected.compareTo(bSelected);
+      return a.name.compareTo(b.name);
+    });
+    return filtered;
+  }
+
+  Future<void> save() async {
+    final lines = <EventMaterialLine>[];
+    for (final item in items) {
+      final quantity = quantityControllers[item.id]?.text.trim() ?? '';
+      if (quantity.isEmpty) continue;
+      lines.add(EventMaterialLine(itemId: item.id, name: item.name, category: item.category, quantity: quantity, unit: unitControllers[item.id]?.text.trim() ?? item.unit));
+    }
+    if (lines.isEmpty) {
+      setState(() => error = 'Enter quantity/count for at least one item.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      final savedEvent = await widget.api.saveMaterialDocument(widget.event.id, EventMaterialDocument(id: widget.document?.id ?? '', type: widget.type, title: titleController.text.trim(), items: lines));
+      widget.onSaved(savedEvent);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Dialog(
+        insetPadding: const EdgeInsets.all(18),
+        backgroundColor: Cp.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: 820, maxHeight: MediaQuery.of(context).size.height * .86),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              Row(children: [Expanded(child: Text(widget.document == null ? 'Create $typeLabel List' : 'Edit $typeLabel List', style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900))), IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close))]),
+              const SizedBox(height: 10),
+              EditableInlineField(label: 'Document Title', controller: titleController),
+              TextField(
+                controller: queryController,
+                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search items', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                onChanged: (value) => setState(() => query = value),
+              ),
+              if (error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
+              const SizedBox(height: 12),
+              Expanded(
+                child: loading
+                    ? const Center(child: CircularProgressIndicator(color: Cp.primary))
+                    : ListView.separated(
+                        itemCount: visibleItems.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final item = visibleItems[index];
+                          return CpCard(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(children: [
+                              Expanded(flex: 3, child: Text('${item.name}\n${item.category}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.primary))),
+                              const SizedBox(width: 10),
+                              Expanded(child: TextField(controller: quantityControllers[item.id], decoration: const InputDecoration(labelText: 'Count/Qty', isDense: true), onChanged: (_) => setState(() {}))),
+                              const SizedBox(width: 10),
+                              Expanded(child: TextField(controller: unitControllers[item.id], decoration: const InputDecoration(labelText: 'Unit', isDense: true))),
+                            ]),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(height: 52, child: FilledButton.icon(onPressed: saving ? null : save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save), label: Text(saving ? 'Saving...' : 'Save List', style: const TextStyle(fontWeight: FontWeight.w900)))),
+            ]),
+          ),
+        ),
+      );
 }
 
 class EventDateMenuCard extends StatelessWidget {
@@ -4787,6 +5079,132 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
       );
 }
 
+class ProduceItemScreen extends StatefulWidget {
+  const ProduceItemScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  State<ProduceItemScreen> createState() => _ProduceItemScreenState();
+}
+
+class _ProduceItemScreenState extends State<ProduceItemScreen> {
+  final api = ApiService();
+  final items = <RawMaterialItem>[];
+  String query = '';
+  String selectedCategory = 'All';
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    loadItems();
+  }
+
+  Future<void> loadItems() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final loaded = await api.getProduceItems();
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(loaded);
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  List<String> get categories {
+    final values = items.map((item) => item.category).where((category) => category.isNotEmpty).toSet().toList()..sort();
+    return ['All', ...values];
+  }
+
+  List<RawMaterialItem> get visibleItems {
+    final normalized = query.trim().toLowerCase();
+    return items.where((item) {
+      final matchesCategory = selectedCategory == 'All' || item.category == selectedCategory;
+      final text = '${item.id} ${item.name} ${item.category} ${item.unit}'.toLowerCase();
+      return matchesCategory && (normalized.isEmpty || text.contains(normalized));
+    }).toList();
+  }
+
+  Future<void> upsertItem(RawMaterialItem item) async {
+    try {
+      final saved = await api.saveProduceItem(item);
+      setState(() {
+        final index = items.indexWhere((existing) => existing.id == saved.id);
+        if (index == -1) {
+          items.add(saved);
+        } else {
+          items[index] = saved;
+        }
+      });
+      if (mounted) showCpSnack(context, 'Vegetable/fruit saved');
+    } catch (e) {
+      if (mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        children: [
+          ScreenFrame(
+            bottomPadding: 92,
+            topBar: TopBar(title: 'Vegetables & Fruits', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+            children: [
+              CpCard(color: Cp.primaryFixed, child: const Row(children: [Icon(Icons.public, color: Cp.primary), SizedBox(width: 10), Expanded(child: Text('Universal vegetables and fruits catalog in Kannada. Add/edit only. Every user can access these items.', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w800)))])),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: InputDecoration(prefixIcon: const Icon(Icons.search), hintText: 'Search vegetables and fruits', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+                onChanged: (value) => setState(() => query = value),
+              ),
+              const SizedBox(height: 12),
+              if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: categories.map((category) {
+                    final selected = category == selectedCategory;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => setState(() => selectedCategory = category),
+                        child: Pill(category, color: selected ? Cp.primaryContainer : Cp.surfaceHigh, textColor: selected ? Colors.white : Cp.onVariant, icon: selected ? Icons.check : null),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              if (loading) const Center(child: CircularProgressIndicator(color: Cp.primary)),
+              if (!loading && visibleItems.isEmpty) const EmptyStateCard(title: 'No vegetables/fruits', message: 'No items match this search.'),
+              if (!loading) ...visibleItems.map((item) => RawMaterialCard(item: item, onEdit: () => showRawMaterialEditor(context, item: item, noun: 'Vegetable/Fruit', onSave: (value) { upsertItem(value); }))),
+            ],
+          ),
+          Positioned(
+            right: 18,
+            bottom: 24,
+            child: FloatingActionButton.extended(
+              heroTag: 'addProduceItem',
+              backgroundColor: Cp.secondaryContainer,
+              foregroundColor: const Color(0xff694000),
+              onPressed: () => showRawMaterialEditor(context, noun: 'Vegetable/Fruit', onSave: (value) { upsertItem(value); }),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ],
+      );
+}
+
 class RawMaterialCard extends StatelessWidget {
   const RawMaterialCard({super.key, required this.item, required this.onEdit});
   final RawMaterialItem item;
@@ -4808,19 +5226,20 @@ class RawMaterialCard extends StatelessWidget {
       );
 }
 
-void showRawMaterialEditor(BuildContext context, {RawMaterialItem? item, required ValueChanged<RawMaterialItem> onSave}) {
+void showRawMaterialEditor(BuildContext context, {RawMaterialItem? item, required ValueChanged<RawMaterialItem> onSave, String noun = 'Raw Material'}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => RawMaterialEditorSheet(item: item, onSave: onSave),
+    builder: (context) => RawMaterialEditorSheet(item: item, onSave: onSave, noun: noun),
   );
 }
 
 class RawMaterialEditorSheet extends StatefulWidget {
-  const RawMaterialEditorSheet({super.key, this.item, required this.onSave});
+  const RawMaterialEditorSheet({super.key, this.item, required this.onSave, required this.noun});
   final RawMaterialItem? item;
   final ValueChanged<RawMaterialItem> onSave;
+  final String noun;
 
   @override
   State<RawMaterialEditorSheet> createState() => _RawMaterialEditorSheetState();
@@ -4860,14 +5279,14 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-              Text(widget.item == null ? 'Add Raw Material' : 'Edit Raw Material', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+              Text(widget.item == null ? 'Add ${widget.noun}' : 'Edit ${widget.noun}', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
               const Text('Universal item, available to every user.', style: TextStyle(color: Cp.onVariant)),
               const SizedBox(height: 16),
               EditableInlineField(label: 'ID', controller: id),
               EditableInlineField(label: 'Name', controller: name),
               Row(children: [Expanded(child: EditableInlineField(label: 'Category', controller: category)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Unit', controller: unit))]),
               if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
-              SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Raw Material', style: TextStyle(fontWeight: FontWeight.w900)))),
+              SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: Text('Save ${widget.noun}', style: const TextStyle(fontWeight: FontWeight.w900)))),
             ]),
           ),
         ),

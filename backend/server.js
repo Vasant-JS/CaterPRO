@@ -12,7 +12,7 @@ const port = Number(process.env.PORT || 8787);
 app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
@@ -236,14 +236,42 @@ function defaultRawMaterials() {
   }));
 }
 
+const defaultProduceItems = [
+  ['ಆಲೂಗಡ್ಡೆ', 'ತರಕಾರಿ'], ['ಈರುಳ್ಳಿ', 'ತರಕಾರಿ'], ['ಟೊಮೆಟೊ', 'ತರಕಾರಿ'], ['ಹಸಿಮೆಣಸಿನಕಾಯಿ', 'ತರಕಾರಿ'], ['ಕೊತ್ತಂಬರಿ ಸೊಪ್ಪು', 'ತರಕಾರಿ'],
+  ['ಕರಿಬೇವು', 'ತರಕಾರಿ'], ['ಶುಂಠಿ', 'ತರಕಾರಿ'], ['ಬೆಳ್ಳುಳ್ಳಿ', 'ತರಕಾರಿ'], ['ಕ್ಯಾರೆಟ್', 'ತರಕಾರಿ'], ['ಬೀನ್ಸ್', 'ತರಕಾರಿ'],
+  ['ಬಟಾಣಿ', 'ತರಕಾರಿ'], ['ಎಲೆಕೋಸು', 'ತರಕಾರಿ'], ['ಹೂಕೋಸು', 'ತರಕಾರಿ'], ['ಬದನೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಬೆಂಡೆಕಾಯಿ', 'ತರಕಾರಿ'],
+  ['ಸೌತೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಮೂಲಂಗಿ', 'ತರಕಾರಿ'], ['ಬೀಟ್ರೂಟ್', 'ತರಕಾರಿ'], ['ಕ್ಯಾಪ್ಸಿಕಂ', 'ತರಕಾರಿ'], ['ನುಗ್ಗೆಕಾಯಿ', 'ತರಕಾರಿ'],
+  ['ಸೀಮೆ ಬದನೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಹೀರೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಸೋರೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಪಡುವಲಕಾಯಿ', 'ತರಕಾರಿ'], ['ಹಾಗಲಕಾಯಿ', 'ತರಕಾರಿ'],
+  ['ಕುಂಭಳಕಾಯಿ', 'ತರಕಾರಿ'], ['ಸಿಹಿ ಕುಂಬಳಕಾಯಿ', 'ತರಕಾರಿ'], ['ಅವರೆಕಾಯಿ', 'ತರಕಾರಿ'], ['ಹುರಳಿಕಾಯಿ', 'ತರಕಾರಿ'], ['ಮೆಂತ್ಯ ಸೊಪ್ಪು', 'ತರಕಾರಿ'],
+  ['ಪಾಲಕ್ ಸೊಪ್ಪು', 'ತರಕಾರಿ'], ['ಸಬ್ಬಸಿಗೆ ಸೊಪ್ಪು', 'ತರಕಾರಿ'], ['ಪುದೀನಾ', 'ತರಕಾರಿ'], ['ನಿಂಬೆಹಣ್ಣು', 'ತರಕಾರಿ'], ['ತೆಂಗಿನಕಾಯಿ', 'ತರಕಾರಿ'],
+  ['ಬಾಳೆ ಎಲೆ', 'ತರಕಾರಿ'], ['ಬಾಳೆಹಣ್ಣು', 'ಹಣ್ಣು'], ['ಸೇಬು', 'ಹಣ್ಣು'], ['ಕಿತ್ತಳೆ', 'ಹಣ್ಣು'], ['ಮೂಸಂಬಿ', 'ಹಣ್ಣು'],
+  ['ದ್ರಾಕ್ಷಿ', 'ಹಣ್ಣು'], ['ದಾಳಿಂಬೆ', 'ಹಣ್ಣು'], ['ಕಲ್ಲಂಗಡಿ', 'ಹಣ್ಣು'], ['ಕರಬೂಜ', 'ಹಣ್ಣು'], ['ಅನಾನಸ್', 'ಹಣ್ಣು'],
+  ['ಮಾವು', 'ಹಣ್ಣು'], ['ಪೇರಲೆ', 'ಹಣ್ಣು'], ['ಪಪ್ಪಾಯಿ', 'ಹಣ್ಣು'], ['ಚಿಕ್ಕು', 'ಹಣ್ಣು'], ['ಸ್ಟ್ರಾಬೆರಿ', 'ಹಣ್ಣು'],
+  ['ಖರ್ಜೂರ', 'ಹಣ್ಣು'], ['ಅಂಜೂರ', 'ಹಣ್ಣು'], ['ಸೀತಾಫಲ', 'ಹಣ್ಣು'], ['ಕಿವಿ', 'ಹಣ್ಣು'], ['ನೇರಳೆಹಣ್ಣು', 'ಹಣ್ಣು'],
+  ['ಹಲಸಿನಹಣ್ಣು', 'ಹಣ್ಣು'],
+];
+
+function defaultProduceCatalog() {
+  return defaultProduceItems.map(([name, category], index) => ({
+    id: `PRD-${String(index + 1).padStart(3, '0')}`,
+    name,
+    category,
+    unit: 'ಕೆಜಿ',
+  }));
+}
+
 function ensureUniversal(db) {
   db.universal = db.universal || {};
   db.universal.menuItems = db.universal.menuItems || [];
   db.universal.rawMaterials = db.universal.rawMaterials || [];
+  db.universal.produceItems = db.universal.produceItems || [];
   const legacyNames = new Set(['Basmati Rice', 'Toor Dal', 'Cooking Oil', 'Tomato', 'Onion']);
   const hasOnlyLegacyRawMaterials = db.universal.rawMaterials.length > 0 && db.universal.rawMaterials.every((item) => legacyNames.has(item.name));
   if (db.universal.rawMaterials.length === 0 || hasOnlyLegacyRawMaterials) {
     db.universal.rawMaterials = defaultRawMaterials();
+  }
+  if (db.universal.produceItems.length === 0) {
+    db.universal.produceItems = defaultProduceCatalog();
   }
 }
 
@@ -275,8 +303,27 @@ function eventFromBody(body, existing = {}) {
     addOns: Array.isArray(body.addOns) ? body.addOns.map(addOnFromBody) : existing.addOns || [],
     dates: Array.isArray(body.dates) ? body.dates : existing.dates || [],
     payments: Array.isArray(body.payments) ? body.payments : existing.payments || [],
+    materialDocuments: Array.isArray(body.materialDocuments) ? body.materialDocuments.map(materialDocumentFromBody) : existing.materialDocuments || [],
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function materialDocumentFromBody(body, existing = {}) {
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('matdoc'),
+    type: ['raw', 'produce'].includes(body.type) ? body.type : existing.type || 'raw',
+    title: body.title || existing.title || 'Material List',
+    createdAt: existing.createdAt || body.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    items: Array.isArray(body.items) ? body.items.map((item) => ({
+      itemId: item.itemId || '',
+      name: item.name || '',
+      category: item.category || '',
+      quantity: item.quantity == null ? '' : String(item.quantity),
+      unit: item.unit || '',
+    })).filter((item) => item.name || item.itemId) : existing.items || [],
   };
 }
 
@@ -755,6 +802,51 @@ function generateMenuPdf({ res, db, event, dateId, allDates = false, businessPro
   doc.end();
 }
 
+function generateMaterialDocumentPdf({ res, event, materialDocument, businessProfile = emptyBusinessProfile() }) {
+  const title = materialDocument.type === 'produce' ? 'VEGETABLES & FRUITS' : 'RAW MATERIALS';
+  const filePrefix = materialDocument.type === 'produce' ? 'PRODUCE' : 'RAW';
+  const number = `${filePrefix}_${event.id}_${materialDocument.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
+  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: `${title} - ${event.name}` } });
+  const fonts = configurePdfFonts(doc);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  doc.pipe(res);
+
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#faf7ef');
+  doc.roundedRect(28, 24, 539, 82, 10).fill('#1b4d3e');
+  doc.fillColor('white').font(fonts.bold).fontSize(18).text(title, 48, 44, { width: 250 });
+  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(8).text(businessProfile.businessName || 'CaterPro', 48, 70, { width: 250 });
+  doc.fillColor('white').font(fonts.bold).fontSize(11).text(event.primaryClient || event.name || 'Event', 326, 42, { width: 205, align: 'right' });
+  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(8)
+    .text(materialDocument.title || title, 326, 62, { width: 205, align: 'right' })
+    .text(prettyDate(new Date().toISOString().slice(0, 10)), 326, 80, { width: 205, align: 'right' });
+
+  doc.roundedRect(42, 128, 511, 46, 8).fill('#fff4db');
+  doc.fillColor('#1b4d3e').font(fonts.bold).fontSize(11).text(event.name || 'Untitled Event', 58, 141, { width: 250 });
+  doc.fillColor('#202124').font(fonts.regular).fontSize(8.5).text([event.venue, event.mobile].filter(Boolean).join(' | '), 58, 158, { width: 250 });
+  doc.fillColor('#1b4d3e').font(fonts.bold).fontSize(10).text(`${materialDocument.items.length} items`, 360, 145, { width: 150, align: 'right' });
+
+  let y = 204;
+  const colWidth = 164;
+  const columns = [42, 216, 390];
+  materialDocument.items.forEach((item, index) => {
+    const col = index % 3;
+    if (index > 0 && col === 0) y += 38;
+    if (y > 760) {
+      doc.addPage();
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#faf7ef');
+      y = 42;
+    }
+    const x = columns[col];
+    doc.roundedRect(x, y, colWidth, 28, 4).fill('#ffffff').strokeColor('#eadfcf').lineWidth(0.5).stroke();
+    doc.rect(x + 8, y + 10, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
+    doc.fillColor('#202124').font(fonts.kannada).fontSize(7.8).text(item.name || item.itemId, x + 20, y + 6, { width: 88, height: 18 });
+    doc.fillColor('#1b4d3e').font(fonts.bold).fontSize(8).text([item.quantity, item.unit].filter(Boolean).join(' '), x + 108, y + 8, { width: 44, align: 'right' });
+  });
+  doc.fillColor('#9a7c25').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 812, { width: 220 });
+  doc.end();
+}
+
 const openApiSpec = {
   openapi: '3.0.3',
   info: {
@@ -779,7 +871,9 @@ const openApiSpec = {
       MenuItem: { type: 'object', properties: { id: { type: 'string' }, english: { type: 'string' }, kannada: { type: 'string' }, title: { type: 'string' }, category: { type: 'string' }, meals: { type: 'array', items: { type: 'string' } }, veg: { type: 'boolean' } } },
       CustomMenu: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } } } },
       RawMaterial: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, unit: { type: 'string' } } },
-      Event: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, mobile: { type: 'string' }, venue: { type: 'string' }, dates: { type: 'array' } } },
+      ProduceItem: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, unit: { type: 'string' } } },
+      MaterialDocument: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['raw', 'produce'] }, title: { type: 'string' }, items: { type: 'array' } } },
+      Event: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, mobile: { type: 'string' }, venue: { type: 'string' }, dates: { type: 'array' }, materialDocuments: { type: 'array' } } },
     },
   },
   paths: {
@@ -793,12 +887,17 @@ const openApiSpec = {
     '/api/custom-menus/{id}': { put: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Update ready made custom menu', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/raw-materials': { get: { tags: ['Universal Catalogs'], summary: 'List universal raw materials', responses: { 200: { description: 'Raw materials' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal raw material', responses: { 201: { description: 'Created' } } } },
     '/api/raw-materials/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal raw material', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
+    '/api/produce-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal vegetables and fruits', responses: { 200: { description: 'Vegetables and fruits' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal vegetable/fruit item', responses: { 201: { description: 'Created' } } } },
+    '/api/produce-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal vegetable/fruit item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/events': { get: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'List user events', responses: { 200: { description: 'Events' } } }, post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Create full event shell', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Event' } } } }, responses: { 201: { description: 'Created' } } } },
     '/api/events/{eventId}': { get: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Get event' }, put: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Update event' } },
     '/api/events/{eventId}/dates': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add event date' } },
     '/api/events/{eventId}/dates/{dateId}/menu-slots': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add menu type/slot for date' } },
     '/api/events/{eventId}/dates/{dateId}/additional-services': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add additional service for date' } },
     '/api/events/{eventId}/payments': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Record event payment' } },
+    '/api/events/{eventId}/material-documents': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Create raw material or vegetable/fruit document for event' } },
+    '/api/events/{eventId}/material-documents/{documentId}': { put: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Update event material document' } },
+    '/api/events/{eventId}/material-documents/{documentId}/pdf': { get: { tags: ['Events'], summary: 'Download raw material or vegetable/fruit PDF', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'documentId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' } } } },
     '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice', 'menu', 'all-menus'] } }, { name: 'dateId', in: 'query', required: false, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
   },
 };
@@ -810,7 +909,7 @@ const apiDocs = {
   openapi: '/api/openapi.json',
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
-    universal: ['menuItems', 'rawMaterials'],
+    universal: ['menuItems', 'rawMaterials', 'produceItems'],
     userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'businessProfile', 'payments'],
   },
 };
@@ -965,6 +1064,33 @@ app.put('/api/raw-materials/:id', (req, res) => {
   res.json(item);
 });
 
+app.get('/api/produce-items', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  writeDb(db);
+  res.json(db.universal.produceItems);
+});
+
+app.post('/api/produce-items', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const item = { id: req.body.id || makeId('prd'), name: req.body.name || '', category: req.body.category || '', unit: req.body.unit || '' };
+  upsertById(db.universal.produceItems, item);
+  writeDb(db);
+  res.status(201).json(item);
+});
+
+app.put('/api/produce-items/:id', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const existing = db.universal.produceItems.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Vegetable/fruit item not found' });
+  const item = { ...existing, ...req.body, id: req.params.id };
+  upsertById(db.universal.produceItems, item);
+  writeDb(db);
+  res.json(item);
+});
+
 app.get('/api/events', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
@@ -1092,6 +1218,46 @@ app.post('/api/events/:eventId/payments', (req, res) => {
   event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.status(201).json(payment);
+});
+
+app.post('/api/events/:eventId/material-documents', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  event.materialDocuments = event.materialDocuments || [];
+  const materialDocument = materialDocumentFromBody(req.body);
+  event.materialDocuments.push(materialDocument);
+  event.updatedAt = new Date().toISOString();
+  writeDb(db);
+  res.status(201).json(materialDocument);
+});
+
+app.put('/api/events/:eventId/material-documents/:documentId', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  event.materialDocuments = event.materialDocuments || [];
+  const existing = event.materialDocuments.find((item) => item.id === req.params.documentId);
+  if (!existing) return res.status(404).json({ message: 'Material document not found' });
+  Object.assign(existing, materialDocumentFromBody({ ...req.body, id: req.params.documentId }, existing));
+  event.updatedAt = new Date().toISOString();
+  writeDb(db);
+  res.json(existing);
+});
+
+app.get('/api/events/:eventId/material-documents/:documentId/pdf', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  const materialDocument = (event.materialDocuments || []).find((item) => item.id === req.params.documentId);
+  if (!materialDocument) return res.status(404).json({ message: 'Material document not found' });
+  return generateMaterialDocumentPdf({ res, event, materialDocument, businessProfile: db.userData[user.id].businessProfile });
 });
 
 app.get('/api/events/:eventId/documents/:type', (req, res) => {
