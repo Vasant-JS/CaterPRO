@@ -122,6 +122,7 @@ class BusinessProfile {
     this.logoBase64 = '',
     this.signatureBase64 = '',
     this.qrBase64 = '',
+    this.documentTemplate = 'modern',
   });
 
   final String businessName;
@@ -137,6 +138,7 @@ class BusinessProfile {
   final String logoBase64;
   final String signatureBase64;
   final String qrBase64;
+  final String documentTemplate;
 
   factory BusinessProfile.fromJson(Map<String, dynamic>? json) {
     final data = json ?? {};
@@ -154,6 +156,7 @@ class BusinessProfile {
       logoBase64: data['logoBase64']?.toString() ?? '',
       signatureBase64: data['signatureBase64']?.toString() ?? '',
       qrBase64: data['qrBase64']?.toString() ?? '',
+      documentTemplate: data['documentTemplate']?.toString() ?? 'modern',
     );
   }
 
@@ -171,6 +174,7 @@ class BusinessProfile {
         'logoBase64': logoBase64,
         'signatureBase64': signatureBase64,
         'qrBase64': qrBase64,
+        'documentTemplate': documentTemplate,
       };
 }
 
@@ -5534,6 +5538,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late String logoBase64 = widget.profile.logoBase64;
   late String signatureBase64 = widget.profile.signatureBase64;
   late String qrBase64 = widget.profile.qrBase64;
+  late String documentTemplate = widget.profile.documentTemplate;
   bool saving = false;
   String? error;
 
@@ -5559,6 +5564,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         logoBase64: logoBase64,
         signatureBase64: signatureBase64,
         qrBase64: qrBase64,
+        documentTemplate: documentTemplate,
       );
 
   Future<void> save() async {
@@ -5606,6 +5612,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         EditableInlineField(label: 'Account Number', controller: accountNumber, keyboardType: TextInputType.number),
         const SectionTitle('Terms & Conditions', Icons.description),
         EditableInlineField(label: 'Standard Terms', controller: terms),
+        const SectionTitle('Document Design', Icons.palette),
+        CpCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Invoice / Quotation / Menu Template', style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            DropdownButtonFormField<String>(
+              initialValue: documentTemplate,
+              decoration: InputDecoration(border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+              items: const [
+                DropdownMenuItem(value: 'modern', child: Text('Modern Blue')),
+                DropdownMenuItem(value: 'premium', child: Text('Premium Green & Gold')),
+                DropdownMenuItem(value: 'minimal', child: Text('Minimal Black')),
+              ],
+              onChanged: (value) => setState(() => documentTemplate = value ?? 'modern'),
+            ),
+          ]),
+        ),
       ]);
 }
 
