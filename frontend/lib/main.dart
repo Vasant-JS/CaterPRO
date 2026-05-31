@@ -621,11 +621,9 @@ class ApiService {
   }
 
   Future<BusinessProfile> getBusinessProfile() async {
-    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/bootstrap'), headers: await authHeaders());
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/business-profile'), headers: await authHeaders());
     if (response.statusCode != 200) throw Exception('Unable to load business profile');
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    final userData = (body['userData'] as Map?) ?? {};
-    return BusinessProfile.fromJson((userData['businessProfile'] as Map?)?.cast<String, dynamic>());
+    return BusinessProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
   Future<BusinessProfile> saveBusinessProfile(BusinessProfile profile) async {
@@ -6640,6 +6638,31 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late String documentTemplate = widget.profile.documentTemplate;
   bool saving = false;
   String? error;
+
+  @override
+  void didUpdateWidget(covariant BusinessProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile != widget.profile && !saving) {
+      applyProfile(widget.profile);
+    }
+  }
+
+  void applyProfile(BusinessProfile profile) {
+    businessName.text = profile.businessName;
+    serviceType.text = profile.serviceType;
+    gstin.text = profile.gstin;
+    pan.text = profile.pan;
+    address.text = profile.address;
+    phone.text = profile.phone;
+    email.text = profile.email;
+    bankName.text = profile.bankName;
+    accountNumber.text = profile.accountNumber;
+    terms.text = profile.terms;
+    logoBase64 = profile.logoBase64;
+    signatureBase64 = profile.signatureBase64;
+    qrBase64 = profile.qrBase64;
+    documentTemplate = profile.documentTemplate;
+  }
 
   @override
   void dispose() {

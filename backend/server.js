@@ -1185,6 +1185,13 @@ app.get('/api/bootstrap', (req, res) => {
   res.json({ universal: db.universal, userData: db.userData[user.id] });
 });
 
+app.get('/api/business-profile', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].businessProfile);
+});
+
 app.put('/api/business-profile', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
