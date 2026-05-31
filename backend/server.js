@@ -394,6 +394,8 @@ function manualInvoiceFromBody(body, existing = {}) {
     id: existing.id || body.id || makeId('minv'),
     clientName: body.clientName || existing.clientName || '',
     mobile: normalizeMobile(body.mobile || existing.mobile || ''),
+    clientAddress: body.clientAddress || existing.clientAddress || '',
+    clientGst: body.clientGst || body.clientGST || existing.clientGst || '',
     eventName: body.eventName || existing.eventName || '',
     venue: body.venue || existing.venue || '',
     eventDate: body.eventDate || existing.eventDate || '',
@@ -419,6 +421,8 @@ function clientFromBody(body, existing = {}) {
     mobile: normalizeMobile(body.mobile || existing.mobile || ''),
     city: body.city || existing.city || '',
     notes: body.notes || existing.notes || '',
+    address: body.address || existing.address || '',
+    gst: body.gst || body.gstin || existing.gst || '',
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -628,10 +632,12 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   doc.roundedRect(36, 156, 523, 122, theme.name === 'minimal' ? 3 : 10).fill(theme.soft).strokeColor(theme.secondary).lineWidth(0.9).stroke();
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text('Bill To', 52, 174);
   doc.fillColor(theme.ink).font(fonts.bold).fontSize(12).text(event.primaryClient || 'Customer', 52, 194, { width: 220 });
+  const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
   doc.fillColor(theme.muted).font(fonts.regular).fontSize(9)
     .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', 52, 214)
-    .text(event.venue ? `Venue: ${event.venue}` : 'Venue: -', 52, 230, { width: 220 })
+    .text(addressLine, 52, 230, { width: 220, height: 14 })
     .text(`Event: ${event.name || 'Untitled Event'}`, 52, 246, { width: 220 });
+  if (event.clientGst) doc.text(`GST: ${event.clientGst}`, 52, 262, { width: 220 });
 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text(`${title} Details`, 325, 174, { width: 210, align: 'right' });
@@ -768,6 +774,8 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
     name: invoice.eventName || 'Manual Invoice',
     primaryClient: invoice.clientName || 'Customer',
     mobile: invoice.mobile || '',
+    clientAddress: invoice.clientAddress || '',
+    clientGst: invoice.clientGst || '',
     venue: invoice.venue || '',
     dates: invoice.eventDate ? [{ date: invoice.eventDate }] : [],
   };
@@ -1161,6 +1169,7 @@ app.post('/api/clients', (req, res) => {
   if (!user) return;
   const client = clientFromBody(req.body);
   if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  if (client.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
   const existing = db.userData[user.id].clients.find((item) => normalizeMobile(item.mobile) === client.mobile);
   const saved = clientFromBody(client, existing || {});
   upsertById(db.userData[user.id].clients, saved);
@@ -1176,6 +1185,7 @@ app.put('/api/clients/:id', (req, res) => {
   if (!existing) return res.status(404).json({ message: 'Client not found' });
   const client = clientFromBody({ ...req.body, id: req.params.id }, existing);
   if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  if (client.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
   upsertById(db.userData[user.id].clients, client);
   writeDb(db);
   res.json(client);
@@ -1205,6 +1215,7 @@ app.post('/api/manual-invoices', (req, res) => {
   if (!user) return;
   const invoice = manualInvoiceFromBody(req.body);
   if (!invoice.clientName || !invoice.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  if (invoice.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
   if (!invoice.eventName || !invoice.invoiceDate) return res.status(400).json({ message: 'Event name and invoice date are required' });
   if (!invoice.items.length) return res.status(400).json({ message: 'Add at least one invoice item' });
   invoice.invoiceNumber = invoice.invoiceNumber || documentNumber('INV', { id: invoice.id });
@@ -1214,6 +1225,8 @@ app.post('/api/manual-invoices', (req, res) => {
     id: existingClient?.id || makeId('client'),
     name: invoice.clientName,
     mobile: invoice.mobile,
+    address: invoice.clientAddress || existingClient?.address || '',
+    gst: invoice.clientGst || existingClient?.gst || '',
     updatedAt: new Date().toISOString(),
     createdAt: existingClient?.createdAt || new Date().toISOString(),
   };

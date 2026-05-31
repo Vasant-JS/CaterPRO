@@ -306,12 +306,14 @@ class AppEvent {
 }
 
 class AppClient {
-  const AppClient({required this.id, required this.name, required this.mobile, this.city = '', this.notes = ''});
+  const AppClient({required this.id, required this.name, required this.mobile, this.city = '', this.notes = '', this.address = '', this.gst = ''});
   final String id;
   final String name;
   final String mobile;
   final String city;
   final String notes;
+  final String address;
+  final String gst;
 
   factory AppClient.fromJson(Map<String, dynamic> json) => AppClient(
         id: json['id']?.toString() ?? '',
@@ -319,16 +321,20 @@ class AppClient {
         mobile: json['mobile']?.toString() ?? '',
         city: json['city']?.toString() ?? '',
         notes: json['notes']?.toString() ?? '',
+        address: json['address']?.toString() ?? '',
+        gst: json['gst']?.toString() ?? json['gstin']?.toString() ?? '',
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'mobile': mobile, 'city': city, 'notes': notes};
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'mobile': mobile, 'city': city, 'notes': notes, 'address': address, 'gst': gst};
 
-  AppClient copyWith({String? id, String? name, String? mobile, String? city, String? notes}) => AppClient(
+  AppClient copyWith({String? id, String? name, String? mobile, String? city, String? notes, String? address, String? gst}) => AppClient(
         id: id ?? this.id,
         name: name ?? this.name,
         mobile: mobile ?? this.mobile,
         city: city ?? this.city,
         notes: notes ?? this.notes,
+        address: address ?? this.address,
+        gst: gst ?? this.gst,
       );
 }
 
@@ -417,6 +423,8 @@ class ManualInvoice {
     required this.id,
     required this.clientName,
     required this.mobile,
+    this.clientAddress = '',
+    this.clientGst = '',
     required this.eventName,
     required this.venue,
     required this.eventDate,
@@ -433,6 +441,8 @@ class ManualInvoice {
   final String id;
   final String clientName;
   final String mobile;
+  final String clientAddress;
+  final String clientGst;
   final String eventName;
   final String venue;
   final String eventDate;
@@ -450,6 +460,8 @@ class ManualInvoice {
         id: json['id']?.toString() ?? '',
         clientName: json['clientName']?.toString() ?? '',
         mobile: json['mobile']?.toString() ?? '',
+        clientAddress: json['clientAddress']?.toString() ?? '',
+        clientGst: json['clientGst']?.toString() ?? '',
         eventName: json['eventName']?.toString() ?? '',
         venue: json['venue']?.toString() ?? '',
         eventDate: json['eventDate']?.toString() ?? '',
@@ -468,6 +480,8 @@ class ManualInvoice {
         'id': id,
         'clientName': clientName,
         'mobile': mobile,
+        'clientAddress': clientAddress,
+        'clientGst': clientGst,
         'eventName': eventName,
         'venue': venue,
         'eventDate': eventDate,
@@ -794,6 +808,13 @@ String? positiveMoneyValidator(String? value, String label, {bool required = tru
   if (allowZero ? amount < 0 : amount <= 0) return allowZero ? '$label cannot be negative' : '$label must be more than zero';
   return null;
 }
+final mobileInputFormatters = <TextInputFormatter>[
+  TextInputFormatter.withFunction((oldValue, newValue) {
+    final clean = normalizeMobileNumber(newValue.text);
+    final capped = clean.length > 10 ? clean.substring(0, 10) : clean;
+    return TextEditingValue(text: capped, selection: TextSelection.collapsed(offset: capped.length));
+  }),
+];
 
 String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
   final count = quantity is num ? quantity.toInt() : int.tryParse(quantity?.toString() ?? '') ?? 0;
@@ -1182,7 +1203,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> openManualInvoiceForm() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceFormScreen(onSave: saveManualInvoice)));
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceFormScreen(clients: clients, onSave: saveManualInvoice)));
     if (mounted) setState(() => tab = 3);
   }
 
@@ -2278,6 +2299,8 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
   final mobile = TextEditingController(text: client?.mobile ?? '');
   final city = TextEditingController(text: client?.city ?? '');
   final notes = TextEditingController(text: client?.notes ?? '');
+  final address = TextEditingController(text: client?.address ?? '');
+  final gst = TextEditingController(text: client?.gst ?? '');
   bool saving = false;
   await showModalBottomSheet<void>(
     context: context,
@@ -2297,9 +2320,13 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
             const SizedBox(height: 16),
             TextFormField(controller: name, validator: (value) => requiredTextValidator(value, 'Client name'), decoration: InputDecoration(labelText: 'Client Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
-            TextFormField(controller: mobile, keyboardType: TextInputType.phone, validator: mobileValidator, decoration: InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            TextFormField(controller: mobile, keyboardType: TextInputType.phone, inputFormatters: mobileInputFormatters, validator: mobileValidator, decoration: InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
             TextFormField(controller: city, decoration: InputDecoration(labelText: 'City / Area', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextFormField(controller: address, minLines: 2, maxLines: 3, decoration: InputDecoration(labelText: 'Client Address', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextFormField(controller: gst, textCapitalization: TextCapitalization.characters, decoration: InputDecoration(labelText: 'GST', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
             TextFormField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: 'Notes', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 18),
@@ -2314,7 +2341,7 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
                         if (!(formKey.currentState?.validate() ?? false)) return;
                         setSheetState(() => saving = true);
                         try {
-                          await onSave(AppClient(id: client?.id ?? '', name: name.text.trim(), mobile: clean, city: city.text.trim(), notes: notes.text.trim()));
+                          await onSave(AppClient(id: client?.id ?? '', name: name.text.trim(), mobile: clean, city: city.text.trim(), notes: notes.text.trim(), address: address.text.trim(), gst: gst.text.trim()));
                           if (context.mounted) Navigator.pop(context);
                         } catch (e) {
                           if (context.mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -2336,6 +2363,8 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
   mobile.dispose();
   city.dispose();
   notes.dispose();
+  address.dispose();
+  gst.dispose();
 }
 
 class BillingScreen extends StatefulWidget {
@@ -2483,26 +2512,101 @@ class _BillingScreenState extends State<BillingScreen> {
 }
 
 class ManualInvoiceLineController {
-  ManualInvoiceLineController({String title = '', String quantity = '1', String rate = '', String amount = ''})
+  ManualInvoiceLineController({String title = '', String quantity = '1', String rate = ''})
       : title = TextEditingController(text: title),
         quantity = TextEditingController(text: quantity),
-        rate = TextEditingController(text: rate),
-        amount = TextEditingController(text: amount);
+        rate = TextEditingController(text: rate);
   final TextEditingController title;
   final TextEditingController quantity;
   final TextEditingController rate;
-  final TextEditingController amount;
 
   void dispose() {
     title.dispose();
     quantity.dispose();
     rate.dispose();
-    amount.dispose();
+  }
+}
+
+class ClientLookupField extends StatefulWidget {
+  const ClientLookupField({super.key, required this.label, required this.controller, required this.clients, required this.onSelected, this.validator, this.keyboardType, this.inputFormatters});
+  final String label;
+  final TextEditingController controller;
+  final List<AppClient> clients;
+  final ValueChanged<AppClient> onSelected;
+  final String? Function(String?)? validator;
+  final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+
+  @override
+  State<ClientLookupField> createState() => _ClientLookupFieldState();
+}
+
+class _ClientLookupFieldState extends State<ClientLookupField> {
+  final focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    focusNode.addListener(() => setState(() {}));
+    widget.controller.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    focusNode.dispose();
+    super.dispose();
+  }
+
+  List<AppClient> get matches {
+    final query = widget.controller.text.trim().toLowerCase();
+    if (query.isEmpty || !focusNode.hasFocus) return [];
+    final queryDigits = normalizeMobileText(query);
+    return widget.clients.where((client) {
+      final mobile = normalizeMobileText(client.mobile);
+      return client.name.toLowerCase().contains(query) || (queryDigits.isNotEmpty && mobile.contains(queryDigits)) || client.gst.toLowerCase().contains(query);
+    }).take(5).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final results = matches;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      TextFormField(
+        controller: widget.controller,
+        focusNode: focusNode,
+        keyboardType: widget.keyboardType,
+        inputFormatters: widget.inputFormatters,
+        validator: widget.validator,
+        decoration: InputDecoration(labelText: widget.label, prefixIcon: Icon(widget.keyboardType == TextInputType.phone ? Icons.phone_android : Icons.person), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+      ),
+      if (results.isNotEmpty)
+        Container(
+          margin: const EdgeInsets.only(top: 6),
+          decoration: BoxDecoration(color: Cp.surface, border: Border.all(color: Cp.outlineVariant), borderRadius: BorderRadius.circular(12), boxShadow: const [BoxShadow(color: Color(0x12000000), blurRadius: 12)]),
+          child: Column(
+            children: results.map((client) {
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.person_search, color: Cp.primary),
+                title: Text(client.name, style: const TextStyle(fontWeight: FontWeight.w900)),
+                subtitle: Text([normalizeMobileText(client.mobile), client.address.isNotEmpty ? client.address : client.city, client.gst].where((item) => item.trim().isNotEmpty).join(' • ')),
+                onTap: () {
+                  widget.onSelected(client);
+                  focusNode.unfocus();
+                },
+              );
+            }).toList(),
+          ),
+        ),
+    ]);
   }
 }
 
 class ManualInvoiceFormScreen extends StatefulWidget {
-  const ManualInvoiceFormScreen({super.key, required this.onSave});
+  const ManualInvoiceFormScreen({super.key, required this.clients, required this.onSave});
+  final List<AppClient> clients;
   final Future<void> Function(ManualInvoice invoice) onSave;
 
   @override
@@ -2513,6 +2617,8 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
   final formKey = GlobalKey<FormState>();
   final clientName = TextEditingController();
   final mobile = TextEditingController();
+  final clientAddress = TextEditingController();
+  final clientGst = TextEditingController();
   final eventName = TextEditingController();
   final venue = TextEditingController();
   final eventDate = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
@@ -2527,6 +2633,8 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
   void dispose() {
     clientName.dispose();
     mobile.dispose();
+    clientAddress.dispose();
+    clientGst.dispose();
     eventName.dispose();
     venue.dispose();
     eventDate.dispose();
@@ -2542,11 +2650,10 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
 
   int number(TextEditingController controller) => int.tryParse(controller.text.replaceAll(',', '').trim()) ?? 0;
   String cleanMobile() => normalizeMobileText(mobile.text);
+  int lineAmount(ManualInvoiceLineController item) => number(item.quantity) * number(item.rate);
 
   int get subtotal => items.fold(0, (sum, item) {
-        final explicit = number(item.amount);
-        if (explicit > 0) return sum + explicit;
-        return sum + (number(item.quantity) * number(item.rate));
+        return sum + lineAmount(item);
       });
   int get pending => (subtotal - number(advance) - number(settlement)).clamp(0, subtotal);
 
@@ -2565,6 +2672,15 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
     setState(() {});
   }
 
+  void selectClient(AppClient client) {
+    setState(() {
+      clientName.text = client.name;
+      mobile.text = normalizeMobileText(client.mobile);
+      clientAddress.text = client.address.isNotEmpty ? client.address : client.city;
+      clientGst.text = client.gst;
+    });
+  }
+
   Future<void> save() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
     final lines = <ManualInvoiceItem>[];
@@ -2572,7 +2688,7 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
       final title = item.title.text.trim();
       final qty = number(item.quantity);
       final rate = number(item.rate);
-      final amount = number(item.amount) > 0 ? number(item.amount) : qty * rate;
+      final amount = qty * rate;
       if (title.isNotEmpty && amount > 0) {
         lines.add(ManualInvoiceItem(id: '', title: title, quantity: qty, rate: rate, amount: amount));
       }
@@ -2593,6 +2709,8 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
         id: '',
         clientName: clientName.text.trim(),
         mobile: cleanMobile(),
+        clientAddress: clientAddress.text.trim(),
+        clientGst: clientGst.text.trim(),
         eventName: eventName.text.trim(),
         venue: venue.text.trim(),
         eventDate: eventDate.text.trim(),
@@ -2630,9 +2748,27 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
           children: [
             CpCard(
               child: Column(children: [
-                TextFormField(controller: clientName, decoration: fieldDecoration('Client Name', icon: Icons.person), validator: (value) => requiredTextValidator(value, 'Client name')),
+                ClientLookupField(
+                  label: 'Client Name',
+                  controller: clientName,
+                  clients: widget.clients,
+                  onSelected: selectClient,
+                  validator: (value) => requiredTextValidator(value, 'Client name'),
+                ),
                 const SizedBox(height: 12),
-                TextFormField(controller: mobile, keyboardType: TextInputType.phone, decoration: fieldDecoration('Mobile Number', icon: Icons.phone_android), validator: mobileValidator),
+                ClientLookupField(
+                  label: 'Mobile Number',
+                  controller: mobile,
+                  clients: widget.clients,
+                  onSelected: selectClient,
+                  keyboardType: TextInputType.phone,
+                  inputFormatters: mobileInputFormatters,
+                  validator: mobileValidator,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(controller: clientAddress, minLines: 2, maxLines: 3, decoration: fieldDecoration('Client Address', icon: Icons.home_outlined)),
+                const SizedBox(height: 12),
+                TextFormField(controller: clientGst, textCapitalization: TextCapitalization.characters, decoration: fieldDecoration('Client GST', icon: Icons.badge_outlined)),
                 const SizedBox(height: 12),
                 TextFormField(controller: eventName, decoration: fieldDecoration('Event Name', icon: Icons.celebration), validator: (value) => requiredTextValidator(value, 'Event name')),
                 const SizedBox(height: 12),
@@ -2654,20 +2790,25 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                   final item = items[index];
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 14),
-                    child: Column(children: [
-                      Row(children: [
-                        Expanded(child: TextFormField(controller: item.title, decoration: fieldDecoration('Item Title'), validator: (value) => requiredTextValidator(value, 'Item title'))),
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      final wide = constraints.maxWidth > 820;
+                      final fields = [
+                        Expanded(flex: 4, child: TextFormField(controller: item.title, decoration: fieldDecoration('Item Title'), validator: (value) => requiredTextValidator(value, 'Item title'))),
+                        const SizedBox(width: 8),
+                        SizedBox(width: wide ? 110 : null, child: TextFormField(controller: item.quantity, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly], onChanged: (_) => setState(() {}), decoration: fieldDecoration('Qty'), validator: (value) => positiveMoneyValidator(value, 'Qty', allowZero: false))),
+                        const SizedBox(width: 8),
+                        Expanded(flex: 2, child: TextFormField(controller: item.rate, keyboardType: TextInputType.number, inputFormatters: [FilteringTextInputFormatter.digitsOnly], onChanged: (_) => setState(() {}), decoration: fieldDecoration('Rate'), validator: (value) => positiveMoneyValidator(value, 'Rate', allowZero: false))),
+                        const SizedBox(width: 8),
+                        Expanded(flex: 2, child: InputDecorator(decoration: fieldDecoration('Amount'), child: Text(money(lineAmount(item)), style: const TextStyle(fontWeight: FontWeight.w900)))),
                         IconButton(onPressed: () => removeItem(index), icon: const Icon(Icons.delete, color: Cp.error)),
-                      ]),
-                      const SizedBox(height: 10),
-                      Row(children: [
-                        Expanded(child: TextFormField(controller: item.quantity, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Qty'), validator: (value) => positiveMoneyValidator(value, 'Qty', required: false, allowZero: true))),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextFormField(controller: item.rate, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Rate'), validator: (value) => positiveMoneyValidator(value, 'Rate', required: false, allowZero: true))),
-                        const SizedBox(width: 8),
-                        Expanded(child: TextFormField(controller: item.amount, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Amount'), validator: (value) => positiveMoneyValidator(value, 'Amount', required: false, allowZero: true))),
-                      ]),
-                    ]),
+                      ];
+                      if (wide) return Row(crossAxisAlignment: CrossAxisAlignment.start, children: fields);
+                      return Column(children: [
+                        Row(children: [fields[0], fields.last]),
+                        const SizedBox(height: 10),
+                        Row(children: fields.sublist(2, 7)),
+                      ]);
+                    }),
                   );
                 }),
               ]),
@@ -2739,6 +2880,8 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
               Center(child: Text(invoice.pending == 0 ? 'Invoice settled' : 'Pending ${money(invoice.pending)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900))),
               const Divider(height: 28),
               DetailNavTile(iconText: invoice.clientName.isEmpty ? 'C' : invoice.clientName[0].toUpperCase(), label: 'Client Name', value: '${invoice.clientName} • ${invoice.mobile}'),
+              if (invoice.clientAddress.isNotEmpty) SmallInfoBlock(label: 'Client Address', value: invoice.clientAddress),
+              if (invoice.clientGst.isNotEmpty) SmallInfoBlock(label: 'Client GST', value: invoice.clientGst),
               DetailNavTile(iconText: invoice.eventName.isEmpty ? 'E' : invoice.eventName[0].toUpperCase(), label: 'Event Name', value: invoice.eventName),
               SmallInfoBlock(label: 'Invoice#', value: invoice.invoiceNumber.isEmpty ? invoice.id.toUpperCase() : invoice.invoiceNumber),
               const SizedBox(height: 10),
@@ -3648,10 +3791,11 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
 }
 
 class EditableInlineField extends StatelessWidget {
-  const EditableInlineField({super.key, required this.label, required this.controller, this.keyboardType});
+  const EditableInlineField({super.key, required this.label, required this.controller, this.keyboardType, this.inputFormatters});
   final String label;
   final TextEditingController controller;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -3659,6 +3803,7 @@ class EditableInlineField extends StatelessWidget {
         child: TextField(
           controller: controller,
           keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
           decoration: InputDecoration(labelText: label, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
         ),
       );
@@ -3904,7 +4049,7 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
                 ),
               ),
             ),
-          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: widget.draft.mobile, icon: Icons.phone_iphone, onChanged: (value) { widget.draft.mobile = normalizeMobileNumber(value); updateMatches(widget.draft.mobile); widget.onChanged(); }),
+          FormFieldBox(label: 'Mobile Number (Unique Customer ID)', value: widget.draft.mobile, icon: Icons.phone_iphone, inputFormatters: mobileInputFormatters, onChanged: (value) { widget.draft.mobile = normalizeMobileNumber(value); updateMatches(widget.draft.mobile); widget.onChanged(); }),
           FormFieldBox(label: 'Venue', value: widget.draft.venue, icon: Icons.location_on, onChanged: (value) { widget.draft.venue = value; widget.onChanged(); }),
           FormFieldBox(label: 'Event Notes & Logistics', value: widget.draft.notes, height: 98, onChanged: (value) { widget.draft.notes = value; widget.onChanged(); }),
         ]),
@@ -4509,9 +4654,9 @@ class MealSlotCard extends StatelessWidget {
             if (enabled) ...[
               const SizedBox(height: 12),
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(child: FormFieldBox(label: '${slot.type} Pax', value: slot.pax, icon: Icons.person, onChanged: onPaxChanged)),
+                Expanded(child: FormFieldBox(label: '${slot.type} Pax', value: slot.pax, icon: Icons.person, inputFormatters: [FilteringTextInputFormatter.digitsOnly], onChanged: onPaxChanged)),
                 const SizedBox(width: 12),
-                Expanded(child: FormFieldBox(label: 'Price / Pax', value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}', icon: Icons.currency_rupee, onChanged: onPriceChanged)),
+                Expanded(child: FormFieldBox(label: 'Price / Pax', value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}', icon: Icons.currency_rupee, inputFormatters: [FilteringTextInputFormatter.digitsOnly], onChanged: onPriceChanged)),
               ]),
             ],
             if (enabled) ...[
@@ -4662,11 +4807,12 @@ class StepperHeader extends StatelessWidget {
 }
 
 class FormFieldBox extends StatefulWidget {
-  const FormFieldBox({super.key, required this.label, required this.value, this.icon, this.height = 56, this.onChanged});
+  const FormFieldBox({super.key, required this.label, required this.value, this.icon, this.height = 56, this.onChanged, this.inputFormatters});
   final String label, value;
   final IconData? icon;
   final double height;
   final ValueChanged<String>? onChanged;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   State<FormFieldBox> createState() => _FormFieldBoxState();
@@ -4720,6 +4866,7 @@ class _FormFieldBoxState extends State<FormFieldBox> {
               child: TextField(
                 controller: controller,
                 keyboardType: keyboardType,
+                inputFormatters: widget.inputFormatters,
                 onChanged: widget.onChanged,
                 maxLines: multiline ? null : 1,
                 minLines: multiline ? 3 : 1,
@@ -6424,7 +6571,7 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
             const SizedBox(height: 16),
             EditableInlineField(label: 'Name', controller: name),
             Row(children: [Expanded(child: EditableInlineField(label: 'Age', controller: age, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Pay/Day', controller: payPerDay, keyboardType: TextInputType.number))]),
-            EditableInlineField(label: 'Mobile', controller: mobile, keyboardType: TextInputType.phone),
+            EditableInlineField(label: 'Mobile', controller: mobile, keyboardType: TextInputType.phone, inputFormatters: mobileInputFormatters),
             EditableInlineField(label: 'Designation', controller: designation),
             if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
             SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Employee', style: TextStyle(fontWeight: FontWeight.w900)))),
@@ -6539,7 +6686,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         const SectionTitle('Business Address', Icons.location_on),
         EditableInlineField(label: 'Full Address', controller: address),
         const SectionTitle('Contact Information', Icons.contact_phone),
-        EditableInlineField(label: 'Phone Number', controller: phone, keyboardType: TextInputType.phone),
+        EditableInlineField(label: 'Phone Number', controller: phone, keyboardType: TextInputType.phone, inputFormatters: mobileInputFormatters),
         EditableInlineField(label: 'Email Address', controller: email, keyboardType: TextInputType.emailAddress),
         const SectionTitle('Settlement Bank', Icons.account_balance),
         EditableInlineField(label: 'Bank Name', controller: bankName),
