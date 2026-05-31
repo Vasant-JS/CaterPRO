@@ -2066,6 +2066,17 @@ class _BillingScreenState extends State<BillingScreen> {
         ]),
         const SizedBox(height: 16),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [tabChip(0, 'Quotations', quotationEvents.length), const SizedBox(width: 8), tabChip(1, 'Invoices', invoicePayments.length + widget.manualInvoices.length)])),
+        const SizedBox(height: 12),
+        if (selectedTab == 1)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: widget.onAddManualInvoice,
+              style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000), padding: const EdgeInsets.symmetric(vertical: 14)),
+              icon: const Icon(Icons.add),
+              label: const Text('Add Manual Invoice', style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
           if (quotationEvents.isEmpty)
@@ -2917,6 +2928,7 @@ class SettingsScreen extends StatelessWidget {
       topBar: TopBar(title: 'CaterPro', avatar: false, actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary)), const CircleAvatar(radius: 16, backgroundColor: Cp.primaryContainer, child: Text('RC', style: TextStyle(fontSize: 10, color: Colors.white)))]),
       children: [
         CpCard(
+          onTap: openBusiness,
           padding: const EdgeInsets.all(24),
           child: Column(children: [
             BusinessLogoAvatar(profile: businessProfile, radius: 48),
@@ -2959,6 +2971,7 @@ class SettingsGroup extends StatelessWidget {
   final Map<String, VoidCallback> onItemTap;
   @override
   Widget build(BuildContext context) {
+    void fallback(String label) => showCpSnack(context, '$label opened');
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2966,7 +2979,16 @@ class SettingsGroup extends StatelessWidget {
         Material(
           color: Cp.surfaceLow,
           borderRadius: BorderRadius.circular(12),
-          child: Column(children: List.generate(items.length, (i) => ListTile(onTap: onItemTap[items[i].$2], leading: Icon(items[i].$1, color: Cp.onVariant), title: Text(items[i].$2, style: const TextStyle(fontWeight: FontWeight.w700)), trailing: const Icon(Icons.chevron_right, color: Cp.outline), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))))),
+          child: Column(children: List.generate(items.length, (i) {
+            final label = items[i].$2;
+            return ListTile(
+              onTap: onItemTap[label] ?? () => fallback(label),
+              leading: Icon(items[i].$1, color: Cp.onVariant),
+              title: Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+              trailing: const Icon(Icons.chevron_right, color: Cp.outline),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            );
+          })),
         ),
       ]),
     );
