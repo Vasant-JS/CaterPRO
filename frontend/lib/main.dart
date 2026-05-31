@@ -762,6 +762,38 @@ class ApiService {
 
 String money(int value) => '₹${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (match) => ',')}';
 String normalizeMobileText(String value) => value.trim().replaceFirst(RegExp(r'^\+91\s*'), '').replaceAll(RegExp(r'\D'), '');
+bool isValidEmail(String value) => RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim());
+String? requiredTextValidator(String? value, String label) => (value ?? '').trim().isEmpty ? '$label is required' : null;
+String? mobileValidator(String? value, {String label = 'Mobile number', bool required = true}) {
+  final clean = normalizeMobileText(value ?? '');
+  if (clean.isEmpty && !required) return null;
+  return clean.length == 10 ? null : '$label must be 10 digits';
+}
+String? emailValidator(String? value, {String label = 'Email', bool required = true}) {
+  final text = (value ?? '').trim();
+  if (text.isEmpty && !required) return null;
+  return isValidEmail(text) ? null : 'Enter a valid $label';
+}
+String? isoDateValidator(String? value, {String label = 'Date', bool required = true, bool noPast = false}) {
+  final text = (value ?? '').trim();
+  if (text.isEmpty) return required ? '$label is required' : null;
+  final parsed = parseIsoDate(text);
+  if (parsed == null) return 'Enter $label as YYYY-MM-DD';
+  if (noPast) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    if (parsed.isBefore(today)) return '$label cannot be in the past';
+  }
+  return null;
+}
+String? positiveMoneyValidator(String? value, String label, {bool required = true, bool allowZero = false}) {
+  final text = (value ?? '').trim();
+  if (text.isEmpty) return required ? '$label is required' : null;
+  final amount = int.tryParse(text.replaceAll(RegExp(r'[^0-9]'), ''));
+  if (amount == null) return 'Enter a valid $label';
+  if (allowZero ? amount < 0 : amount <= 0) return allowZero ? '$label cannot be negative' : '$label must be more than zero';
+  return null;
+}
 
 String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
   final count = quantity is num ? quantity.toInt() : int.tryParse(quantity?.toString() ?? '') ?? 0;
@@ -828,10 +860,9 @@ class EventDraft {
 }
 
 String normalizeMobileNumber(String value) {
-  var text = value.trim().replaceAll(RegExp(r'[\s()-]'), '');
-  if (text.startsWith('+91')) text = text.substring(3);
-  if (text.startsWith('91') && text.length == 12) text = text.substring(2);
-  return text.replaceAll(RegExp(r'[^0-9]'), '');
+  final text = normalizeMobileText(value);
+  if (text.startsWith('91') && text.length == 12) return text.substring(2);
+  return text;
 }
 
 class CustomerSuggestion {
@@ -849,7 +880,9 @@ DateTime? parseIsoDate(String value) {
   final month = int.tryParse(parts[1]);
   final day = int.tryParse(parts[2]);
   if (year == null || month == null || day == null || month < 1 || month > 12) return null;
-  return DateTime(year, month, day);
+  final date = DateTime(year, month, day);
+  if (date.year != year || date.month != month || date.day != day) return null;
+  return date;
 }
 
 String shortMonthLabel(String isoDate) {
@@ -899,6 +932,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  final formKey = GlobalKey<FormState>();
   final authService = AuthService();
   final email = TextEditingController(text: 'admin@caterpro.in');
   final password = TextEditingController(text: 'password');
@@ -917,7 +951,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     final emailText = email.text.trim();
     final passwordText = password.text;
-    if (!emailText.contains('@') || passwordText.length < 4) {
+    if (!(formKey.currentState?.validate() ?? false)) {
       setState(() => error = 'Enter a valid email and password.');
       return;
     }
@@ -944,7 +978,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> forgotPassword() async {
     final emailText = email.text.trim();
-    if (!emailText.contains('@')) {
+    if (emailValidator(emailText) != null) {
       showCpSnack(context, 'Enter your email to receive reset link');
       return;
     }
@@ -979,19 +1013,23 @@ class _LoginScreenState extends State<LoginScreen> {
             const SizedBox(height: 4),
             const Text('Sign in to manage events, menus, billing, and teams.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
             const SizedBox(height: 28),
-            CpCard(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Form(
+              key: formKey,
+              child: CpCard(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 const Text('Login', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 18),
-                TextField(
+                TextFormField(
                   controller: email,
                   keyboardType: TextInputType.emailAddress,
+                  validator: emailValidator,
                   decoration: InputDecoration(prefixIcon: const Icon(Icons.email_outlined), labelText: 'Email', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
                 ),
                 const SizedBox(height: 14),
-                TextField(
+                TextFormField(
                   controller: password,
                   obscureText: obscurePassword,
+                  validator: (value) => (value ?? '').length < 4 ? 'Password must be at least 4 characters' : null,
                   decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.lock_outline),
                     labelText: 'Password',
@@ -1017,7 +1055,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     label: const Text('Authenticate with Fingerprint', style: TextStyle(fontWeight: FontWeight.w900)),
                   ),
                 ),
-              ]),
+                ]),
+              ),
             ),
           ],
         ),
@@ -2234,6 +2273,7 @@ class ClientCard extends StatelessWidget {
 }
 
 Future<void> showClientEditor(BuildContext context, {AppClient? client, required Future<void> Function(AppClient client) onSave}) async {
+  final formKey = GlobalKey<FormState>();
   final name = TextEditingController(text: client?.name ?? '');
   final mobile = TextEditingController(text: client?.mobile ?? '');
   final city = TextEditingController(text: client?.city ?? '');
@@ -2248,18 +2288,20 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
         padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
         decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: Form(
+            key: formKey,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(child: Container(width: 58, height: 6, decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(999)))),
             const SizedBox(height: 18),
             Text(client == null ? 'Add Client' : 'Edit Client', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 16),
-            TextField(controller: name, decoration: InputDecoration(labelText: 'Client Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            TextFormField(controller: name, validator: (value) => requiredTextValidator(value, 'Client name'), decoration: InputDecoration(labelText: 'Client Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
-            TextField(controller: mobile, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            TextFormField(controller: mobile, keyboardType: TextInputType.phone, validator: mobileValidator, decoration: InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
-            TextField(controller: city, decoration: InputDecoration(labelText: 'City / Area', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            TextFormField(controller: city, decoration: InputDecoration(labelText: 'City / Area', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 12),
-            TextField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: 'Notes', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            TextFormField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: 'Notes', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
             const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
@@ -2269,10 +2311,7 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
                     ? null
                     : () async {
                         final clean = normalizeMobileText(mobile.text);
-                        if (name.text.trim().isEmpty || clean.length != 10) {
-                          showCpSnack(context, 'Enter client name and 10 digit mobile number');
-                          return;
-                        }
+                        if (!(formKey.currentState?.validate() ?? false)) return;
                         setSheetState(() => saving = true);
                         try {
                           await onSave(AppClient(id: client?.id ?? '', name: name.text.trim(), mobile: clean, city: city.text.trim(), notes: notes.text.trim()));
@@ -2287,7 +2326,8 @@ Future<void> showClientEditor(BuildContext context, {AppClient? client, required
                 label: Text(saving ? 'Saving...' : 'Save Client', style: const TextStyle(fontWeight: FontWeight.w900)),
               ),
             ),
-          ]),
+            ]),
+          ),
         ),
       ),
     ),
@@ -2527,10 +2567,6 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
 
   Future<void> save() async {
     if (!(formKey.currentState?.validate() ?? false)) return;
-    if (cleanMobile().length != 10) {
-      showCpSnack(context, 'Enter a valid 10 digit mobile number');
-      return;
-    }
     final lines = <ManualInvoiceItem>[];
     for (final item in items) {
       final title = item.title.text.trim();
@@ -2594,18 +2630,18 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
           children: [
             CpCard(
               child: Column(children: [
-                TextFormField(controller: clientName, decoration: fieldDecoration('Client Name', icon: Icons.person), validator: (value) => (value ?? '').trim().isEmpty ? 'Client name required' : null),
+                TextFormField(controller: clientName, decoration: fieldDecoration('Client Name', icon: Icons.person), validator: (value) => requiredTextValidator(value, 'Client name')),
                 const SizedBox(height: 12),
-                TextFormField(controller: mobile, keyboardType: TextInputType.phone, decoration: fieldDecoration('Mobile Number', icon: Icons.phone_android), validator: (_) => cleanMobile().length == 10 ? null : '10 digit mobile required'),
+                TextFormField(controller: mobile, keyboardType: TextInputType.phone, decoration: fieldDecoration('Mobile Number', icon: Icons.phone_android), validator: mobileValidator),
                 const SizedBox(height: 12),
-                TextFormField(controller: eventName, decoration: fieldDecoration('Event Name', icon: Icons.celebration), validator: (value) => (value ?? '').trim().isEmpty ? 'Event name required' : null),
+                TextFormField(controller: eventName, decoration: fieldDecoration('Event Name', icon: Icons.celebration), validator: (value) => requiredTextValidator(value, 'Event name')),
                 const SizedBox(height: 12),
                 TextFormField(controller: venue, decoration: fieldDecoration('Venue', icon: Icons.place)),
                 const SizedBox(height: 12),
                 Row(children: [
-                  Expanded(child: TextFormField(controller: eventDate, readOnly: true, onTap: () => pickDate(eventDate), decoration: fieldDecoration('Event Date', icon: Icons.event), validator: (value) => (value ?? '').isEmpty ? 'Required' : null)),
+                  Expanded(child: TextFormField(controller: eventDate, readOnly: true, onTap: () => pickDate(eventDate), decoration: fieldDecoration('Event Date', icon: Icons.event), validator: (value) => isoDateValidator(value, label: 'Event date'))),
                   const SizedBox(width: 10),
-                  Expanded(child: TextFormField(controller: invoiceDate, readOnly: true, onTap: () => pickDate(invoiceDate), decoration: fieldDecoration('Invoice Date', icon: Icons.receipt), validator: (value) => (value ?? '').isEmpty ? 'Required' : null)),
+                  Expanded(child: TextFormField(controller: invoiceDate, readOnly: true, onTap: () => pickDate(invoiceDate), decoration: fieldDecoration('Invoice Date', icon: Icons.receipt), validator: (value) => isoDateValidator(value, label: 'Invoice date'))),
                 ]),
               ]),
             ),
@@ -2620,16 +2656,16 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                     padding: const EdgeInsets.only(bottom: 14),
                     child: Column(children: [
                       Row(children: [
-                        Expanded(child: TextFormField(controller: item.title, decoration: fieldDecoration('Item Title'), validator: (value) => (value ?? '').trim().isEmpty ? 'Required' : null)),
+                        Expanded(child: TextFormField(controller: item.title, decoration: fieldDecoration('Item Title'), validator: (value) => requiredTextValidator(value, 'Item title'))),
                         IconButton(onPressed: () => removeItem(index), icon: const Icon(Icons.delete, color: Cp.error)),
                       ]),
                       const SizedBox(height: 10),
                       Row(children: [
-                        Expanded(child: TextFormField(controller: item.quantity, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Qty'))),
+                        Expanded(child: TextFormField(controller: item.quantity, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Qty'), validator: (value) => positiveMoneyValidator(value, 'Qty', required: false, allowZero: true))),
                         const SizedBox(width: 8),
-                        Expanded(child: TextFormField(controller: item.rate, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Rate'))),
+                        Expanded(child: TextFormField(controller: item.rate, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Rate'), validator: (value) => positiveMoneyValidator(value, 'Rate', required: false, allowZero: true))),
                         const SizedBox(width: 8),
-                        Expanded(child: TextFormField(controller: item.amount, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Amount'))),
+                        Expanded(child: TextFormField(controller: item.amount, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Amount'), validator: (value) => positiveMoneyValidator(value, 'Amount', required: false, allowZero: true))),
                       ]),
                     ]),
                   );
@@ -2640,9 +2676,9 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
             CpCard(
               child: Column(children: [
                 Row(children: [
-                  Expanded(child: TextFormField(controller: advance, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Advance Paid', icon: Icons.payments))),
+                  Expanded(child: TextFormField(controller: advance, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Advance Paid', icon: Icons.payments), validator: (value) => positiveMoneyValidator(value, 'Advance paid', allowZero: true))),
                   const SizedBox(width: 10),
-                  Expanded(child: TextFormField(controller: settlement, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Settlement / Discount', icon: Icons.price_check))),
+                  Expanded(child: TextFormField(controller: settlement, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Settlement / Discount', icon: Icons.price_check), validator: (value) => positiveMoneyValidator(value, 'Settlement', allowZero: true))),
                 ]),
                 const SizedBox(height: 12),
                 TextFormField(controller: notes, minLines: 2, maxLines: 4, decoration: fieldDecoration('Notes')),
@@ -3003,7 +3039,7 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
   static const int paidAmount = 225000;
   static const int balanceAmount = 125000;
   final paymentController = TextEditingController(text: '50000');
-  final dateController = TextEditingController(text: '14 Jun 2025');
+  final dateController = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
   final refController = TextEditingController(text: 'REF123456789');
   final paymentModes = const ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque'];
   int selectedMode = 0;
@@ -3044,6 +3080,11 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
     }
     if (paymentAmount > balanceAmount) {
       setState(() => errorText = 'Payment cannot be more than remaining balance ${money(balanceAmount)}.');
+      return false;
+    }
+    final dateError = isoDateValidator(dateController.text, label: 'Payment date');
+    if (dateError != null) {
+      setState(() => errorText = dateError);
       return false;
     }
     setState(() => errorText = null);
@@ -3376,6 +3417,8 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
         errorText = 'Enter a payment amount.';
       } else if (amount > balanceAmount) {
         errorText = 'Payment cannot be more than remaining balance ${money(balanceAmount)}.';
+      } else if (isoDateValidator(dateController.text, label: 'Payment date') != null) {
+        errorText = isoDateValidator(dateController.text, label: 'Payment date');
       } else {
         errorText = null;
       }
@@ -3540,6 +3583,7 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
   late final TextEditingController unit;
   late final TextEditingController quantity;
   late final TextEditingController price;
+  String? error;
 
   @override
   void initState() {
@@ -3577,6 +3621,7 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
           EditableInlineField(label: 'Service Name', controller: name),
           Row(children: [Expanded(child: EditableInlineField(label: 'Quantity', controller: quantity, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Unit', controller: unit))]),
           EditableInlineField(label: 'Price', controller: price, keyboardType: TextInputType.number),
+          if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
           const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
@@ -3584,7 +3629,13 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
               onPressed: () {
-                widget.onSave(AdditionalServiceItem(id: id.text.trim(), name: name.text.trim(), unit: unit.text.trim(), quantity: int.tryParse(quantity.text) ?? 0, price: int.tryParse(price.text) ?? 0));
+                final parsedQuantity = int.tryParse(quantity.text.trim());
+                final parsedPrice = int.tryParse(price.text.trim());
+                if (id.text.trim().isEmpty || name.text.trim().isEmpty || unit.text.trim().isEmpty || parsedQuantity == null || parsedQuantity < 0 || parsedPrice == null || parsedPrice < 0) {
+                  setState(() => error = 'Enter service ID, name, unit, and valid quantity/price.');
+                  return;
+                }
+                widget.onSave(AdditionalServiceItem(id: id.text.trim(), name: name.text.trim(), unit: unit.text.trim(), quantity: parsedQuantity, price: parsedPrice));
                 Navigator.pop(context);
               },
               child: const Text('Save Service', style: TextStyle(fontWeight: FontWeight.w900)),
@@ -3657,9 +3708,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   Future<void> save() async {
     draft.mobile = normalizeMobileNumber(draft.mobile);
-    final detailsError = validateDetails();
-    if (detailsError != null) {
-      setState(() => error = detailsError);
+    final saveError = validateEventForFinalSave();
+    if (saveError != null) {
+      setState(() => error = saveError);
       return;
     }
     setState(() {
@@ -3684,6 +3735,22 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (draft.client.trim().isEmpty) return 'Primary client is required.';
     if (draft.mobile.trim().isEmpty) return 'Mobile number is required.';
     if (draft.mobile.length != 10) return 'Mobile number must be 10 digits.';
+    return null;
+  }
+
+  String? validateEventForFinalSave() {
+    final detailsError = validateDetails();
+    if (detailsError != null) return detailsError;
+    if (draft.dates.isEmpty) return 'Add at least one event date.';
+    for (final date in draft.dates) {
+      final dateError = isoDateValidator(date.date, label: 'Event date', noPast: true);
+      if (dateError != null) return dateError;
+      for (final slot in date.slots.where((item) => item.enabled)) {
+        final pax = int.tryParse(slot.pax.trim()) ?? 0;
+        if (pax <= 0) return '${slot.type} pax must be more than zero.';
+        if (slot.pricePerPax <= 0) return '${slot.type} price per pax must be more than zero.';
+      }
+    }
     return null;
   }
 
@@ -4241,6 +4308,14 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
               onPressed: () {
+                for (final service in widget.services.where((service) => selectedIds.contains(service.id))) {
+                  final raw = quantityControllers[service.id]?.text.trim() ?? '';
+                  final quantity = int.tryParse(raw);
+                  if (raw.isNotEmpty && (quantity == null || quantity < 0)) {
+                    showCpSnack(context, 'Enter a valid count for ${service.name}');
+                    return;
+                  }
+                }
                 widget.onChanged(widget.services.where((service) => selectedIds.contains(service.id)).map((service) {
                   final quantity = int.tryParse(quantityControllers[service.id]?.text.trim() ?? '') ?? 0;
                   return {'serviceId': service.id, 'name': service.name, 'quantity': quantity, 'unit': service.unit, 'price': service.price};
@@ -6314,11 +6389,24 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
   void save() {
     final parsedAge = int.tryParse(age.text.trim());
     final parsedPay = int.tryParse(payPerDay.text.replaceAll(RegExp(r'[^0-9]'), ''));
-    if (name.text.trim().isEmpty || parsedAge == null || mobile.text.trim().isEmpty || designation.text.trim().isEmpty || parsedPay == null) {
+    final cleanMobile = normalizeMobileText(mobile.text);
+    if (name.text.trim().isEmpty || parsedAge == null || cleanMobile.isEmpty || designation.text.trim().isEmpty || parsedPay == null) {
       setState(() => error = 'Fill Name, Age, Mobile, Designation, and Pay/Day.');
       return;
     }
-    widget.onSave(Employee(name: name.text.trim(), age: parsedAge, mobile: mobile.text.trim(), designation: designation.text.trim(), payPerDay: parsedPay));
+    if (parsedAge < 16 || parsedAge > 100) {
+      setState(() => error = 'Age must be between 16 and 100.');
+      return;
+    }
+    if (cleanMobile.length != 10) {
+      setState(() => error = 'Mobile number must be 10 digits.');
+      return;
+    }
+    if (parsedPay <= 0) {
+      setState(() => error = 'Pay/Day must be more than zero.');
+      return;
+    }
+    widget.onSave(Employee(name: name.text.trim(), age: parsedAge, mobile: cleanMobile, designation: designation.text.trim(), payPerDay: parsedPay));
     Navigator.pop(context);
   }
 
@@ -6389,7 +6477,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         gstin: gstin.text.trim(),
         pan: pan.text.trim(),
         address: address.text.trim(),
-        phone: phone.text.trim(),
+        phone: phone.text.trim().isEmpty ? '' : normalizeMobileText(phone.text),
         email: email.text.trim(),
         bankName: bankName.text.trim(),
         accountNumber: accountNumber.text.trim(),
@@ -6401,6 +6489,19 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       );
 
   Future<void> save() async {
+    final cleanPhone = normalizeMobileText(phone.text);
+    if (businessName.text.trim().isEmpty) {
+      setState(() => error = 'Business name is required.');
+      return;
+    }
+    if (phone.text.trim().isNotEmpty && cleanPhone.length != 10) {
+      setState(() => error = 'Phone number must be 10 digits.');
+      return;
+    }
+    if (email.text.trim().isNotEmpty && !isValidEmail(email.text)) {
+      setState(() => error = 'Enter a valid email address.');
+      return;
+    }
     setState(() {
       saving = true;
       error = null;
