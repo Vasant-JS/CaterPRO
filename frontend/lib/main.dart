@@ -518,6 +518,12 @@ int eventTotal(AppEvent event) => eventMenuTotal(event) + eventServiceTotal(even
 int eventPaid(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.amount);
 int eventSettledDiscount(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.settledDiscount);
 int eventBalance(AppEvent event) => (eventTotal(event) - eventPaid(event) - eventSettledDiscount(event)).clamp(0, eventTotal(event));
+bool eventIsIncomplete(AppEvent event) {
+  final hasDetails = event.name.trim().isNotEmpty && event.mobile.trim().isNotEmpty && event.primaryClient.trim().isNotEmpty;
+  final hasDates = event.dates.isNotEmpty;
+  final hasMenu = event.dates.any((date) => date.menuSlots.isNotEmpty);
+  return !hasDetails || !hasDates || !hasMenu;
+}
 
 class EventDraft {
   String? id;
@@ -1269,7 +1275,7 @@ class DashboardScreen extends StatelessWidget {
         else if (events.isEmpty)
           EmptyStateCard(title: 'No events yet', message: 'Create your first event and it will appear here.', actionLabel: 'Create Event', onAction: openCreate)
         else
-          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', status: event.status.toUpperCase(), statusColor: Cp.secondaryFixed, onTap: () => openDetails(event))),
+          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', showDraft: eventIsIncomplete(event), onTap: () => openDetails(event))),
       ],
     );
   }
@@ -1385,13 +1391,12 @@ class SectionHeader extends StatelessWidget {
 }
 
 class EventMiniCard extends StatelessWidget {
-  const EventMiniCard({super.key, required this.title, required this.client, required this.time, required this.pax, required this.status, required this.statusColor, this.onTap});
+  const EventMiniCard({super.key, required this.title, required this.client, required this.time, required this.pax, required this.showDraft, this.onTap});
   final String title;
   final String client;
   final String time;
   final String pax;
-  final String status;
-  final Color statusColor;
+  final bool showDraft;
   final VoidCallback? onTap;
 
   @override
@@ -1405,7 +1410,7 @@ class EventMiniCard extends StatelessWidget {
           children: [
             Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(client, style: const TextStyle(color: Cp.onVariant))])),
-              Pill(status, color: statusColor, textColor: statusColor == Cp.secondaryFixed ? Color(0xff663e00) : Color(0xff00210c)),
+              if (showDraft) const Pill('DRAFT', color: Cp.secondaryFixed, textColor: Color(0xff663e00)),
             ]),
             const SizedBox(height: 12),
             Row(children: [const Icon(Icons.schedule, size: 18, color: Cp.onVariant), Text(' $time   ', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600)), const Icon(Icons.group, size: 18, color: Cp.onVariant), Text(' $pax', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w600))]),
@@ -3863,7 +3868,7 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
     final progress = total == 0 ? 0.0 : (progressValue / total).clamp(0.0, 1.0);
     return Column(children: [
       CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(event.primaryClient.isEmpty ? event.mobile : event.primaryClient, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text(event.mobile, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), Pill(event.status.toUpperCase(), color: Cp.secondaryFixed, textColor: const Color(0xff663e00))]),
+        Row(children: [Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const Text('Primary Contact', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)), Text(event.primaryClient.isEmpty ? event.mobile : event.primaryClient, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text(event.mobile, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))])), if (eventIsIncomplete(event)) const Pill('DRAFT', color: Cp.secondaryFixed, textColor: Color(0xff663e00))]),
         const SizedBox(height: 16),
         Wrap(spacing: 18, runSpacing: 16, children: [InfoTile(Icons.calendar_today, 'Dates', event.dates.map((date) => date.date).join(', ')), InfoTile(Icons.location_on, 'Venue', event.venue.isEmpty ? 'Not set' : event.venue), const InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'), InfoTile(Icons.pending_actions, 'Balance Due', money(balance), color: Cp.error)]),
         const SizedBox(height: 18),
