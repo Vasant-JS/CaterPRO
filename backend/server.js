@@ -101,6 +101,7 @@ function eventFromBody(body, existing = {}) {
     venue: body.venue ?? existing.venue ?? '',
     notes: body.notes ?? existing.notes ?? '',
     status: body.status ?? existing.status ?? 'draft',
+    addOns: Array.isArray(body.addOns) ? body.addOns.map(addOnFromBody) : existing.addOns || [],
     dates: Array.isArray(body.dates) ? body.dates : existing.dates || [],
     payments: Array.isArray(body.payments) ? body.payments : existing.payments || [],
     createdAt: existing.createdAt || new Date().toISOString(),
@@ -144,6 +145,15 @@ function serviceFromBody(body, existing = {}) {
   };
 }
 
+function addOnFromBody(body, existing = {}) {
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('addon'),
+    title: body.title || existing.title || '',
+    cost: Number(body.cost ?? existing.cost ?? 0),
+  };
+}
+
 function money(value) {
   return `₹${Number(value || 0).toLocaleString('en-IN')}`;
 }
@@ -156,10 +166,11 @@ function serviceQuantityText(service) {
 function eventTotals(event) {
   const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
   const serviceTotal = event.dates.reduce((dateSum, date) => dateSum + date.additionalServices.reduce((svcSum, service) => svcSum + Number(service.price || 0), 0), 0);
+  const addOnTotal = (event.addOns || []).reduce((sum, addOn) => sum + Number(addOn.cost || 0), 0);
   const paid = event.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const discount = event.payments.reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
-  const total = menuTotal + serviceTotal;
-  return { menuTotal, serviceTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
+  const total = menuTotal + serviceTotal + addOnTotal;
+  return { menuTotal, serviceTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
 }
 
 function menuTitleById(db, id) {
@@ -391,6 +402,22 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
       y += 34;
     }
   }
+  if ((event.addOns || []).length > 0) {
+    y = ensurePageSpace(doc, y, 26, () => tableHeader(doc, 36, fonts));
+    doc.fillColor('#1b4d3e').font(fonts.bold).fontSize(10).text('Event Add-ons', 42, y);
+    y += 18;
+    for (const addOn of event.addOns || []) {
+      y = ensurePageSpace(doc, y, 34, () => tableHeader(doc, 36, fonts));
+      drawInvoiceRow(doc, y, fonts, {
+        description: addOn.title || 'Add-on',
+        qty: '',
+        rate: '',
+        amount: money(addOn.cost),
+      }, shaded);
+      shaded = !shaded;
+      y += 34;
+    }
+  }
 
   y = ensurePageSpace(doc, y, 184);
   const totalsY = y + 6;
@@ -399,6 +426,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     ['Services Total', money(totals.serviceTotal), '#202124', fonts.regular],
     ['Grand Total', money(totals.total), '#1b4d3e', fonts.bold],
   ];
+  if (totals.addOnTotal > 0) totalRows.splice(2, 0, ['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
   if (isInvoice) {
     totalRows.push(['Paid Till Now', money(totals.paid), '#0b6b3a', fonts.regular]);
     if (totals.discount > 0) totalRows.push(['Settled Discount', money(totals.discount), '#0b6b3a', fonts.regular]);

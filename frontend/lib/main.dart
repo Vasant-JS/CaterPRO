@@ -271,7 +271,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 class AppEvent {
-  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.dates, required this.payments});
+  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.addOns, required this.dates, required this.payments});
   final String id;
   final String name;
   final String primaryClient;
@@ -279,6 +279,7 @@ class AppEvent {
   final String venue;
   final String notes;
   final String status;
+  final List<Map<String, dynamic>> addOns;
   final List<AppEventDate> dates;
   final List<AppPayment> payments;
 
@@ -291,6 +292,7 @@ class AppEvent {
       venue: json['venue'] as String? ?? '',
       notes: json['notes'] as String? ?? '',
       status: json['status'] as String? ?? 'draft',
+      addOns: ((json['addOns'] as List?) ?? []).whereType<Map<String, dynamic>>().toList(),
       dates: ((json['dates'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppEventDate.fromJson).toList(),
       payments: ((json['payments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppPayment.fromJson).toList(),
     );
@@ -435,7 +437,7 @@ class ApiService {
     final eventResponse = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/events'),
       headers: headers,
-      body: jsonEncode({'name': draft.name, 'primaryClient': draft.client, 'mobile': draft.mobile, 'venue': draft.venue, 'notes': draft.notes, 'status': 'draft'}),
+      body: jsonEncode({'name': draft.name, 'primaryClient': draft.client, 'mobile': draft.mobile, 'venue': draft.venue, 'notes': draft.notes, 'status': 'draft', 'addOns': draft.addOns}),
     );
     if (eventResponse.statusCode != 201) throw Exception('Unable to create event');
     final event = jsonDecode(eventResponse.body) as Map<String, dynamic>;
@@ -511,10 +513,12 @@ String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
 }
 
 String additionalServiceLine(Map<String, dynamic> service) => serviceLine(service['name']?.toString() ?? '', service['quantity'], service['unit'], service['price']);
+String addOnLine(Map<String, dynamic> addOn) => '${addOn['title']?.toString() ?? 'Add-on'}\n${money((addOn['cost'] as num?)?.toInt() ?? 0)}';
 
 int eventMenuTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.menuSlots.fold(0, (slotSum, slot) => slotSum + slot.pax * slot.pricePerPax));
 int eventServiceTotal(AppEvent event) => event.dates.fold(0, (dateSum, date) => dateSum + date.additionalServices.fold(0, (sum, service) => sum + ((service['price'] as num?)?.toInt() ?? 0)));
-int eventTotal(AppEvent event) => eventMenuTotal(event) + eventServiceTotal(event);
+int eventAddOnTotal(AppEvent event) => event.addOns.fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
+int eventTotal(AppEvent event) => eventMenuTotal(event) + eventServiceTotal(event) + eventAddOnTotal(event);
 int eventPaid(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.amount);
 int eventSettledDiscount(AppEvent event) => event.payments.fold(0, (sum, payment) => sum + payment.settledDiscount);
 int eventBalance(AppEvent event) => (eventTotal(event) - eventPaid(event) - eventSettledDiscount(event)).clamp(0, eventTotal(event));
@@ -532,6 +536,7 @@ class EventDraft {
   String mobile = '';
   String venue = '';
   String notes = '';
+  final List<Map<String, dynamic>> addOns = [];
   final List<DraftDateConfig> dates = [];
 
   EventDraft();
@@ -544,6 +549,7 @@ class EventDraft {
       ..mobile = event.mobile
       ..venue = event.venue
       ..notes = event.notes;
+    draft.addOns.addAll(event.addOns.map((addOn) => Map<String, dynamic>.from(addOn)));
     draft.dates.addAll(event.dates.map(DraftDateConfig.fromEventDate));
     return draft;
   }
@@ -556,6 +562,7 @@ class EventDraft {
         'venue': venue,
         'notes': notes,
         'status': 'draft',
+        'addOns': addOns,
         'dates': dates.map((date) => date.toJson()).toList(),
       };
 }
@@ -2811,7 +2818,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         if (step == 0) CreateDetailsStep(draft: draft, customers: customerSuggestions, onChanged: () => setState(() => error = null)),
         if (step == 1) CreateDatesStep(dates: draft.dates, onChanged: () { setState(() {}); autosaveDraft(); }),
         if (step == 2) CreateMenuStep(dates: draft.dates, services: widget.services, customMenus: widget.customMenus, onChanged: () => autosaveDraft(), onSaveService: widget.onSaveService, onDeleteService: widget.onDeleteService),
-        if (step == 3) CreateReviewStep(draft: draft),
+        if (step == 3) CreateReviewStep(draft: draft, onChanged: () { setState(() {}); autosaveDraft(); }),
         const SizedBox(height: 20),
         Row(
           children: [
@@ -3521,14 +3528,109 @@ class MealSlotCard extends StatelessWidget {
 }
 
 class CreateReviewStep extends StatelessWidget {
-  const CreateReviewStep({super.key, required this.draft});
+  const CreateReviewStep({super.key, required this.draft, required this.onChanged});
   final EventDraft draft;
+  final VoidCallback onChanged;
+
+  int get addOnTotal => draft.addOns.fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
+
   @override
   Widget build(BuildContext context) => Column(children: [
-        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(draft.name.isEmpty ? 'Untitled Event' : draft.name, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('${draft.client} • ${draft.mobile}', style: const TextStyle(color: Cp.onVariant)), const Divider(), InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'), const SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Menu Slots', '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'), const SizedBox(height: 10), InfoTile(Icons.location_on, 'Venue', draft.venue.isEmpty ? 'Not set' : draft.venue)])),
+        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(draft.name.isEmpty ? 'Untitled Event' : draft.name, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('${draft.client} • ${draft.mobile}', style: const TextStyle(color: Cp.onVariant)), const Divider(), InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'), const SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Menu Slots', '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'), const SizedBox(height: 10), InfoTile(Icons.add_card, 'Add-ons', addOnTotal > 0 ? money(addOnTotal) : 'None'), const SizedBox(height: 10), InfoTile(Icons.location_on, 'Venue', draft.venue.isEmpty ? 'Not set' : draft.venue)])),
+        const SizedBox(height: 12),
+        CpCard(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Expanded(child: Text('Add-ons', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900))),
+              TextButton.icon(onPressed: () => openAddOnSheet(context), icon: const Icon(Icons.add_circle), label: const Text('Add Add-on')),
+            ]),
+            const Text('Optional custom costs like service, decorations, printing, transport, etc.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 12),
+            if (draft.addOns.isEmpty)
+              const Text('No add-ons added.', style: TextStyle(color: Cp.onVariant, fontStyle: FontStyle.italic))
+            else
+              ...draft.addOns.map((addOn) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: CpCard(
+                      color: Cp.surfaceLow,
+                      child: Row(children: [
+                        const Icon(Icons.add_business, color: Cp.secondary),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(addOnLine(addOn), style: const TextStyle(fontWeight: FontWeight.w800))),
+                        IconButton(onPressed: () => openAddOnSheet(context, addOn: addOn), icon: const Icon(Icons.edit, color: Cp.primary)),
+                        IconButton(onPressed: () { draft.addOns.remove(addOn); onChanged(); }, icon: const Icon(Icons.delete, color: Cp.error)),
+                      ]),
+                    ),
+                  )),
+            if (draft.addOns.isNotEmpty) Align(alignment: Alignment.centerRight, child: Text('Add-ons Total: ${money(addOnTotal)}', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+          ]),
+        ),
         const SizedBox(height: 12),
         CpCard(color: Cp.primaryContainer, child: const Text('Event will be saved to your account via API.', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900))),
       ]);
+
+  Future<void> openAddOnSheet(BuildContext context, {Map<String, dynamic>? addOn}) async {
+    final result = await showAddOnSheet(context, addOn: addOn);
+    if (result == null) return;
+    if (addOn == null) {
+      draft.addOns.add(result);
+    } else {
+      addOn
+        ..clear()
+        ..addAll(result);
+    }
+    onChanged();
+  }
+}
+
+Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context, {Map<String, dynamic>? addOn}) {
+  final titleController = TextEditingController(text: addOn?['title']?.toString() ?? '');
+  final costController = TextEditingController(text: ((addOn?['cost'] as num?)?.toInt() ?? 0) > 0 ? '${(addOn?['cost'] as num).toInt()}' : '');
+  return showModalBottomSheet<Map<String, dynamic>>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+          decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
+            Text(addOn == null ? 'Add Add-on' : 'Edit Add-on', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            const Text('Enter a custom title and cost. This amount is added to the event total.', style: TextStyle(color: Cp.onVariant)),
+            const SizedBox(height: 18),
+            EditableInlineField(label: 'Add-on Title', controller: titleController),
+            EditableInlineField(label: 'Cost', controller: costController),
+            Row(children: [
+              Expanded(child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel'))),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)),
+                  onPressed: () {
+                    final title = titleController.text.trim();
+                    final cost = int.tryParse(costController.text.trim()) ?? 0;
+                    if (title.isEmpty || cost <= 0) {
+                      showCpSnack(context, 'Enter add-on title and cost');
+                      return;
+                    }
+                    Navigator.pop(context, {'id': addOn?['id'] ?? 'addon_${DateTime.now().microsecondsSinceEpoch}', 'title': title, 'cost': cost});
+                  },
+                  child: const Text('Save Add-on', style: TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ]),
+          ]),
+        ),
+      ),
+    ),
+  ).whenComplete(() {
+    titleController.dispose();
+    costController.dispose();
+  });
 }
 
 class DashedAction extends StatelessWidget {
