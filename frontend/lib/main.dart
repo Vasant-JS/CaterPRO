@@ -389,6 +389,23 @@ class ApiService {
     return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(MenuMasterItem.fromJson).toList();
   }
 
+  Future<List<RawMaterialItem>> getRawMaterials() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/raw-materials'));
+    if (response.statusCode != 200) throw Exception('Unable to load raw materials');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(RawMaterialItem.fromJson).toList();
+  }
+
+  Future<RawMaterialItem> saveRawMaterial(RawMaterialItem item) async {
+    final creating = item.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/raw-materials${creating ? '' : '/${item.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(item.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save raw material');
+    return RawMaterialItem.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<AdditionalServiceItem>> getAdditionalServices() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/bootstrap'), headers: await authHeaders());
     if (response.statusCode != 200) throw Exception('Unable to load additional services');
@@ -4633,51 +4650,88 @@ class RawMaterialItem {
   final String name;
   final String category;
   final String unit;
+
+  factory RawMaterialItem.fromJson(Map<String, dynamic> json) => RawMaterialItem(
+        id: json['id'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        category: json['category'] as String? ?? '',
+        unit: json['unit'] as String? ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'category': category, 'unit': unit};
 }
 
 class RawMaterialScreen extends StatefulWidget {
   const RawMaterialScreen({super.key, required this.onClose});
   final VoidCallback onClose;
 
-  static final List<RawMaterialItem> items = [
-    const RawMaterialItem(id: 'RAW-001', name: 'Basmati Rice', category: 'Ration', unit: 'kg'),
-    const RawMaterialItem(id: 'RAW-002', name: 'Toor Dal', category: 'Ration', unit: 'kg'),
-    const RawMaterialItem(id: 'RAW-003', name: 'Cooking Oil', category: 'Grocery', unit: 'litre'),
-    const RawMaterialItem(id: 'RAW-004', name: 'Tomato', category: 'Vegetables', unit: 'kg'),
-    const RawMaterialItem(id: 'RAW-005', name: 'Onion', category: 'Vegetables', unit: 'kg'),
-  ];
-
   @override
   State<RawMaterialScreen> createState() => _RawMaterialScreenState();
 }
 
 class _RawMaterialScreenState extends State<RawMaterialScreen> {
+  final api = ApiService();
+  final items = <RawMaterialItem>[];
   String query = '';
   String selectedCategory = 'All';
+  bool loading = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    loadRawMaterials();
+  }
+
+  Future<void> loadRawMaterials() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final loaded = await api.getRawMaterials();
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(loaded);
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
 
   List<String> get categories {
-    final values = RawMaterialScreen.items.map((item) => item.category).toSet().toList()..sort();
+    final values = items.map((item) => item.category).where((category) => category.isNotEmpty).toSet().toList()..sort();
     return ['All', ...values];
   }
 
   List<RawMaterialItem> get visibleItems {
     final normalized = query.trim().toLowerCase();
-    return RawMaterialScreen.items.where((item) {
+    return items.where((item) {
       final matchesCategory = selectedCategory == 'All' || item.category == selectedCategory;
       final text = '${item.id} ${item.name} ${item.category} ${item.unit}'.toLowerCase();
       return matchesCategory && (normalized.isEmpty || text.contains(normalized));
     }).toList();
   }
 
-  void upsertRawMaterial(RawMaterialItem item) {
-    setState(() {
-      final index = RawMaterialScreen.items.indexWhere((existing) => existing.id == item.id);
+  Future<void> upsertRawMaterial(RawMaterialItem item) async {
+    try {
+      final saved = await api.saveRawMaterial(item);
+      setState(() {
+      final index = items.indexWhere((existing) => existing.id == saved.id);
       if (index == -1) {
-        RawMaterialScreen.items.add(item);
+        items.add(saved);
       } else {
-        RawMaterialScreen.items[index] = item;
+        items[index] = saved;
       }
-    });
+      });
+      if (mounted) showCpSnack(context, 'Raw material saved');
+    } catch (e) {
+      if (mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   @override
@@ -4694,6 +4748,7 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
                 onChanged: (value) => setState(() => query = value),
               ),
               const SizedBox(height: 12),
+              if (error != null) ...[CpCard(color: Cp.errorContainer, child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))), const SizedBox(height: 12)],
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -4711,7 +4766,9 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              ...visibleItems.map((item) => RawMaterialCard(item: item, onEdit: () => showRawMaterialEditor(context, item: item, onSave: upsertRawMaterial))),
+              if (loading) const Center(child: CircularProgressIndicator(color: Cp.primary)),
+              if (!loading && visibleItems.isEmpty) const EmptyStateCard(title: 'No raw materials', message: 'No items match this search.'),
+              if (!loading) ...visibleItems.map((item) => RawMaterialCard(item: item, onEdit: () => showRawMaterialEditor(context, item: item, onSave: (value) { upsertRawMaterial(value); }))),
             ],
           ),
           Positioned(
@@ -4721,7 +4778,7 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
               heroTag: 'addRawMaterial',
               backgroundColor: Cp.secondaryContainer,
               foregroundColor: const Color(0xff694000),
-              onPressed: () => showRawMaterialEditor(context, onSave: upsertRawMaterial),
+              onPressed: () => showRawMaterialEditor(context, onSave: (value) { upsertRawMaterial(value); }),
               icon: const Icon(Icons.add),
               label: const Text('Add Item', style: TextStyle(fontWeight: FontWeight.w900)),
             ),
@@ -4770,7 +4827,7 @@ class RawMaterialEditorSheet extends StatefulWidget {
 }
 
 class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
-  late final id = TextEditingController(text: widget.item?.id ?? 'RAW-${(RawMaterialScreen.items.length + 1).toString().padLeft(3, '0')}');
+  late final id = TextEditingController(text: widget.item?.id ?? '');
   late final name = TextEditingController(text: widget.item?.name ?? '');
   late final category = TextEditingController(text: widget.item?.category ?? '');
   late final unit = TextEditingController(text: widget.item?.unit ?? '');
@@ -4786,8 +4843,8 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
   }
 
   void save() {
-    if (id.text.trim().isEmpty || name.text.trim().isEmpty || category.text.trim().isEmpty || unit.text.trim().isEmpty) {
-      setState(() => error = 'Fill ID, Name, Category, and Unit.');
+    if (name.text.trim().isEmpty || category.text.trim().isEmpty || unit.text.trim().isEmpty) {
+      setState(() => error = 'Fill Name, Category, and Unit.');
       return;
     }
     widget.onSave(RawMaterialItem(id: id.text.trim(), name: name.text.trim(), category: category.text.trim(), unit: unit.text.trim()));
