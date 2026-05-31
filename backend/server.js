@@ -677,9 +677,9 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const totalsY = y + 6;
   const totalRows = [
     ['Menu Total', money(totals.menuTotal), '#202124', fonts.regular],
-    ['Grand Total', money(totals.total), theme.primary, fonts.bold],
   ];
-  if (totals.addOnTotal > 0) totalRows.splice(2, 0, ['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
+  if (totals.addOnTotal > 0) totalRows.push(['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
+  totalRows.push(['Grand Total', money(totals.total), theme.primary, fonts.bold]);
   if (isInvoice) {
     totalRows.push(['Paid Till Now', money(totals.paid), '#0b6b3a', fonts.regular]);
     if (totals.discount > 0) totalRows.push(['Settled Discount', money(totals.discount), '#0b6b3a', fonts.regular]);
