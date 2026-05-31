@@ -305,6 +305,33 @@ class AppEvent {
   }
 }
 
+class AppClient {
+  const AppClient({required this.id, required this.name, required this.mobile, this.city = '', this.notes = ''});
+  final String id;
+  final String name;
+  final String mobile;
+  final String city;
+  final String notes;
+
+  factory AppClient.fromJson(Map<String, dynamic> json) => AppClient(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        mobile: json['mobile']?.toString() ?? '',
+        city: json['city']?.toString() ?? '',
+        notes: json['notes']?.toString() ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'mobile': mobile, 'city': city, 'notes': notes};
+
+  AppClient copyWith({String? id, String? name, String? mobile, String? city, String? notes}) => AppClient(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        mobile: mobile ?? this.mobile,
+        city: city ?? this.city,
+        notes: notes ?? this.notes,
+      );
+}
+
 class EventMaterialLine {
   const EventMaterialLine({required this.itemId, required this.name, required this.category, required this.quantity, required this.unit});
   final String itemId;
@@ -583,6 +610,28 @@ class ApiService {
     return BusinessProfile.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<List<AppClient>> getClients() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/clients'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load clients');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(AppClient.fromJson).toList();
+  }
+
+  Future<AppClient> saveClient(AppClient client) async {
+    final creating = client.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/clients${creating ? '' : '/${client.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(client.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save client');
+    return AppClient.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteClient(String id) async {
+    final response = await http.delete(Uri.parse('${ApiConfig.baseUrl}/clients/$id'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to delete client');
+  }
+
   Future<List<CustomMenu>> getCustomMenus() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/custom-menus'), headers: await authHeaders());
     if (response.statusCode != 200) throw Exception('Unable to load custom menus');
@@ -712,6 +761,7 @@ class ApiService {
 }
 
 String money(int value) => '₹${value.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (match) => ',')}';
+String normalizeMobileText(String value) => value.trim().replaceFirst(RegExp(r'^\+91\s*'), '').replaceAll(RegExp(r'\D'), '');
 
 String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
   final count = quantity is num ? quantity.toInt() : int.tryParse(quantity?.toString() ?? '') ?? 0;
@@ -989,6 +1039,7 @@ class _AppShellState extends State<AppShell> {
   bool loading = true;
   String? loadError;
   final List<AppEvent> events = [];
+  final List<AppClient> clients = [];
   final List<ManualInvoice> manualInvoices = [];
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
@@ -1010,6 +1061,7 @@ class _AppShellState extends State<AppShell> {
     });
     try {
       final loaded = await api.getEvents();
+      final loadedClients = await api.getClients();
       final loadedManualInvoices = await api.getManualInvoices();
       final menuItems = await api.getMenuItems();
       final additionalServices = await api.getAdditionalServices();
@@ -1020,6 +1072,9 @@ class _AppShellState extends State<AppShell> {
         events
           ..clear()
           ..addAll(loaded);
+        clients
+          ..clear()
+          ..addAll(loadedClients);
         manualInvoices
           ..clear()
           ..addAll(loadedManualInvoices);
@@ -1068,6 +1123,23 @@ class _AppShellState extends State<AppShell> {
       }
       tab = 3;
     });
+  }
+
+  Future<void> saveClient(AppClient client) async {
+    final saved = await api.saveClient(client.copyWith(mobile: normalizeMobileText(client.mobile)));
+    setState(() {
+      final index = clients.indexWhere((item) => item.id == saved.id || normalizeMobileText(item.mobile) == saved.mobile);
+      if (index == -1) {
+        clients.add(saved);
+      } else {
+        clients[index] = saved;
+      }
+    });
+  }
+
+  Future<void> deleteClient(AppClient client) async {
+    if (client.id.isNotEmpty) await api.deleteClient(client.id);
+    setState(() => clients.removeWhere((item) => item.id == client.id || normalizeMobileText(item.mobile) == normalizeMobileText(client.mobile)));
   }
 
   Future<void> openManualInvoiceForm() async {
@@ -1147,7 +1219,7 @@ class _AppShellState extends State<AppShell> {
   List<Widget> get pages => <Widget>[
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
-    const ClientsScreen(),
+    ClientsScreen(clients: clients, events: events, manualInvoices: manualInvoices, onSaveClient: saveClient, onDeleteClient: deleteClient, openEvent: openEventDetails),
     BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice, onAddManualInvoice: openManualInvoiceForm),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), openProduceItems: () => setState(() => tab = 12), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
@@ -1936,19 +2008,176 @@ class EventListCard extends StatelessWidget {
   }
 }
 
-class ClientsScreen extends StatelessWidget {
-  const ClientsScreen({super.key});
+class ClientSummary {
+  const ClientSummary({required this.client, required this.events, required this.invoices});
+  final AppClient client;
+  final List<AppEvent> events;
+  final List<ManualInvoice> invoices;
+
+  int get revenue => events.fold(0, (sum, event) => sum + eventTotal(event)) + invoices.fold(0, (sum, invoice) => sum + invoice.total);
+}
+
+class ClientsScreen extends StatefulWidget {
+  const ClientsScreen({super.key, required this.clients, required this.events, required this.manualInvoices, required this.onSaveClient, required this.onDeleteClient, required this.openEvent});
+  final List<AppClient> clients;
+  final List<AppEvent> events;
+  final List<ManualInvoice> manualInvoices;
+  final Future<void> Function(AppClient client) onSaveClient;
+  final Future<void> Function(AppClient client) onDeleteClient;
+  final ValueChanged<AppEvent> openEvent;
+
+  @override
+  State<ClientsScreen> createState() => _ClientsScreenState();
+}
+
+class _ClientsScreenState extends State<ClientsScreen> {
+  final search = TextEditingController();
+  String query = '';
+
+  @override
+  void dispose() {
+    search.dispose();
+    super.dispose();
+  }
+
+  List<ClientSummary> get summaries {
+    final map = <String, AppClient>{};
+    void put(AppClient client) {
+      final mobile = normalizeMobileText(client.mobile);
+      if (mobile.isEmpty) return;
+      final existing = map[mobile];
+      map[mobile] = AppClient(
+        id: existing?.id.isNotEmpty == true ? existing!.id : client.id,
+        name: client.name.isNotEmpty ? client.name : existing?.name ?? mobile,
+        mobile: mobile,
+        city: client.city.isNotEmpty ? client.city : existing?.city ?? '',
+        notes: client.notes.isNotEmpty ? client.notes : existing?.notes ?? '',
+      );
+    }
+
+    for (final client in widget.clients) {
+      put(client);
+    }
+    for (final event in widget.events) {
+      put(AppClient(id: '', name: event.primaryClient.isEmpty ? event.name : event.primaryClient, mobile: event.mobile, city: event.venue));
+    }
+    for (final invoice in widget.manualInvoices) {
+      put(AppClient(id: '', name: invoice.clientName, mobile: invoice.mobile, city: invoice.venue));
+    }
+
+    final result = map.values.map((client) {
+      final mobile = normalizeMobileText(client.mobile);
+      return ClientSummary(
+        client: client,
+        events: widget.events.where((event) => normalizeMobileText(event.mobile) == mobile).toList(),
+        invoices: widget.manualInvoices.where((invoice) => normalizeMobileText(invoice.mobile) == mobile).toList(),
+      );
+    }).toList()
+      ..sort((a, b) => a.client.name.toLowerCase().compareTo(b.client.name.toLowerCase()));
+    if (query.isEmpty) return result;
+    final q = query.toLowerCase();
+    return result.where((summary) => [summary.client.name, summary.client.mobile, summary.client.city].any((value) => value.toLowerCase().contains(q))).toList();
+  }
+
+  Future<void> editClient(AppClient client) async {
+    await showClientEditor(context, client: client, onSave: widget.onSaveClient);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> deleteClient(AppClient client) async {
+    if (client.id.isEmpty) {
+      showCpSnack(context, 'This client is coming from event/bill data. Edit or delete the linked record first.');
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete client?'),
+        content: Text('Delete ${client.name} from the client master? Events and invoices will remain.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    await widget.onDeleteClient(client);
+    if (mounted) showCpSnack(context, 'Client deleted');
+  }
+
+  void showEvents(ClientSummary summary) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Events - ${summary.client.name}', style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 12),
+          if (summary.events.isEmpty) const EmptyStateCard(title: 'No events', message: 'No events found for this client.'),
+          ...summary.events.map((event) => ListTile(
+                leading: const Icon(Icons.event, color: Cp.primary),
+                title: Text(event.name),
+                subtitle: Text(event.dates.map((date) => date.date).join(', ')),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.openEvent(event);
+                },
+              )),
+        ],
+      ),
+    );
+  }
+
+  void showBills(ClientSummary summary) {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          Text('Bills - ${summary.client.name}', style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 12),
+          if (summary.events.where((event) => event.payments.isNotEmpty).isEmpty && summary.invoices.isEmpty) const EmptyStateCard(title: 'No bills', message: 'No invoices or payments found for this client.'),
+          ...summary.invoices.map((invoice) => ListTile(leading: const Icon(Icons.receipt_long, color: Cp.primary), title: Text(invoice.eventName), subtitle: Text(invoice.invoiceNumber), trailing: Text(money(invoice.total)))),
+          ...summary.events.expand((event) => event.payments.map((payment) => ListTile(leading: const Icon(Icons.payments, color: Cp.tertiaryContainer), title: Text(event.name), subtitle: Text(payment.date), trailing: Text(money(payment.amount))))),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final visible = summaries;
     return ScreenFrame(
-      topBar: TopBar(title: 'CaterPro', actions: [IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary))]),
+      topBar: TopBar(title: 'CaterPro', actions: [IconButton(onPressed: () => showClientEditor(context, onSave: widget.onSaveClient), icon: const Icon(Icons.add, color: Cp.primary)), IconButton(onPressed: () => showCpSnack(context, 'Notifications opened'), icon: const Icon(Icons.notifications, color: Cp.primary))]),
       children: [
-        SearchBox('Search clients by name, city, or phone...'),
+        TextField(
+          controller: search,
+          onChanged: (value) => setState(() => query = value.trim()),
+          decoration: InputDecoration(
+            hintText: 'Search clients by name, city, or phone...',
+            prefixIcon: const Icon(Icons.search, color: Cp.outline),
+            suffixIcon: query.isEmpty ? null : IconButton(onPressed: () => setState(() { query = ''; search.clear(); }), icon: const Icon(Icons.close)),
+            filled: true,
+            fillColor: Cp.card,
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Cp.outlineVariant)),
+          ),
+        ),
         const SizedBox(height: 22),
-        Row(children: const [Expanded(child: Text('Clients', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))), Text('0 Total', style: TextStyle(color: Cp.outline, fontWeight: FontWeight.w600))]),
+        Row(children: [const Expanded(child: Text('Clients', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))), Text('${visible.length} Total', style: const TextStyle(color: Cp.outline, fontWeight: FontWeight.w600))]),
         const SizedBox(height: 12),
-        const EmptyStateCard(title: 'No clients yet', message: 'Clients will appear after you create events or add client records.'),
+        if (visible.isEmpty)
+          const EmptyStateCard(title: 'No clients yet', message: 'Clients will appear after you create events, bills, or client records.')
+        else
+          ...visible.map((summary) => ClientCard(
+                summary: summary,
+                onEvents: () => showEvents(summary),
+                onBills: () => showBills(summary),
+                onEdit: () => editClient(summary.client),
+                onDelete: () => deleteClient(summary.client),
+              )),
       ],
     );
   }
@@ -1969,27 +2198,104 @@ class SearchBox extends StatelessWidget {
 }
 
 class ClientCard extends StatelessWidget {
-  const ClientCard({super.key, required this.name, required this.initials, required this.phone, required this.city, required this.revenue, required this.events, required this.color, required this.tag});
-  final String name, initials, phone, city, revenue, events, tag;
-  final Color color;
+  const ClientCard({super.key, required this.summary, required this.onEvents, required this.onBills, required this.onEdit, required this.onDelete});
+  final ClientSummary summary;
+  final VoidCallback onEvents;
+  final VoidCallback onBills;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
   @override
   Widget build(BuildContext context) {
+    final client = summary.client;
+    final initials = client.name.trim().isEmpty ? 'C' : client.name.trim().split(RegExp(r'\s+')).take(2).map((part) => part[0].toUpperCase()).join();
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
         child: Column(children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            CircleAvatar(radius: 24, backgroundColor: color, child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
+            CircleAvatar(radius: 24, backgroundColor: Cp.primaryContainer, child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
             const SizedBox(width: 14),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(phone, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600)), Text(city, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600))])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(revenue, style: const TextStyle(color: Cp.secondary, fontSize: 16, fontWeight: FontWeight.w900)), Text(events, style: const TextStyle(color: Cp.outline, fontSize: 12))]),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(client.name.isEmpty ? client.mobile : client.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(client.mobile, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600)), if (client.city.isNotEmpty) Text(client.city, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600))])),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(money(summary.revenue), style: const TextStyle(color: Cp.secondary, fontSize: 16, fontWeight: FontWeight.w900)), Text('${summary.events.length} events • ${summary.invoices.length} bills', style: const TextStyle(color: Cp.outline, fontSize: 12))]),
           ]),
           const Divider(height: 24, color: Cp.outlineVariant),
-          Row(children: [Pill(tag, color: Cp.surfaceHigh, textColor: Cp.onVariant), const Spacer(), const Icon(Icons.chevron_right, color: Cp.outline)]),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ActionChip(avatar: const Icon(Icons.event, size: 18), label: const Text('Events'), onPressed: onEvents),
+            ActionChip(avatar: const Icon(Icons.receipt_long, size: 18), label: const Text('Bills'), onPressed: onBills),
+            ActionChip(avatar: const Icon(Icons.call, size: 18), label: const Text('Call'), onPressed: () => launchUrl(Uri.parse('tel:${client.mobile}'))),
+            ActionChip(avatar: const Icon(Icons.chat, size: 18), label: const Text('WhatsApp'), onPressed: () => launchUrl(Uri.parse('https://wa.me/91${client.mobile}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank')),
+            ActionChip(avatar: const Icon(Icons.edit, size: 18), label: const Text('Edit'), onPressed: onEdit),
+            ActionChip(avatar: const Icon(Icons.delete, size: 18, color: Cp.error), label: const Text('Delete'), onPressed: onDelete),
+          ]),
         ]),
       ),
     );
   }
+}
+
+Future<void> showClientEditor(BuildContext context, {AppClient? client, required Future<void> Function(AppClient client) onSave}) async {
+  final name = TextEditingController(text: client?.name ?? '');
+  final mobile = TextEditingController(text: client?.mobile ?? '');
+  final city = TextEditingController(text: client?.city ?? '');
+  final notes = TextEditingController(text: client?.notes ?? '');
+  bool saving = false;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (context) => StatefulBuilder(
+      builder: (context, setSheetState) => Container(
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+        decoration: const BoxDecoration(color: Cp.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 58, height: 6, decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(999)))),
+            const SizedBox(height: 18),
+            Text(client == null ? 'Add Client' : 'Edit Client', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 16),
+            TextField(controller: name, decoration: InputDecoration(labelText: 'Client Name', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextField(controller: mobile, keyboardType: TextInputType.phone, decoration: InputDecoration(labelText: 'Mobile Number', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextField(controller: city, decoration: InputDecoration(labelText: 'City / Area', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 12),
+            TextField(controller: notes, minLines: 2, maxLines: 4, decoration: InputDecoration(labelText: 'Notes', border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final clean = normalizeMobileText(mobile.text);
+                        if (name.text.trim().isEmpty || clean.length != 10) {
+                          showCpSnack(context, 'Enter client name and 10 digit mobile number');
+                          return;
+                        }
+                        setSheetState(() => saving = true);
+                        try {
+                          await onSave(AppClient(id: client?.id ?? '', name: name.text.trim(), mobile: clean, city: city.text.trim(), notes: notes.text.trim()));
+                          if (context.mounted) Navigator.pop(context);
+                        } catch (e) {
+                          if (context.mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+                        } finally {
+                          setSheetState(() => saving = false);
+                        }
+                      },
+                icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save),
+                label: Text(saving ? 'Saving...' : 'Save Client', style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    ),
+  );
+  name.dispose();
+  mobile.dispose();
+  city.dispose();
+  notes.dispose();
 }
 
 class BillingScreen extends StatefulWidget {
@@ -2195,7 +2501,7 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
   }
 
   int number(TextEditingController controller) => int.tryParse(controller.text.replaceAll(',', '').trim()) ?? 0;
-  String cleanMobile() => mobile.text.trim().replaceFirst(RegExp(r'^\+91\s*'), '').replaceAll(RegExp(r'\D'), '');
+  String cleanMobile() => normalizeMobileText(mobile.text);
 
   int get subtotal => items.fold(0, (sum, item) {
         final explicit = number(item.amount);

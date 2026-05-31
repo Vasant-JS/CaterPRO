@@ -411,6 +411,19 @@ function manualInvoiceFromBody(body, existing = {}) {
   };
 }
 
+function clientFromBody(body, existing = {}) {
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('client'),
+    name: body.name || existing.name || '',
+    mobile: normalizeMobile(body.mobile || existing.mobile || ''),
+    city: body.city || existing.city || '',
+    notes: body.notes || existing.notes || '',
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function money(value) {
   return `\u20B9${Number(value || 0).toLocaleString('en-IN')}`;
 }
@@ -1050,6 +1063,8 @@ const openApiSpec = {
     '/api/auth/login': { post: { tags: ['Auth'], summary: 'Login', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } }, responses: { 200: { description: 'Token and user' }, 401: { description: 'Invalid credentials' } } } },
     '/api/bootstrap': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Load universal and user-owned data', responses: { 200: { description: 'Bootstrap data' }, 401: { description: 'Unauthorized' } } } },
     '/api/business-profile': { put: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Save logged-in user business profile, including base64 logo/signature/QR', responses: { 200: { description: 'Saved business profile' }, 401: { description: 'Unauthorized' } } } },
+    '/api/clients': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List clients' }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create client' } },
+    '/api/clients/{id}': { put: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Update client' }, delete: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Delete client' } },
     '/api/menu-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal menu items', responses: { 200: { description: 'Menu items' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal menu item', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/MenuItem' } } } }, responses: { 201: { description: 'Created' } } } },
     '/api/menu-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal menu item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/custom-menus': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List ready made custom menus for the logged-in user', responses: { 200: { description: 'Custom menus' } } }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create ready made custom menu', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CustomMenu' } } } }, responses: { 201: { description: 'Created' } } } },
@@ -1131,6 +1146,50 @@ app.put('/api/business-profile', (req, res) => {
   db.userData[user.id].businessProfile = profile;
   writeDb(db);
   res.json(profile);
+});
+
+app.get('/api/clients', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].clients);
+});
+
+app.post('/api/clients', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const client = clientFromBody(req.body);
+  if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  const existing = db.userData[user.id].clients.find((item) => normalizeMobile(item.mobile) === client.mobile);
+  const saved = clientFromBody(client, existing || {});
+  upsertById(db.userData[user.id].clients, saved);
+  writeDb(db);
+  res.status(existing ? 200 : 201).json(saved);
+});
+
+app.put('/api/clients/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].clients.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Client not found' });
+  const client = clientFromBody({ ...req.body, id: req.params.id }, existing);
+  if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  upsertById(db.userData[user.id].clients, client);
+  writeDb(db);
+  res.json(client);
+});
+
+app.delete('/api/clients/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const before = db.userData[user.id].clients.length;
+  db.userData[user.id].clients = db.userData[user.id].clients.filter((item) => item.id !== req.params.id);
+  if (db.userData[user.id].clients.length === before) return res.status(404).json({ message: 'Client not found' });
+  writeDb(db);
+  res.json({ message: 'Client deleted' });
 });
 
 app.get('/api/manual-invoices', (req, res) => {
