@@ -366,6 +366,96 @@ class AppPayment {
   }
 }
 
+class ManualInvoiceItem {
+  const ManualInvoiceItem({required this.id, required this.title, required this.quantity, required this.rate, required this.amount});
+  final String id;
+  final String title;
+  final int quantity;
+  final int rate;
+  final int amount;
+
+  factory ManualInvoiceItem.fromJson(Map<String, dynamic> json) => ManualInvoiceItem(
+        id: json['id']?.toString() ?? '',
+        title: json['title']?.toString() ?? '',
+        quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+        rate: (json['rate'] as num?)?.toInt() ?? 0,
+        amount: (json['amount'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'quantity': quantity, 'rate': rate, 'amount': amount};
+}
+
+class ManualInvoice {
+  const ManualInvoice({
+    required this.id,
+    required this.clientName,
+    required this.mobile,
+    required this.eventName,
+    required this.venue,
+    required this.eventDate,
+    required this.invoiceDate,
+    required this.invoiceNumber,
+    required this.notes,
+    required this.items,
+    required this.subtotal,
+    required this.total,
+    required this.advance,
+    required this.settlement,
+    required this.pending,
+  });
+  final String id;
+  final String clientName;
+  final String mobile;
+  final String eventName;
+  final String venue;
+  final String eventDate;
+  final String invoiceDate;
+  final String invoiceNumber;
+  final String notes;
+  final List<ManualInvoiceItem> items;
+  final int subtotal;
+  final int total;
+  final int advance;
+  final int settlement;
+  final int pending;
+
+  factory ManualInvoice.fromJson(Map<String, dynamic> json) => ManualInvoice(
+        id: json['id']?.toString() ?? '',
+        clientName: json['clientName']?.toString() ?? '',
+        mobile: json['mobile']?.toString() ?? '',
+        eventName: json['eventName']?.toString() ?? '',
+        venue: json['venue']?.toString() ?? '',
+        eventDate: json['eventDate']?.toString() ?? '',
+        invoiceDate: json['invoiceDate']?.toString() ?? '',
+        invoiceNumber: json['invoiceNumber']?.toString() ?? '',
+        notes: json['notes']?.toString() ?? '',
+        items: ((json['items'] as List?) ?? []).whereType<Map<String, dynamic>>().map(ManualInvoiceItem.fromJson).toList(),
+        subtotal: (json['subtotal'] as num?)?.toInt() ?? 0,
+        total: (json['total'] as num?)?.toInt() ?? 0,
+        advance: (json['advance'] as num?)?.toInt() ?? 0,
+        settlement: (json['settlement'] as num?)?.toInt() ?? 0,
+        pending: (json['pending'] as num?)?.toInt() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'clientName': clientName,
+        'mobile': mobile,
+        'eventName': eventName,
+        'venue': venue,
+        'eventDate': eventDate,
+        'invoiceDate': invoiceDate,
+        'invoiceNumber': invoiceNumber,
+        'notes': notes,
+        'items': items.map((item) => item.toJson()).toList(),
+        'subtotal': subtotal,
+        'total': total,
+        'advance': advance,
+        'settlement': settlement,
+        'pending': pending,
+      };
+}
+
 class AppEventDate {
   const AppEventDate({required this.id, required this.date, required this.label, required this.menuSlots, required this.additionalServices});
   final String id;
@@ -568,6 +658,31 @@ class ApiService {
     );
     if (response.statusCode != 201) throw Exception('Unable to save payment');
     return getEvent(eventId);
+  }
+
+  Future<List<ManualInvoice>> getManualInvoices() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/manual-invoices'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load manual invoices');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(ManualInvoice.fromJson).toList();
+  }
+
+  Future<ManualInvoice> saveManualInvoice(ManualInvoice invoice) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/manual-invoices'),
+      headers: await authHeaders(),
+      body: jsonEncode(invoice.toJson()),
+    );
+    if (response.statusCode != 201) {
+      final body = jsonDecode(response.body);
+      throw Exception(body is Map && body['message'] != null ? body['message'] : 'Unable to save invoice');
+    }
+    return ManualInvoice.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Uri> manualInvoicePdfUri(String invoiceId) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/manual-invoices/$invoiceId/pdf').replace(queryParameters: {'token': token});
   }
 
   Future<AppEvent> saveMaterialDocument(String eventId, EventMaterialDocument document) async {
@@ -874,6 +989,7 @@ class _AppShellState extends State<AppShell> {
   bool loading = true;
   String? loadError;
   final List<AppEvent> events = [];
+  final List<ManualInvoice> manualInvoices = [];
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
   BusinessProfile businessProfile = const BusinessProfile();
@@ -894,6 +1010,7 @@ class _AppShellState extends State<AppShell> {
     });
     try {
       final loaded = await api.getEvents();
+      final loadedManualInvoices = await api.getManualInvoices();
       final menuItems = await api.getMenuItems();
       final additionalServices = await api.getAdditionalServices();
       final loadedCustomMenus = await api.getCustomMenus();
@@ -903,6 +1020,9 @@ class _AppShellState extends State<AppShell> {
         events
           ..clear()
           ..addAll(loaded);
+        manualInvoices
+          ..clear()
+          ..addAll(loadedManualInvoices);
         MenuMasterScreen.menuItems
           ..clear()
           ..addAll(menuItems);
@@ -934,6 +1054,19 @@ class _AppShellState extends State<AppShell> {
       selectedEventId = event.id;
       tab = 1;
       editingEvent = null;
+    });
+  }
+
+  Future<void> saveManualInvoice(ManualInvoice invoice) async {
+    final saved = await api.saveManualInvoice(invoice);
+    setState(() {
+      final index = manualInvoices.indexWhere((item) => item.id == saved.id);
+      if (index == -1) {
+        manualInvoices.add(saved);
+      } else {
+        manualInvoices[index] = saved;
+      }
+      tab = 3;
     });
   }
 
@@ -1010,7 +1143,7 @@ class _AppShellState extends State<AppShell> {
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     const ClientsScreen(),
-    BillingScreen(events: events, api: api),
+    BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), openProduceItems: () => setState(() => tab = 12), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
@@ -1847,9 +1980,11 @@ class ClientCard extends StatelessWidget {
 }
 
 class BillingScreen extends StatefulWidget {
-  const BillingScreen({super.key, required this.events, required this.api});
+  const BillingScreen({super.key, required this.events, required this.manualInvoices, required this.api, required this.onSaveManualInvoice});
   final List<AppEvent> events;
+  final List<ManualInvoice> manualInvoices;
   final ApiService api;
+  final Future<void> Function(ManualInvoice invoice) onSaveManualInvoice;
 
   @override
   State<BillingScreen> createState() => _BillingScreenState();
@@ -1877,6 +2012,22 @@ class _BillingScreenState extends State<BillingScreen> {
     ));
   }
 
+  Future<void> openAddInvoice() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceFormScreen(onSave: widget.onSaveManualInvoice)));
+    if (mounted) setState(() {});
+  }
+
+  Future<void> downloadManualInvoice(BuildContext context, ManualInvoice invoice) async {
+    final uri = await widget.api.manualInvoicePdfUri(invoice.id);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    showCpSnack(context, launched ? 'Invoice download started' : 'Unable to start download');
+  }
+
+  void openManualInvoiceDetails(ManualInvoice invoice) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceDetailsScreen(invoice: invoice, api: widget.api)));
+  }
+
   Widget tabChip(int index, String label, int count) {
     final selected = selectedTab == index;
     return ChoiceChip(
@@ -1891,9 +2042,9 @@ class _BillingScreenState extends State<BillingScreen> {
   @override
   Widget build(BuildContext context) {
     final totalQuotationValue = quotationEvents.fold<int>(0, (sum, event) => sum + eventTotal(event));
-    final totalInvoiceValue = invoicePayments.fold<int>(0, (sum, item) => sum + item.payment.amount);
+    final totalInvoiceValue = invoicePayments.fold<int>(0, (sum, item) => sum + item.payment.amount) + widget.manualInvoices.fold<int>(0, (sum, invoice) => sum + invoice.total);
     return ScreenFrame(
-      topBar: TopBar(title: 'Billing', subtitle: 'Quotations and invoices'),
+      topBar: TopBar(title: 'Billing', subtitle: 'Quotations and invoices', actions: [IconButton(onPressed: openAddInvoice, icon: const Icon(Icons.add, color: Cp.primary), tooltip: 'Add invoice')]),
       children: [
         Row(children: [
           Expanded(child: BillingSummaryCell(label: 'Quotation Value', value: money(totalQuotationValue), icon: Icons.request_quote, color: Cp.primary)),
@@ -1901,7 +2052,7 @@ class _BillingScreenState extends State<BillingScreen> {
           Expanded(child: BillingSummaryCell(label: 'Invoice Payments', value: money(totalInvoiceValue), icon: Icons.receipt_long, color: Cp.tertiaryContainer)),
         ]),
         const SizedBox(height: 16),
-        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [tabChip(0, 'Quotations', quotationEvents.length), const SizedBox(width: 8), tabChip(1, 'Invoices', invoicePayments.length)])),
+        SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [tabChip(0, 'Quotations', quotationEvents.length), const SizedBox(width: 8), tabChip(1, 'Invoices', invoicePayments.length + widget.manualInvoices.length)])),
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
           if (quotationEvents.isEmpty)
@@ -1922,9 +2073,24 @@ class _BillingScreenState extends State<BillingScreen> {
                   onTap: () => openDocumentDetails(event, 'quotation'),
                 )),
         ] else ...[
-          if (invoicePayments.isEmpty)
+          if (invoicePayments.isEmpty && widget.manualInvoices.isEmpty)
             const EmptyStateCard(title: 'No invoices yet', message: 'Invoices appear here after any payment is recorded for an event.')
           else
+            ...[
+            ...widget.manualInvoices.map((invoice) => BillingDocumentCard(
+                  title: invoice.eventName,
+                  subtitle: '${invoice.clientName} • ${invoice.mobile}',
+                  code: invoice.invoiceNumber.isEmpty ? 'INV-${invoice.id.toUpperCase()}' : invoice.invoiceNumber,
+                  amountLabel: invoice.pending == 0 ? 'Total' : 'Pending',
+                  amount: money(invoice.pending == 0 ? invoice.total : invoice.pending),
+                  dateLabel: invoice.invoiceDate,
+                  status: invoice.pending == 0 ? 'Settled' : 'Manual',
+                  statusColor: invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary,
+                  icon: Icons.receipt,
+                  buttonLabel: 'Download Invoice',
+                  onDownload: () => downloadManualInvoice(context, invoice),
+                  onTap: () => openManualInvoiceDetails(invoice),
+                )),
             ...invoicePayments.map((item) => BillingDocumentCard(
                   title: item.event.name,
                   subtitle: '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} • ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' • ${item.payment.reference}'}',
@@ -1939,8 +2105,312 @@ class _BillingScreenState extends State<BillingScreen> {
                   onDownload: () => downloadDocument(context, item.event, 'invoice'),
                   onTap: () => openDocumentDetails(item.event, 'invoice', payment: item.payment),
                 )),
+            ],
         ],
       ],
+    );
+  }
+}
+
+class ManualInvoiceLineController {
+  ManualInvoiceLineController({String title = '', String quantity = '1', String rate = '', String amount = ''})
+      : title = TextEditingController(text: title),
+        quantity = TextEditingController(text: quantity),
+        rate = TextEditingController(text: rate),
+        amount = TextEditingController(text: amount);
+  final TextEditingController title;
+  final TextEditingController quantity;
+  final TextEditingController rate;
+  final TextEditingController amount;
+
+  void dispose() {
+    title.dispose();
+    quantity.dispose();
+    rate.dispose();
+    amount.dispose();
+  }
+}
+
+class ManualInvoiceFormScreen extends StatefulWidget {
+  const ManualInvoiceFormScreen({super.key, required this.onSave});
+  final Future<void> Function(ManualInvoice invoice) onSave;
+
+  @override
+  State<ManualInvoiceFormScreen> createState() => _ManualInvoiceFormScreenState();
+}
+
+class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
+  final formKey = GlobalKey<FormState>();
+  final clientName = TextEditingController();
+  final mobile = TextEditingController();
+  final eventName = TextEditingController();
+  final venue = TextEditingController();
+  final eventDate = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+  final invoiceDate = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+  final advance = TextEditingController(text: '0');
+  final settlement = TextEditingController(text: '0');
+  final notes = TextEditingController();
+  final items = <ManualInvoiceLineController>[ManualInvoiceLineController(title: 'Catering service')];
+  bool saving = false;
+
+  @override
+  void dispose() {
+    clientName.dispose();
+    mobile.dispose();
+    eventName.dispose();
+    venue.dispose();
+    eventDate.dispose();
+    invoiceDate.dispose();
+    advance.dispose();
+    settlement.dispose();
+    notes.dispose();
+    for (final item in items) {
+      item.dispose();
+    }
+    super.dispose();
+  }
+
+  int number(TextEditingController controller) => int.tryParse(controller.text.replaceAll(',', '').trim()) ?? 0;
+  String cleanMobile() => mobile.text.trim().replaceFirst(RegExp(r'^\+91\s*'), '').replaceAll(RegExp(r'\D'), '');
+
+  int get subtotal => items.fold(0, (sum, item) {
+        final explicit = number(item.amount);
+        if (explicit > 0) return sum + explicit;
+        return sum + (number(item.quantity) * number(item.rate));
+      });
+  int get pending => (subtotal - number(advance) - number(settlement)).clamp(0, subtotal);
+
+  Future<void> pickDate(TextEditingController controller) async {
+    final initial = parseIsoDate(controller.text) ?? DateTime.now();
+    final picked = await showDatePicker(context: context, initialDate: initial, firstDate: DateTime(2020), lastDate: DateTime(2100));
+    if (picked != null) setState(() => controller.text = picked.toIso8601String().substring(0, 10));
+  }
+
+  void addItem() => setState(() => items.add(ManualInvoiceLineController()));
+
+  void removeItem(int index) {
+    if (items.length == 1) return;
+    final removed = items.removeAt(index);
+    removed.dispose();
+    setState(() {});
+  }
+
+  Future<void> save() async {
+    if (!(formKey.currentState?.validate() ?? false)) return;
+    if (cleanMobile().length != 10) {
+      showCpSnack(context, 'Enter a valid 10 digit mobile number');
+      return;
+    }
+    final lines = <ManualInvoiceItem>[];
+    for (final item in items) {
+      final title = item.title.text.trim();
+      final qty = number(item.quantity);
+      final rate = number(item.rate);
+      final amount = number(item.amount) > 0 ? number(item.amount) : qty * rate;
+      if (title.isNotEmpty && amount > 0) {
+        lines.add(ManualInvoiceItem(id: '', title: title, quantity: qty, rate: rate, amount: amount));
+      }
+    }
+    if (lines.isEmpty) {
+      showCpSnack(context, 'Add at least one invoice item with amount');
+      return;
+    }
+    final adv = number(advance);
+    final settle = number(settlement);
+    if (adv + settle > subtotal) {
+      showCpSnack(context, 'Advance and settlement cannot exceed total');
+      return;
+    }
+    setState(() => saving = true);
+    try {
+      await widget.onSave(ManualInvoice(
+        id: '',
+        clientName: clientName.text.trim(),
+        mobile: cleanMobile(),
+        eventName: eventName.text.trim(),
+        venue: venue.text.trim(),
+        eventDate: eventDate.text.trim(),
+        invoiceDate: invoiceDate.text.trim(),
+        invoiceNumber: '',
+        notes: notes.text.trim(),
+        items: lines,
+        subtotal: subtotal,
+        total: subtotal,
+        advance: adv,
+        settlement: settle,
+        pending: pending,
+      ));
+      if (!mounted) return;
+      Navigator.pop(context);
+      showCpSnack(context, 'Invoice saved');
+    } catch (e) {
+      if (mounted) showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  InputDecoration fieldDecoration(String label, {IconData? icon}) => InputDecoration(labelText: label, prefixIcon: icon == null ? null : Icon(icon), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)));
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Cp.background,
+      body: Form(
+        key: formKey,
+        child: ScreenFrame(
+          topBar: TopBar(title: 'Add Invoice', avatar: false, leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+          bottomPadding: 110,
+          children: [
+            CpCard(
+              child: Column(children: [
+                TextFormField(controller: clientName, decoration: fieldDecoration('Client Name', icon: Icons.person), validator: (value) => (value ?? '').trim().isEmpty ? 'Client name required' : null),
+                const SizedBox(height: 12),
+                TextFormField(controller: mobile, keyboardType: TextInputType.phone, decoration: fieldDecoration('Mobile Number', icon: Icons.phone_android), validator: (_) => cleanMobile().length == 10 ? null : '10 digit mobile required'),
+                const SizedBox(height: 12),
+                TextFormField(controller: eventName, decoration: fieldDecoration('Event Name', icon: Icons.celebration), validator: (value) => (value ?? '').trim().isEmpty ? 'Event name required' : null),
+                const SizedBox(height: 12),
+                TextFormField(controller: venue, decoration: fieldDecoration('Venue', icon: Icons.place)),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(child: TextFormField(controller: eventDate, readOnly: true, onTap: () => pickDate(eventDate), decoration: fieldDecoration('Event Date', icon: Icons.event), validator: (value) => (value ?? '').isEmpty ? 'Required' : null)),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextFormField(controller: invoiceDate, readOnly: true, onTap: () => pickDate(invoiceDate), decoration: fieldDecoration('Invoice Date', icon: Icons.receipt), validator: (value) => (value ?? '').isEmpty ? 'Required' : null)),
+                ]),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            CpCard(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [const Expanded(child: Text('Invoice Items', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900))), IconButton(onPressed: addItem, icon: const Icon(Icons.add_circle, color: Cp.primary))]),
+                const SizedBox(height: 8),
+                ...List.generate(items.length, (index) {
+                  final item = items[index];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: Column(children: [
+                      Row(children: [
+                        Expanded(child: TextFormField(controller: item.title, decoration: fieldDecoration('Item Title'), validator: (value) => (value ?? '').trim().isEmpty ? 'Required' : null)),
+                        IconButton(onPressed: () => removeItem(index), icon: const Icon(Icons.delete, color: Cp.error)),
+                      ]),
+                      const SizedBox(height: 10),
+                      Row(children: [
+                        Expanded(child: TextFormField(controller: item.quantity, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Qty'))),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextFormField(controller: item.rate, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Rate'))),
+                        const SizedBox(width: 8),
+                        Expanded(child: TextFormField(controller: item.amount, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Amount'))),
+                      ]),
+                    ]),
+                  );
+                }),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            CpCard(
+              child: Column(children: [
+                Row(children: [
+                  Expanded(child: TextFormField(controller: advance, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Advance Paid', icon: Icons.payments))),
+                  const SizedBox(width: 10),
+                  Expanded(child: TextFormField(controller: settlement, keyboardType: TextInputType.number, onChanged: (_) => setState(() {}), decoration: fieldDecoration('Settlement / Discount', icon: Icons.price_check))),
+                ]),
+                const SizedBox(height: 12),
+                TextFormField(controller: notes, minLines: 2, maxLines: 4, decoration: fieldDecoration('Notes')),
+                const Divider(height: 24),
+                AmountLine('Grand Total', money(subtotal), strong: true),
+                AmountLine('Advance', money(number(advance)), color: Cp.tertiaryContainer),
+                AmountLine('Settlement', money(number(settlement)), color: Cp.tertiaryContainer),
+                AmountLine('Pending', money(pending), color: pending == 0 ? Cp.tertiaryContainer : Cp.error, strong: true),
+              ]),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          color: Cp.surface,
+          child: SizedBox(
+            height: 54,
+            child: FilledButton.icon(onPressed: saving ? null : save, style: FilledButton.styleFrom(backgroundColor: Cp.primary), icon: saving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.save), label: Text(saving ? 'Saving...' : 'Save Invoice', style: const TextStyle(fontWeight: FontWeight.w900))),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ManualInvoiceDetailsScreen extends StatelessWidget {
+  const ManualInvoiceDetailsScreen({super.key, required this.invoice, required this.api});
+  final ManualInvoice invoice;
+  final ApiService api;
+
+  Future<void> download(BuildContext context) async {
+    final uri = await api.manualInvoicePdfUri(invoice.id);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (context.mounted) showCpSnack(context, launched ? 'Invoice download started' : 'Unable to start download');
+  }
+
+  Future<void> requestPayment() async {
+    final text = 'Hello ${invoice.clientName}, pending payment for ${invoice.eventName} is ${money(invoice.pending)}. Please complete the payment. - CaterPro';
+    await launchUrl(Uri.parse('https://wa.me/91${invoice.mobile}?text=${Uri.encodeComponent(text)}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Cp.background,
+      body: ScreenFrame(
+        topBar: TopBar(title: 'Invoice Details', avatar: false, leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+        bottomPadding: 96,
+        children: [
+          CpCard(
+            color: const Color(0xfffff7ff),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Center(child: CircleAvatar(radius: 30, backgroundColor: invoice.pending == 0 ? Cp.tertiaryFixed : Cp.primaryFixed, child: Icon(invoice.pending == 0 ? Icons.check : Icons.receipt_long, color: invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary, size: 34))),
+              const SizedBox(height: 12),
+              Center(child: Text(invoice.pending == 0 ? 'Invoice settled' : 'Pending ${money(invoice.pending)}', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900))),
+              const Divider(height: 28),
+              DetailNavTile(iconText: invoice.clientName.isEmpty ? 'C' : invoice.clientName[0].toUpperCase(), label: 'Client Name', value: '${invoice.clientName} • ${invoice.mobile}'),
+              DetailNavTile(iconText: invoice.eventName.isEmpty ? 'E' : invoice.eventName[0].toUpperCase(), label: 'Event Name', value: invoice.eventName),
+              SmallInfoBlock(label: 'Invoice#', value: invoice.invoiceNumber.isEmpty ? invoice.id.toUpperCase() : invoice.invoiceNumber),
+              const SizedBox(height: 10),
+              Row(children: [Expanded(child: SmallInfoBlock(label: 'Event Date', value: invoice.eventDate)), Expanded(child: SmallInfoBlock(label: 'Invoice Date', value: invoice.invoiceDate))]),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Items', style: TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              ...invoice.items.map((item) => AmountLine(item.title, money(item.amount))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            child: Column(children: [
+              AmountLine('Grand Total', money(invoice.total), strong: true),
+              AmountLine('Advance / Paid', money(invoice.advance), color: Cp.tertiaryContainer),
+              AmountLine('Settlement', money(invoice.settlement), color: Cp.tertiaryContainer),
+              const Divider(height: 18),
+              AmountLine('Pending', money(invoice.pending), color: invoice.pending == 0 ? Cp.tertiaryContainer : Cp.error, strong: true),
+            ]),
+          ),
+        ],
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          color: Cp.surface,
+          child: Row(children: [
+            Expanded(child: FilledButton(onPressed: invoice.pending == 0 ? null : requestPayment, style: FilledButton.styleFrom(backgroundColor: Cp.secondaryContainer, foregroundColor: const Color(0xff694000)), child: const Text('Request Payment', style: TextStyle(fontWeight: FontWeight.w900)))),
+            const SizedBox(width: 10),
+            IconButton.filledTonal(onPressed: () => download(context), icon: const Icon(Icons.download)),
+          ]),
+        ),
+      ),
     );
   }
 }

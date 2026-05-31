@@ -52,7 +52,7 @@ function requireUser(req, res, db) {
 }
 
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [], businessProfile: emptyBusinessProfile() };
+  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
 }
 
 function emptyBusinessProfile() {
@@ -66,6 +66,7 @@ function ensureUserDataShape(userData) {
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
   userData.payments = userData.payments || [];
+  userData.manualInvoices = userData.manualInvoices || [];
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
   return userData;
 }
@@ -369,6 +370,44 @@ function addOnFromBody(body, existing = {}) {
     id: existing.id || body.id || makeId('addon'),
     title: body.title || existing.title || '',
     cost: Number(body.cost ?? existing.cost ?? 0),
+  };
+}
+
+function normalizeMobile(value) {
+  return String(value || '').replace(/^\+91\s*/, '').replace(/\D/g, '').slice(-10);
+}
+
+function manualInvoiceFromBody(body, existing = {}) {
+  const items = Array.isArray(body.items) ? body.items.map((item) => ({
+    id: item.id || makeId('minvitem'),
+    title: item.title || item.description || '',
+    quantity: Number(item.quantity || 0),
+    rate: Number(item.rate || 0),
+    amount: Number(item.amount ?? (Number(item.quantity || 0) * Number(item.rate || 0))),
+  })).filter((item) => item.title || item.amount > 0) : existing.items || [];
+  const subtotal = items.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const advance = Number(body.advance ?? existing.advance ?? 0);
+  const settlement = Number(body.settlement ?? existing.settlement ?? 0);
+  const total = Number(body.total ?? subtotal);
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('minv'),
+    clientName: body.clientName || existing.clientName || '',
+    mobile: normalizeMobile(body.mobile || existing.mobile || ''),
+    eventName: body.eventName || existing.eventName || '',
+    venue: body.venue || existing.venue || '',
+    eventDate: body.eventDate || existing.eventDate || '',
+    invoiceDate: body.invoiceDate || existing.invoiceDate || new Date().toISOString().slice(0, 10),
+    invoiceNumber: body.invoiceNumber || existing.invoiceNumber || '',
+    notes: body.notes || existing.notes || '',
+    items,
+    subtotal,
+    total,
+    advance,
+    settlement,
+    pending: Math.max(0, total - advance - settlement),
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }
 
@@ -709,6 +748,71 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   doc.end();
 }
 
+function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusinessProfile() }) {
+  const number = invoice.invoiceNumber || documentNumber('INV', { id: invoice.id });
+  const event = {
+    id: invoice.id,
+    name: invoice.eventName || 'Manual Invoice',
+    primaryClient: invoice.clientName || 'Customer',
+    mobile: invoice.mobile || '',
+    venue: invoice.venue || '',
+    dates: invoice.eventDate ? [{ date: invoice.eventDate }] : [],
+  };
+  const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `INVOICE - ${event.name}` } });
+  const fonts = configurePdfFonts(doc);
+  const theme = documentTheme(businessProfile);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  doc.pipe(res);
+
+  writeDocumentHeader(doc, 'INVOICE', event, number, fonts, businessProfile);
+  documentInfoSection(doc, 'Invoice', event, number, fonts, businessProfile, true);
+  let y = 316;
+  tableHeader(doc, y, fonts, theme);
+  y += 32;
+  let shaded = false;
+  for (const finalItem of invoice.items || []) {
+    y = ensurePageSpace(doc, y, 34, () => tableHeader(doc, 36, fonts, theme));
+    drawInvoiceRow(doc, y, fonts, {
+      description: finalItem.title || 'Invoice item',
+      qty: finalItem.quantity ? String(finalItem.quantity) : '',
+      rate: finalItem.rate ? money(finalItem.rate) : '',
+      amount: money(finalItem.amount),
+    }, shaded, theme);
+    shaded = !shaded;
+    y += 34;
+  }
+
+  y = ensurePageSpace(doc, y, 184);
+  const totalRows = [
+    ['Subtotal', money(invoice.subtotal), '#202124', fonts.regular],
+    ['Grand Total', money(invoice.total), theme.primary, fonts.bold],
+    ['Advance / Paid', money(invoice.advance), '#0b6b3a', fonts.regular],
+  ];
+  if (invoice.settlement > 0) totalRows.push(['Settlement', money(invoice.settlement), '#0b6b3a', fonts.regular]);
+  totalRows.push(['Pending', money(invoice.pending), invoice.pending > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
+  const totalsY = y + 6;
+  doc.roundedRect(332, totalsY, 227, Math.max(76, 28 + totalRows.length * 17), 7).fill(theme.soft).strokeColor('#eadfcf').stroke();
+  totalRows.forEach((row, index) => {
+    const rowY = totalsY + 12 + index * 17;
+    doc.fillColor(row[2]).font(row[3]).fontSize(9).text(row[0], 348, rowY, { width: 92 });
+    doc.text(row[1], 448, rowY, { width: 92, align: 'right' });
+  });
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Amount in words', 36, y + 10);
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5).text(amountInWords(invoice.pending || invoice.total), 36, y + 26, { width: 270 });
+  if (invoice.notes) doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(invoice.notes, 36, y + 52, { width: 270, height: 48 });
+  if (businessProfile.qrBase64) {
+    drawProfileImage(doc, businessProfile.qrBase64, 36, y + 108, { fit: [58, 58] });
+    doc.fillColor('#5f6368').font(fonts.regular).fontSize(7).text('Payment QR', 36, y + 168, { width: 58, align: 'center' });
+  }
+  const signatureY = Math.min(y + 130, 738);
+  if (businessProfile.signatureBase64) drawProfileImage(doc, businessProfile.signatureBase64, 410, signatureY, { fit: [128, 38] });
+  doc.moveTo(402, signatureY + 44).lineTo(546, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Authorized Signature', 402, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
+  doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(`Generated by CaterPro on ${prettyDate(new Date().toISOString().slice(0, 10))}`, 36, 780, { width: 523, align: 'center', lineBreak: false });
+  doc.end();
+}
+
 function mealAccent(type) {
   const key = String(type || '').toLowerCase();
   if (key.includes('breakfast')) return '#f2a51a';
@@ -964,6 +1068,8 @@ const openApiSpec = {
     '/api/events/{eventId}/material-documents/{documentId}': { put: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Update event material document' } },
     '/api/events/{eventId}/material-documents/{documentId}/pdf': { get: { tags: ['Events'], summary: 'Download raw material or vegetable/fruit PDF', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'documentId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' } } } },
     '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice', 'menu', 'all-menus'] } }, { name: 'dateId', in: 'query', required: false, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
+    '/api/manual-invoices': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List manual invoices' }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create manual invoice and upsert client' } },
+    '/api/manual-invoices/{invoiceId}/pdf': { get: { tags: ['User Data'], summary: 'Download manual invoice PDF' } },
   },
 };
 
@@ -975,7 +1081,7 @@ const apiDocs = {
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
     universal: ['menuItems', 'rawMaterials', 'produceItems'],
-    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'businessProfile', 'payments'],
+    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'businessProfile', 'payments', 'manualInvoices'],
   },
 };
 
@@ -1025,6 +1131,46 @@ app.put('/api/business-profile', (req, res) => {
   db.userData[user.id].businessProfile = profile;
   writeDb(db);
   res.json(profile);
+});
+
+app.get('/api/manual-invoices', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].manualInvoices);
+});
+
+app.post('/api/manual-invoices', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const invoice = manualInvoiceFromBody(req.body);
+  if (!invoice.clientName || !invoice.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
+  if (!invoice.eventName || !invoice.invoiceDate) return res.status(400).json({ message: 'Event name and invoice date are required' });
+  if (!invoice.items.length) return res.status(400).json({ message: 'Add at least one invoice item' });
+  invoice.invoiceNumber = invoice.invoiceNumber || documentNumber('INV', { id: invoice.id });
+  const existingClient = db.userData[user.id].clients.find((client) => normalizeMobile(client.mobile) === invoice.mobile);
+  const client = {
+    ...(existingClient || {}),
+    id: existingClient?.id || makeId('client'),
+    name: invoice.clientName,
+    mobile: invoice.mobile,
+    updatedAt: new Date().toISOString(),
+    createdAt: existingClient?.createdAt || new Date().toISOString(),
+  };
+  upsertById(db.userData[user.id].clients, client);
+  db.userData[user.id].manualInvoices.push(invoice);
+  writeDb(db);
+  res.status(201).json(invoice);
+});
+
+app.get('/api/manual-invoices/:invoiceId/pdf', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const invoice = db.userData[user.id].manualInvoices.find((item) => item.id === req.params.invoiceId);
+  if (!invoice) return res.status(404).json({ message: 'Manual invoice not found' });
+  return generateManualInvoicePdf({ res, invoice, businessProfile: db.userData[user.id].businessProfile });
 });
 
 app.get('/api/custom-menus', (req, res) => {
