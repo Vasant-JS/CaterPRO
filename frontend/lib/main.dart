@@ -3629,11 +3629,14 @@ class CreateReviewStep extends StatelessWidget {
   final EventDraft draft;
   final VoidCallback onChanged;
 
+  int get menuTotal => draft.dates.fold(0, (dateSum, date) => dateSum + date.slots.where((slot) => slot.enabled).fold(0, (slotSum, slot) => slotSum + (int.tryParse(slot.pax) ?? 0) * slot.pricePerPax));
+  int get serviceTotal => draft.dates.fold(0, (dateSum, date) => dateSum + date.additionalServices.fold(0, (sum, service) => sum + ((service['price'] as num?)?.toInt() ?? 0)));
   int get addOnTotal => draft.addOns.fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
+  int get grandTotal => menuTotal + serviceTotal + addOnTotal;
 
   @override
   Widget build(BuildContext context) => Column(children: [
-        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(draft.name.isEmpty ? 'Untitled Event' : draft.name, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('${draft.client} • ${draft.mobile}', style: const TextStyle(color: Cp.onVariant)), const Divider(), InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'), const SizedBox(height: 10), InfoTile(Icons.restaurant_menu, 'Menu Slots', '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'), const SizedBox(height: 10), InfoTile(Icons.add_card, 'Add-ons', addOnTotal > 0 ? money(addOnTotal) : 'None'), const SizedBox(height: 10), InfoTile(Icons.location_on, 'Venue', draft.venue.isEmpty ? 'Not set' : draft.venue)])),
+        CpCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(draft.name.isEmpty ? 'Untitled Event' : draft.name, style: const TextStyle(color: Cp.primary, fontSize: 22, fontWeight: FontWeight.w900)), Text('${draft.client} • ${draft.mobile}', style: const TextStyle(color: Cp.onVariant)), const Divider(), Wrap(spacing: 18, runSpacing: 12, children: [InfoTile(Icons.currency_rupee, 'Total Amount', money(grandTotal)), InfoTile(Icons.restaurant_menu, 'Menu', menuTotal > 0 ? money(menuTotal) : 'Not priced'), InfoTile(Icons.room_service, 'Services', serviceTotal > 0 ? money(serviceTotal) : 'None'), InfoTile(Icons.add_card, 'Add-ons', addOnTotal > 0 ? money(addOnTotal) : 'None'), InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'), InfoTile(Icons.restaurant_menu, 'Menu Slots', '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'), InfoTile(Icons.location_on, 'Venue', draft.venue.isEmpty ? 'Not set' : draft.venue)])])),
         const SizedBox(height: 12),
         CpCard(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -3659,7 +3662,8 @@ class CreateReviewStep extends StatelessWidget {
                       ]),
                     ),
                   )),
-            if (draft.addOns.isNotEmpty) Align(alignment: Alignment.centerRight, child: Text('Add-ons Total: ${money(addOnTotal)}', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+            Align(alignment: Alignment.centerRight, child: Text('Grand Total: ${money(grandTotal)}', style: const TextStyle(color: Cp.primary, fontSize: 16, fontWeight: FontWeight.w900))),
+            if (draft.addOns.isNotEmpty) Align(alignment: Alignment.centerRight, child: Text('Add-ons Total: ${money(addOnTotal)}', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w800))),
           ]),
         ),
         const SizedBox(height: 12),
