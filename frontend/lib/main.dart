@@ -4345,7 +4345,7 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
                           return CpCard(
                             padding: const EdgeInsets.all(12),
                             child: Row(children: [
-                              Expanded(flex: 3, child: Text('${item.name}\n${item.category}', style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.primary))),
+                              Expanded(flex: 3, child: Text(item.name, style: const TextStyle(fontWeight: FontWeight.w800, color: Cp.primary))),
                               const SizedBox(width: 10),
                               Expanded(child: TextField(controller: quantityControllers[item.id], decoration: const InputDecoration(labelText: 'Count/Qty', isDense: true), onChanged: (_) => setState(() {}))),
                               const SizedBox(width: 10),
