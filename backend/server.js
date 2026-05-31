@@ -594,11 +594,11 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
   const businessName = businessProfile.businessName || 'CaterPro';
   const contactLine = [businessProfile.phone, businessProfile.email].filter(Boolean).join(' | ');
   const taxLine = [businessProfile.gstin ? `GSTIN: ${businessProfile.gstin}` : '', businessProfile.pan ? `PAN: ${businessProfile.pan}` : ''].filter(Boolean).join(' | ');
-  doc.rect(0, 0, doc.page.width, doc.page.height).fill(theme.page);
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.roundedRect(36, 32, 523, 92, theme.name === 'minimal' ? 3 : 14).fill(theme.primary);
   doc.roundedRect(36, 32, 8, 92, 3).fill(theme.secondary);
-  doc.circle(86, 78, 28).lineWidth(2).strokeColor(theme.secondary).stroke();
   if (!drawProfileImage(doc, businessProfile.logoBase64, 58, 54, { fit: [48, 48] })) {
+    doc.circle(86, 78, 28).lineWidth(2).strokeColor(theme.secondary).stroke();
     doc.fillColor('white').font(fonts.bold).fontSize(16).text(businessName.slice(0, 2).toUpperCase(), 62, 69, { width: 48, align: 'center' });
   }
   doc.fillColor('white').font(fonts.bold).fontSize(18).text(businessName, 126, 48, { width: 248 });
@@ -612,7 +612,7 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
 
 function documentInfoSection(doc, title, event, number, fonts, businessProfile, isInvoice) {
   const theme = documentTheme(businessProfile);
-  doc.roundedRect(36, 156, 523, 122, theme.name === 'minimal' ? 3 : 10).fill('#ffffff').strokeColor(theme.soft).lineWidth(0.9).stroke();
+  doc.roundedRect(36, 156, 523, 122, theme.name === 'minimal' ? 3 : 10).fill(theme.soft).strokeColor(theme.secondary).lineWidth(0.9).stroke();
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text('Bill To', 52, 174);
   doc.fillColor(theme.ink).font(fonts.bold).fontSize(12).text(event.primaryClient || 'Customer', 52, 194, { width: 220 });
   doc.fillColor(theme.muted).font(fonts.regular).fontSize(9)

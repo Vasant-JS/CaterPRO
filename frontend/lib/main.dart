@@ -1070,6 +1070,11 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
+  Future<void> openManualInvoiceForm() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceFormScreen(onSave: saveManualInvoice)));
+    if (mounted) setState(() => tab = 3);
+  }
+
   void openEventDetails(AppEvent event) {
     setState(() {
       selectedEventId = event.id;
@@ -1143,7 +1148,7 @@ class _AppShellState extends State<AppShell> {
     DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     const ClientsScreen(),
-    BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice),
+    BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice, onAddManualInvoice: openManualInvoiceForm),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), openProduceItems: () => setState(() => tab = 12), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
     EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
@@ -1172,7 +1177,15 @@ class _AppShellState extends State<AppShell> {
       backgroundColor: Cp.secondaryContainer,
       foregroundColor: Color(0xff694000),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      onPressed: () => tab == 0 || tab == 1 ? openCreateEvent() : setState(() => tab = tab),
+      onPressed: () {
+        if (tab == 0 || tab == 1) {
+          openCreateEvent();
+        } else if (tab == 3) {
+          openManualInvoiceForm();
+        } else {
+          showCpSnack(context, 'Add from this section will be enabled soon');
+        }
+      },
       child: Icon(icons[tab]),
     );
   }
@@ -1980,11 +1993,12 @@ class ClientCard extends StatelessWidget {
 }
 
 class BillingScreen extends StatefulWidget {
-  const BillingScreen({super.key, required this.events, required this.manualInvoices, required this.api, required this.onSaveManualInvoice});
+  const BillingScreen({super.key, required this.events, required this.manualInvoices, required this.api, required this.onSaveManualInvoice, required this.onAddManualInvoice});
   final List<AppEvent> events;
   final List<ManualInvoice> manualInvoices;
   final ApiService api;
   final Future<void> Function(ManualInvoice invoice) onSaveManualInvoice;
+  final VoidCallback onAddManualInvoice;
 
   @override
   State<BillingScreen> createState() => _BillingScreenState();
@@ -2013,8 +2027,7 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   Future<void> openAddInvoice() async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ManualInvoiceFormScreen(onSave: widget.onSaveManualInvoice)));
-    if (mounted) setState(() {});
+    widget.onAddManualInvoice();
   }
 
   Future<void> downloadManualInvoice(BuildContext context, ManualInvoice invoice) async {
@@ -2887,6 +2900,17 @@ class SettingsScreen extends StatelessWidget {
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
 
+  void showSettingsInfo(BuildContext context, String title, String message) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
@@ -2904,9 +2928,16 @@ class SettingsScreen extends StatelessWidget {
         const SizedBox(height: 20),
         SettingsGroup(title: 'Business', items: [(Icons.storefront, 'Business Profile')], onItemTap: {'Business Profile': openBusiness}),
         SettingsGroup(title: 'Masters', items: [(Icons.restaurant_menu, 'Menu Master'), (Icons.fact_check, 'Custom Menus'), (Icons.room_service, 'Additional Services'), (Icons.inventory_2, 'Raw Materials'), (Icons.eco, 'Vegetables & Fruits')], onItemTap: {'Menu Master': openMenu, 'Custom Menus': openCustomMenus, 'Additional Services': () => showAdditionalServiceManager(context, services: services, onSave: onSaveService, onDelete: onDeleteService), 'Raw Materials': openRawMaterials, 'Vegetables & Fruits': openProduceItems}),
-        SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees}),
-        SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')]),
-        SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')]),
+        SettingsGroup(title: 'Team', items: [(Icons.badge, 'Employees'), (Icons.manage_accounts, 'User Management')], onItemTap: {'Employees': openEmployees, 'User Management': () => showSettingsInfo(context, 'User Management', 'User access and roles will be connected after multi-user backend permissions are added.')}),
+        SettingsGroup(title: 'Preferences', items: [(Icons.description, 'Invoice Settings'), (Icons.notifications_active, 'Notifications'), (Icons.light_mode, 'App Appearance')], onItemTap: {
+          'Invoice Settings': openBusiness,
+          'Notifications': () => showSettingsInfo(context, 'Notifications', 'Notification preferences will be used for payment reminders, event follow-ups, and daily summaries.'),
+          'App Appearance': () => showSettingsInfo(context, 'App Appearance', 'The current theme is optimized for the CaterPro workflow. More appearance options can be added later.'),
+        }),
+        SettingsGroup(title: 'Data', items: [(Icons.file_download, 'Export Data'), (Icons.history_edu, 'Audit Log')], onItemTap: {
+          'Export Data': () => showSettingsInfo(context, 'Export Data', 'Data export will package events, clients, menus, invoices, and payments after the production database is finalized.'),
+          'Audit Log': () => showSettingsInfo(context, 'Audit Log', 'Audit history will show edits, payments, document downloads, and sync events.'),
+        }),
         Center(
           child: TextButton(
             onPressed: () async {
