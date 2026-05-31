@@ -962,6 +962,45 @@ function generateMenuPdf({ res, db, event, dateId, allDates = false, businessPro
   doc.end();
 }
 
+function addDaysIso(baseIso, days) {
+  const date = new Date(`${baseIso}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function todayIso() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile = emptyBusinessProfile() }) {
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0;
+  const start = addDaysIso(todayIso(), 1);
+  const end = addDaysIso(start, Math.max(1, days) - 1);
+  const pages = [];
+  events.forEach((event) => {
+    (event.dates || []).filter((date) => date.date >= start && date.date <= end && hasMenuContent(date)).forEach((date) => pages.push({ event, date }));
+  });
+  pages.sort((a, b) => a.date.date.localeCompare(b.date.date) || (a.event.name || '').localeCompare(b.event.name || ''));
+  if (!pages.length) {
+    res.status(404).json({ message: 'No upcoming menus found' });
+    return;
+  }
+  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: 'Upcoming Menus' }, autoFirstPage: false });
+  const fonts = configurePdfFonts(doc);
+  const number = `UPCOMING_MENUS_${start}_TO_${end}`.replace(/[^A-Za-z0-9_-]/g, '_');
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  doc.pipe(res);
+  let pageNo = 1;
+  pages.forEach((page, index) => {
+    doc.addPage();
+    pageNo = drawMenuPage({ doc, db, event: page.event, date: page.date, fonts, pageLabel: `Upcoming ${index + 1} of ${pages.length}`, businessProfile, pageNo });
+    pageNo += 1;
+  });
+  doc.end();
+}
+
 function generateMaterialDocumentPdf({ res, event, materialDocument, businessProfile = emptyBusinessProfile() }) {
   const title = materialDocument.type === 'produce' ? 'VEGETABLES & FRUITS' : 'RAW MATERIALS';
   const filePrefix = materialDocument.type === 'produce' ? 'PRODUCE' : 'RAW';
@@ -1557,6 +1596,14 @@ app.get('/api/events/:eventId/documents/:type', (req, res) => {
   }
   if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation, invoice, menu, or all-menus' });
   return generateEventPdf({ res, db, event, type: req.params.type, businessProfile: db.userData[user.id].businessProfile });
+});
+
+app.get('/api/documents/upcoming-menus', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const days = Math.max(1, Math.min(14, Number(req.query.days || 3)));
+  return generateUpcomingMenusPdf({ res, db, events: db.userData[user.id].events, days, businessProfile: db.userData[user.id].businessProfile });
 });
 
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));

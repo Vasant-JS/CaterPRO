@@ -767,6 +767,12 @@ class ApiService {
     return Uri.parse('${ApiConfig.baseUrl}/events/$eventId/documents/$type').replace(queryParameters: query);
   }
 
+  Future<Uri> upcomingMenusUri({int days = 3}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/documents/upcoming-menus').replace(queryParameters: {'token': token, 'days': '$days'});
+  }
+
   Future<Uri> materialDocumentPdfUri(String eventId, String documentId) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
@@ -1277,7 +1283,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   List<Widget> get pages => <Widget>[
-    DashboardScreen(events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
+    DashboardScreen(api: api, events: events, loading: loading, loadError: loadError, openCreate: openCreateEvent, openDetails: openEventDetails, refresh: refreshEvents),
     EventsScreen(events: events, loading: loading, loadError: loadError, openDetails: openEventDetails, openCreate: openCreateEvent, refresh: refreshEvents),
     ClientsScreen(clients: clients, events: events, manualInvoices: manualInvoices, onSaveClient: saveClient, onDeleteClient: deleteClient, openEvent: openEventDetails),
     BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice, onAddManualInvoice: openManualInvoiceForm),
@@ -1603,7 +1609,8 @@ class ScreenFrame extends StatelessWidget {
 }
 
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key, required this.events, required this.loading, required this.loadError, required this.openCreate, required this.openDetails, required this.refresh});
+  const DashboardScreen({super.key, required this.api, required this.events, required this.loading, required this.loadError, required this.openCreate, required this.openDetails, required this.refresh});
+  final ApiService api;
   final List<AppEvent> events;
   final bool loading;
   final String? loadError;
@@ -1611,11 +1618,29 @@ class DashboardScreen extends StatelessWidget {
   final ValueChanged<AppEvent> openDetails;
   final VoidCallback refresh;
 
+  bool upcomingDate(AppEventDate date) {
+    final parsed = parseIsoDate(date.date);
+    if (parsed == null) return false;
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final end = tomorrow.add(const Duration(days: 2));
+    return !parsed.isBefore(tomorrow) && !parsed.isAfter(end);
+  }
+
+  List<AppEventDate> upcomingDatesFor(AppEvent event) => event.dates.where(upcomingDate).toList()..sort((a, b) => a.date.compareTo(b.date));
+
+  Future<void> downloadUpcomingMenus(BuildContext context) async {
+    final uri = await api.upcomingMenusUri(days: 3);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (context.mounted) showCpSnack(context, launched ? 'Upcoming menus download started' : 'Unable to start menu download');
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalDates = events.fold<int>(0, (sum, event) => sum + event.dates.length);
     final totalSlots = events.fold<int>(0, (sum, event) => sum + event.dates.fold<int>(0, (dateSum, date) => dateSum + date.menuSlots.length));
     final paidTotal = events.fold<int>(0, (sum, event) => sum + eventPaid(event));
+    final upcomingEvents = events.where((event) => upcomingDatesFor(event).isNotEmpty).toList();
     return ScreenFrame(
       topBar: TopBar(
         title: 'CaterPro',
@@ -1646,17 +1671,22 @@ class DashboardScreen extends StatelessWidget {
         const SizedBox(height: 18),
         Row(
           children: [
-            const Expanded(child: Text('Events', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
-            Pill('${events.length} Active', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
+            const Expanded(child: Text('Upcoming Events', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
+            IconButton(onPressed: upcomingEvents.isEmpty ? null : () => downloadUpcomingMenus(context), icon: const Icon(Icons.restaurant_menu, color: Cp.primary), tooltip: 'Download upcoming menus'),
+            Pill('${upcomingEvents.length} Upcoming', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
           ],
         ),
         const SizedBox(height: 12),
         if (loading)
           const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
-        else if (events.isEmpty)
-          EmptyStateCard(title: 'No events yet', message: 'Create your first event and it will appear here.', actionLabel: 'Create Event', onAction: openCreate)
+        else if (upcomingEvents.isEmpty)
+          EmptyStateCard(title: 'No upcoming events', message: 'Events from tomorrow and the next 2 days will appear here.', actionLabel: events.isEmpty ? 'Create Event' : null, onAction: events.isEmpty ? openCreate : null)
         else
-          ...events.map((event) => EventMiniCard(title: event.name, client: event.mobile, time: event.dates.isEmpty ? 'No date added' : event.dates.first.date, pax: '${event.dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax))} pax', showDraft: eventIsIncomplete(event), onTap: () => openDetails(event))),
+          ...upcomingEvents.map((event) {
+            final dates = upcomingDatesFor(event);
+            final pax = dates.fold<int>(0, (sum, date) => sum + date.menuSlots.fold<int>(0, (slotSum, slot) => slotSum + slot.pax));
+            return EventMiniCard(title: event.name, client: event.mobile, time: dates.map((date) => readableDateLabel(date.date)).join(', '), pax: '$pax pax', showDraft: eventIsIncomplete(event), onTap: () => openDetails(event));
+          }),
       ],
     );
   }
@@ -2467,7 +2497,6 @@ class _BillingScreenState extends State<BillingScreen> {
                   status: 'Quotation',
                   statusColor: Cp.primary,
                   icon: Icons.request_quote,
-                  buttonLabel: 'Download Quotation',
                   onDownload: () => downloadDocument(context, event, 'quotation'),
                   onTap: () => openDocumentDetails(event, 'quotation'),
                 )),
@@ -2486,7 +2515,6 @@ class _BillingScreenState extends State<BillingScreen> {
                   status: invoice.pending == 0 ? 'Settled' : 'Manual',
                   statusColor: invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary,
                   icon: Icons.receipt,
-                  buttonLabel: 'Download Invoice',
                   onDownload: () => downloadManualInvoice(context, invoice),
                   onTap: () => openManualInvoiceDetails(invoice),
                 )),
@@ -2500,7 +2528,6 @@ class _BillingScreenState extends State<BillingScreen> {
                   status: item.payment.settled ? 'Settled' : 'Paid',
                   statusColor: item.payment.settled ? Cp.tertiaryContainer : Cp.tertiary,
                   icon: Icons.receipt_long,
-                  buttonLabel: 'Download Invoice',
                   onDownload: () => downloadDocument(context, item.event, 'invoice'),
                   onTap: () => openDocumentDetails(item.event, 'invoice', payment: item.payment),
                 )),
@@ -2943,8 +2970,8 @@ class BillingSummaryCell extends StatelessWidget {
 }
 
 class BillingDocumentCard extends StatelessWidget {
-  const BillingDocumentCard({super.key, required this.title, required this.subtitle, required this.code, required this.amountLabel, required this.amount, required this.dateLabel, required this.status, required this.statusColor, required this.icon, required this.buttonLabel, required this.onDownload, this.onTap});
-  final String title, subtitle, code, amountLabel, amount, dateLabel, status, buttonLabel;
+  const BillingDocumentCard({super.key, required this.title, required this.subtitle, required this.code, required this.amountLabel, required this.amount, required this.dateLabel, required this.status, required this.statusColor, required this.icon, required this.onDownload, this.onTap});
+  final String title, subtitle, code, amountLabel, amount, dateLabel, status;
   final Color statusColor;
   final IconData icon;
   final VoidCallback onDownload;
@@ -2960,15 +2987,16 @@ class BillingDocumentCard extends StatelessWidget {
               Icon(icon, color: Cp.primary),
               const SizedBox(width: 12),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)), Text(subtitle, style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)), Text(code, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800))])),
-              Pill(status, color: statusColor.withValues(alpha: .14), textColor: statusColor),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Pill(status, color: statusColor.withValues(alpha: .14), textColor: statusColor),
+                IconButton(onPressed: onDownload, icon: const Icon(Icons.download, color: Cp.primary), tooltip: 'Download'),
+              ]),
             ]),
             const Divider(height: 22),
             Row(children: [
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(amountLabel, style: const TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800)), Text(amount, style: const TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900))])),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [const Text('Date', style: TextStyle(color: Cp.outline, fontSize: 11, fontWeight: FontWeight.w800)), Text(dateLabel, textAlign: TextAlign.right, style: const TextStyle(fontWeight: FontWeight.w800))])),
             ]),
-            const SizedBox(height: 12),
-            SizedBox(width: double.infinity, child: OutlinedButton.icon(onPressed: onDownload, icon: const Icon(Icons.download), label: Text(buttonLabel, style: const TextStyle(fontWeight: FontWeight.w900)))),
           ]),
         ),
       );
