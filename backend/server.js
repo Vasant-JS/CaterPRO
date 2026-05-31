@@ -383,12 +383,11 @@ function serviceQuantityText(service) {
 
 function eventTotals(event) {
   const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
-  const serviceTotal = event.dates.reduce((dateSum, date) => dateSum + date.additionalServices.reduce((svcSum, service) => svcSum + Number(service.price || 0), 0), 0);
   const addOnTotal = (event.addOns || []).reduce((sum, addOn) => sum + Number(addOn.cost || 0), 0);
   const paid = event.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const discount = event.payments.reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
-  const total = menuTotal + serviceTotal + addOnTotal;
-  return { menuTotal, serviceTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
+  const total = menuTotal + addOnTotal;
+  return { menuTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
 }
 
 function menuTitleById(db, id) {
@@ -656,18 +655,6 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
       shaded = !shaded;
       y += 34;
     }
-    for (const service of date.additionalServices) {
-      y = ensurePageSpace(doc, y, 34, () => tableHeader(doc, 36, fonts, theme));
-      const quantityText = serviceQuantityText(service);
-      drawInvoiceRow(doc, y, fonts, {
-        description: `Additional Service: ${service.name}`,
-        qty: quantityText,
-        rate: '',
-        amount: money(service.price),
-      }, shaded, theme);
-      shaded = !shaded;
-      y += 34;
-    }
   }
   if ((event.addOns || []).length > 0) {
     y = ensurePageSpace(doc, y, 26, () => tableHeader(doc, 36, fonts, theme));
@@ -690,7 +677,6 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const totalsY = y + 6;
   const totalRows = [
     ['Menu Total', money(totals.menuTotal), '#202124', fonts.regular],
-    ['Services Total', money(totals.serviceTotal), '#202124', fonts.regular],
     ['Grand Total', money(totals.total), theme.primary, fonts.bold],
   ];
   if (totals.addOnTotal > 0) totalRows.splice(2, 0, ['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
