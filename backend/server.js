@@ -963,9 +963,10 @@ function generateMenuPdf({ res, db, event, dateId, allDates = false, businessPro
 }
 
 function addDaysIso(baseIso, days) {
-  const date = new Date(`${baseIso}T00:00:00`);
+  const [year, month, day] = String(baseIso).split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
   date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 function todayIso() {
