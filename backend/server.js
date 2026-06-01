@@ -59,10 +59,21 @@ function emptyBusinessProfile() {
   return { businessName: '', serviceType: '', gstin: '', pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern' };
 }
 
+function defaultEmployees() {
+  return [
+    { id: 'emp_default_001', name: 'Ramesh K', age: 32, mobile: '9000000001', designation: 'Chef', payPerDay: 1200 },
+    { id: 'emp_default_002', name: 'Suresh P', age: 28, mobile: '9000000002', designation: 'Server', payPerDay: 700 },
+    { id: 'emp_default_003', name: 'Manjunath S', age: 35, mobile: '9000000003', designation: 'Supervisor', payPerDay: 1000 },
+    { id: 'emp_default_004', name: 'Lakshmi H', age: 30, mobile: '9000000004', designation: 'Cleaning', payPerDay: 600 },
+  ].map((employee) => ({ ...employee, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+}
+
 function ensureUserDataShape(userData) {
   userData.events = userData.events || [];
   userData.clients = userData.clients || [];
   userData.employees = userData.employees || [];
+  if (userData.employees.length === 0) userData.employees = defaultEmployees();
+  userData.events = userData.events.map((event) => ({ employeeAssignments: [], ...event }));
   userData.attendance = userData.attendance || [];
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
@@ -1361,6 +1372,7 @@ app.get('/api/employees', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  writeDb(db);
   res.json(db.userData[user.id].employees);
 });
 

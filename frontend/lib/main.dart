@@ -1732,6 +1732,7 @@ void showCpSnack(BuildContext context, String message) {
 }
 
 enum EventScreenAction {
+  assignEmployees,
   downloadQuotation,
   downloadInvoice,
   currentDayMenu,
@@ -1751,6 +1752,7 @@ class EventActionMenuItem {
 }
 
 const eventScreenActions = [
+  EventActionMenuItem(EventScreenAction.assignEmployees, 'Assign Employees', Icons.group_add),
   EventActionMenuItem(EventScreenAction.downloadQuotation, 'Download Quotation', Icons.request_quote),
   EventActionMenuItem(EventScreenAction.downloadInvoice, 'Download Invoice', Icons.receipt_long),
   EventActionMenuItem(EventScreenAction.currentDayMenu, 'Current Day Menu', Icons.today),
@@ -5183,6 +5185,9 @@ class EventDetailsScreen extends StatelessWidget {
     final selectedEvent = event;
     if (selectedEvent == null) return;
     switch (action) {
+      case EventScreenAction.assignEmployees:
+        showCpSnack(context, 'Open the Team tab, then tap Assign.');
+        break;
       case EventScreenAction.downloadQuotation:
         await downloadDocument(context, selectedEvent, 'quotation');
         break;
