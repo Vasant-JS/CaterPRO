@@ -1,4 +1,5 @@
 ﻿import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:google_fonts/google_fonts.dart';
@@ -322,12 +323,13 @@ class AppEvent {
 }
 
 class EventEmployeeAssignment {
-  const EventEmployeeAssignment({required this.employeeId, required this.employeeName, required this.mobile, required this.designation, required this.payPerDay});
+  const EventEmployeeAssignment({required this.employeeId, required this.employeeName, required this.mobile, required this.designation, required this.payPerDay, required this.payPerHour});
   final String employeeId;
   final String employeeName;
   final String mobile;
   final String designation;
   final int payPerDay;
+  final int payPerHour;
 
   factory EventEmployeeAssignment.fromJson(Map<String, dynamic> json) => EventEmployeeAssignment(
         employeeId: json['employeeId']?.toString() ?? json['id']?.toString() ?? '',
@@ -335,9 +337,10 @@ class EventEmployeeAssignment {
         mobile: json['mobile']?.toString() ?? '',
         designation: json['designation']?.toString() ?? '',
         payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+        payPerHour: int.tryParse(json['payPerHour']?.toString() ?? '') ?? 0,
       );
 
-  Map<String, dynamic> toJson() => {'employeeId': employeeId, 'employeeName': employeeName, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay};
+  Map<String, dynamic> toJson() => {'employeeId': employeeId, 'employeeName': employeeName, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay, 'payPerHour': payPerHour};
 }
 
 class AppClient {
@@ -374,13 +377,14 @@ class AppClient {
 }
 
 class Employee {
-  const Employee({required this.id, required this.name, required this.age, required this.mobile, required this.designation, required this.payPerDay});
+  const Employee({required this.id, required this.name, required this.age, required this.mobile, required this.designation, required this.payPerDay, required this.payPerHour});
   final String id;
   final String name;
   final int age;
   final String mobile;
   final String designation;
   final int payPerDay;
+  final int payPerHour;
 
   factory Employee.fromJson(Map<String, dynamic> json) => Employee(
         id: json['id']?.toString() ?? '',
@@ -389,6 +393,7 @@ class Employee {
         mobile: json['mobile']?.toString() ?? '',
         designation: json['designation']?.toString() ?? '',
         payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+        payPerHour: int.tryParse(json['payPerHour']?.toString() ?? '') ?? 0,
       );
 
   factory Employee.fromAssignment(EventEmployeeAssignment assignment) => Employee(
@@ -398,22 +403,24 @@ class Employee {
         mobile: assignment.mobile,
         designation: assignment.designation,
         payPerDay: assignment.payPerDay,
+        payPerHour: assignment.payPerHour,
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'age': age, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay};
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'age': age, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay, 'payPerHour': payPerHour};
 
-  Employee copyWith({String? id, String? name, int? age, String? mobile, String? designation, int? payPerDay}) => Employee(
+  Employee copyWith({String? id, String? name, int? age, String? mobile, String? designation, int? payPerDay, int? payPerHour}) => Employee(
         id: id ?? this.id,
         name: name ?? this.name,
         age: age ?? this.age,
         mobile: mobile ?? this.mobile,
         designation: designation ?? this.designation,
         payPerDay: payPerDay ?? this.payPerDay,
+        payPerHour: payPerHour ?? this.payPerHour,
       );
 }
 
 class AttendanceRecord {
-  const AttendanceRecord({required this.id, required this.employeeId, required this.employeeName, required this.eventId, required this.eventName, required this.date, required this.status, required this.hours, required this.payPerDay});
+  const AttendanceRecord({required this.id, required this.employeeId, required this.employeeName, required this.eventId, required this.eventName, required this.date, required this.status, required this.hours, required this.payPerDay, required this.payPerHour});
   final String id;
   final String employeeId;
   final String employeeName;
@@ -423,6 +430,7 @@ class AttendanceRecord {
   final String status;
   final double hours;
   final int payPerDay;
+  final int payPerHour;
 
   factory AttendanceRecord.fromJson(Map<String, dynamic> json) => AttendanceRecord(
         id: json['id']?.toString() ?? '',
@@ -434,9 +442,10 @@ class AttendanceRecord {
         status: json['status']?.toString() ?? 'absent',
         hours: double.tryParse(json['hours']?.toString() ?? '') ?? 0,
         payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+        payPerHour: int.tryParse(json['payPerHour']?.toString() ?? '') ?? 0,
       );
 
-  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'employeeName': employeeName, 'eventId': eventId, 'eventName': eventName, 'date': date, 'status': status, 'hours': hours, 'payPerDay': payPerDay};
+  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'employeeName': employeeName, 'eventId': eventId, 'eventName': eventName, 'date': date, 'status': status, 'hours': hours, 'payPerDay': payPerDay, 'payPerHour': payPerHour};
 }
 
 class EventMaterialLine {
@@ -5518,7 +5527,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                         return CheckboxListTile(
                           value: checked,
                           title: Text(employee.name, style: const TextStyle(fontWeight: FontWeight.w800)),
-                          subtitle: Text('${employee.designation} • ${money(employee.payPerDay)}/day'),
+                          subtitle: Text('${employee.designation} • ${money(employee.payPerDay)}/day • ${money(employee.payPerHour)}/hr'),
                           onChanged: (_) => setDialogState(() => checked ? draft.remove(employee.id) : draft.add(employee.id)),
                         );
                       }).toList()),
@@ -5532,7 +5541,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                     : () async {
                         setDialogState(() => saving = true);
                         try {
-                          final assignments = widget.employees.where((employee) => draft.contains(employee.id)).map((employee) => EventEmployeeAssignment(employeeId: employee.id, employeeName: employee.name, mobile: employee.mobile, designation: employee.designation, payPerDay: employee.payPerDay)).toList();
+                          final assignments = widget.employees.where((employee) => draft.contains(employee.id)).map((employee) => EventEmployeeAssignment(employeeId: employee.id, employeeName: employee.name, mobile: employee.mobile, designation: employee.designation, payPerDay: employee.payPerDay, payPerHour: employee.payPerHour)).toList();
                           final saved = await widget.api.saveEventEmployeeAssignments(widget.event.id, assignments);
                           if (mounted) {
                             widget.onEventUpdated(saved);
@@ -5563,8 +5572,12 @@ class _EventTeamSectionState extends State<EventTeamSection> {
         date: date,
         existing: existing,
         onSave: (record) async {
-          await widget.api.saveAttendance(record);
-          reloadAttendance();
+          try {
+            await widget.api.saveAttendance(record);
+            reloadAttendance();
+          } catch (_) {
+            if (mounted) showCpSnack(this.context, 'Unable to save attendance');
+          }
         },
       ),
     );
@@ -5598,7 +5611,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                           const SizedBox(width: 12),
                           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             Text(employee.name, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
-                            Text('${employee.designation} • ${money(employee.payPerDay)}/day', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                            Text('${employee.designation} • ${money(employee.payPerDay)}/day • ${money(employee.payPerHour)}/hr', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
                           ])),
                         ]),
                         const SizedBox(height: 12),
@@ -5657,8 +5670,7 @@ class _AttendanceEditorDialogState extends State<AttendanceEditorDialog> {
       showCpSnack(context, 'Mention hours for partial attendance');
       return;
     }
-    setState(() => saving = true);
-    await widget.onSave(AttendanceRecord(
+    final record = AttendanceRecord(
       id: widget.existing?.id ?? '',
       employeeId: widget.employee.id,
       employeeName: widget.employee.name,
@@ -5668,8 +5680,10 @@ class _AttendanceEditorDialogState extends State<AttendanceEditorDialog> {
       status: status,
       hours: parsedHours,
       payPerDay: widget.employee.payPerDay,
-    ));
-    if (mounted) Navigator.pop(context);
+      payPerHour: widget.employee.payPerHour,
+    );
+    Navigator.pop(context);
+    unawaited(widget.onSave(record));
   }
 
   @override
@@ -6993,8 +7007,9 @@ class EmployeeCard extends StatelessWidget {
             ]),
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            const Text('Pay/Day', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)),
-            Text(money(employee.payPerDay), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            const Text('Pay', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)),
+            Text('${money(employee.payPerDay)}/day', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            Text('${money(employee.payPerHour)}/hr', style: const TextStyle(color: Cp.onVariant, fontSize: 12, fontWeight: FontWeight.w800)),
             IconButton(visualDensity: VisualDensity.compact, onPressed: onDelete, icon: const Icon(Icons.delete, color: Cp.error), tooltip: 'Delete employee'),
           ]),
         ]),
@@ -7027,6 +7042,7 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
   late final mobile = TextEditingController(text: widget.employee?.mobile ?? '');
   late final designation = TextEditingController(text: widget.employee?.designation ?? '');
   late final payPerDay = TextEditingController(text: widget.employee?.payPerDay == null || widget.employee!.payPerDay == 0 ? '' : '${widget.employee!.payPerDay}');
+  late final payPerHour = TextEditingController(text: widget.employee?.payPerHour == null || widget.employee!.payPerHour == 0 ? '' : '${widget.employee!.payPerHour}');
   String? error;
   bool saving = false;
 
@@ -7037,15 +7053,17 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
     mobile.dispose();
     designation.dispose();
     payPerDay.dispose();
+    payPerHour.dispose();
     super.dispose();
   }
 
   Future<void> save() async {
     final parsedAge = int.tryParse(age.text.trim());
     final parsedPay = int.tryParse(payPerDay.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    final parsedHourlyPay = int.tryParse(payPerHour.text.replaceAll(RegExp(r'[^0-9]'), ''));
     final cleanMobile = normalizeMobileText(mobile.text);
-    if (name.text.trim().isEmpty || parsedAge == null || cleanMobile.isEmpty || designation.text.trim().isEmpty || parsedPay == null) {
-      setState(() => error = 'Fill Name, Age, Mobile, Designation, and Pay/Day.');
+    if (name.text.trim().isEmpty || parsedAge == null || cleanMobile.isEmpty || designation.text.trim().isEmpty || parsedPay == null || parsedHourlyPay == null) {
+      setState(() => error = 'Fill Name, Age, Mobile, Designation, Pay/Day, and Pay/Hour.');
       return;
     }
     if (parsedAge < 16 || parsedAge > 100) {
@@ -7060,8 +7078,12 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
       setState(() => error = 'Pay/Day must be more than zero.');
       return;
     }
+    if (parsedHourlyPay <= 0) {
+      setState(() => error = 'Pay/Hour must be more than zero.');
+      return;
+    }
     setState(() => saving = true);
-    await widget.onSave(Employee(id: widget.employee?.id ?? '', name: name.text.trim(), age: parsedAge, mobile: cleanMobile, designation: designation.text.trim(), payPerDay: parsedPay));
+    await widget.onSave(Employee(id: widget.employee?.id ?? '', name: name.text.trim(), age: parsedAge, mobile: cleanMobile, designation: designation.text.trim(), payPerDay: parsedPay, payPerHour: parsedHourlyPay));
     if (mounted) Navigator.pop(context);
   }
 
@@ -7079,6 +7101,7 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
             const SizedBox(height: 16),
             EditableInlineField(label: 'Name', controller: name),
             Row(children: [Expanded(child: EditableInlineField(label: 'Age', controller: age, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Pay/Day', controller: payPerDay, keyboardType: TextInputType.number))]),
+            EditableInlineField(label: 'Pay/Hour', controller: payPerHour, keyboardType: TextInputType.number),
             EditableInlineField(label: 'Mobile', controller: mobile, keyboardType: TextInputType.phone, inputFormatters: mobileInputFormatters),
             EditableInlineField(label: 'Designation', controller: designation),
             if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
@@ -7182,9 +7205,10 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
                             final absent = entry.value.values.where((record) => record.status == 'absent').length;
                             final hours = entry.value.values.fold<double>(0, (sum, record) => sum + record.hours);
                             final salary = entry.value.values.fold<int>(0, (sum, record) {
-                          final ratio = record.status == 'present' ? 1.0 : record.status == 'partial' ? (record.hours / 8).clamp(0.0, 1.0) : 0.0;
-                          return sum + (record.payPerDay * ratio).round();
-                        });
+                              if (record.status == 'present') return sum + record.payPerDay;
+                              if (record.status == 'partial') return sum + (record.payPerHour * record.hours).round();
+                              return sum;
+                            });
                             return DataRow(cells: [
                               DataCell(SizedBox(width: 112, child: Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)))),
                               for (var day = 1; day <= daysInMonth; day++) DataCell(Text(cellText(entry.value[day]))),

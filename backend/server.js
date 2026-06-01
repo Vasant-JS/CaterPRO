@@ -61,10 +61,10 @@ function emptyBusinessProfile() {
 
 function defaultEmployees() {
   return [
-    { id: 'emp_default_001', name: 'Ramesh K', age: 32, mobile: '9000000001', designation: 'Chef', payPerDay: 1200 },
-    { id: 'emp_default_002', name: 'Suresh P', age: 28, mobile: '9000000002', designation: 'Server', payPerDay: 700 },
-    { id: 'emp_default_003', name: 'Manjunath S', age: 35, mobile: '9000000003', designation: 'Supervisor', payPerDay: 1000 },
-    { id: 'emp_default_004', name: 'Lakshmi H', age: 30, mobile: '9000000004', designation: 'Cleaning', payPerDay: 600 },
+    { id: 'emp_default_001', name: 'Ramesh K', age: 32, mobile: '9000000001', designation: 'Chef', payPerDay: 1200, payPerHour: 150 },
+    { id: 'emp_default_002', name: 'Suresh P', age: 28, mobile: '9000000002', designation: 'Server', payPerDay: 700, payPerHour: 90 },
+    { id: 'emp_default_003', name: 'Manjunath S', age: 35, mobile: '9000000003', designation: 'Supervisor', payPerDay: 1000, payPerHour: 125 },
+    { id: 'emp_default_004', name: 'Lakshmi H', age: 30, mobile: '9000000004', designation: 'Cleaning', payPerDay: 600, payPerHour: 75 },
   ].map((employee) => ({ ...employee, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
 }
 
@@ -73,8 +73,11 @@ function ensureUserDataShape(userData) {
   userData.clients = userData.clients || [];
   userData.employees = userData.employees || [];
   if (userData.employees.length === 0) userData.employees = defaultEmployees();
+  userData.employees = userData.employees.map((employee) => ({ ...employee, payPerHour: Number(employee.payPerHour ?? (employee.payPerDay ? Math.round(Number(employee.payPerDay) / 8) : 0)) }));
   userData.events = userData.events.map((event) => ({ employeeAssignments: [], ...event }));
+  userData.events = userData.events.map((event) => ({ ...event, employeeAssignments: (event.employeeAssignments || []).map((assignment) => ({ ...assignment, payPerHour: Number(assignment.payPerHour ?? (assignment.payPerDay ? Math.round(Number(assignment.payPerDay) / 8) : 0)) })) }));
   userData.attendance = userData.attendance || [];
+  userData.attendance = userData.attendance.map((record) => ({ ...record, payPerHour: Number(record.payPerHour ?? (record.payPerDay ? Math.round(Number(record.payPerDay) / 8) : 0)) }));
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
   userData.payments = userData.payments || [];
@@ -331,6 +334,7 @@ function employeeAssignmentFromBody(body, existing = {}) {
     mobile: normalizeMobile(body.mobile || existing.mobile || ''),
     designation: body.designation || existing.designation || '',
     payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
+    payPerHour: Number(body.payPerHour ?? existing.payPerHour ?? 0),
   };
 }
 
@@ -453,6 +457,7 @@ function clientFromBody(body, existing = {}) {
 }
 
 function employeeFromBody(body, existing = {}) {
+  const payPerDay = Number(body.payPerDay ?? existing.payPerDay ?? 0);
   return {
     ...existing,
     id: existing.id || body.id || makeId('emp'),
@@ -460,7 +465,8 @@ function employeeFromBody(body, existing = {}) {
     age: Number(body.age ?? existing.age ?? 0),
     mobile: normalizeMobile(body.mobile || existing.mobile || ''),
     designation: body.designation || existing.designation || '',
-    payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
+    payPerDay,
+    payPerHour: Number(body.payPerHour ?? existing.payPerHour ?? (payPerDay ? Math.round(payPerDay / 8) : 0)),
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -479,6 +485,7 @@ function attendanceFromBody(body, existing = {}) {
     status,
     hours: status === 'partial' ? Number(body.hours ?? existing.hours ?? 0) : status === 'present' ? 8 : 0,
     payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
+    payPerHour: Number(body.payPerHour ?? existing.payPerHour ?? 0),
     updatedAt: new Date().toISOString(),
     createdAt: existing.createdAt || new Date().toISOString(),
   };
@@ -911,12 +918,12 @@ function generateAttendancePdfOld({ res, records, employees, month, businessProf
   const byEmployee = new Map();
   for (const employee of employees) byEmployee.set(employee.id, { employee, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
   for (const record of records) {
-    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay }, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay, payPerHour: record.payPerHour }, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
     const bucket = byEmployee.get(record.employeeId);
     bucket[record.status] = (bucket[record.status] || 0) + 1;
     bucket.hours += Number(record.hours || 0);
-    const dayRatio = record.status === 'present' ? 1 : record.status === 'partial' ? Math.min(1, Number(record.hours || 0) / 8) : 0;
-    bucket.salary += Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0) * dayRatio);
+    const partialPay = Number(record.payPerHour || bucket.employee.payPerHour || 0) * Number(record.hours || 0);
+    bucket.salary += record.status === 'present' ? Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0)) : record.status === 'partial' ? Math.round(partialPay) : 0;
   }
   let y = 112;
   const header = () => {
@@ -970,14 +977,14 @@ function generateAttendancePdf({ res, records, employees, month, businessProfile
   const byEmployee = new Map();
   for (const employee of employees) byEmployee.set(employee.id, { employee, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
   for (const record of records) {
-    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay }, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay, payPerHour: record.payPerHour }, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
     const bucket = byEmployee.get(record.employeeId);
     const day = Number(String(record.date || '').slice(-2));
     if (day > 0) bucket.days[day] = record;
     bucket[record.status] = (bucket[record.status] || 0) + 1;
     bucket.hours += Number(record.hours || 0);
-    const dayRatio = record.status === 'present' ? 1 : record.status === 'partial' ? Math.min(1, Number(record.hours || 0) / 8) : 0;
-    bucket.salary += Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0) * dayRatio);
+    const partialPay = Number(record.payPerHour || bucket.employee.payPerHour || 0) * Number(record.hours || 0);
+    bucket.salary += record.status === 'present' ? Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0)) : record.status === 'partial' ? Math.round(partialPay) : 0;
   }
 
   const left = 22;
@@ -1469,6 +1476,7 @@ app.post('/api/employees', (req, res) => {
   const employee = employeeFromBody(req.body);
   if (!employee.name || !employee.mobile || !employee.designation) return res.status(400).json({ message: 'Name, mobile, and designation are required' });
   if (employee.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
+  if (employee.payPerDay <= 0 || employee.payPerHour <= 0) return res.status(400).json({ message: 'Daily and hourly pay must be more than zero' });
   const existing = db.userData[user.id].employees.find((item) => normalizeMobile(item.mobile) === employee.mobile);
   const saved = employeeFromBody(employee, existing || {});
   upsertById(db.userData[user.id].employees, saved);
@@ -1485,6 +1493,7 @@ app.put('/api/employees/:id', (req, res) => {
   const employee = employeeFromBody({ ...req.body, id: req.params.id }, existing);
   if (!employee.name || !employee.mobile || !employee.designation) return res.status(400).json({ message: 'Name, mobile, and designation are required' });
   if (employee.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
+  if (employee.payPerDay <= 0 || employee.payPerHour <= 0) return res.status(400).json({ message: 'Daily and hourly pay must be more than zero' });
   upsertById(db.userData[user.id].employees, employee);
   writeDb(db);
   res.json(employee);
@@ -1523,6 +1532,7 @@ app.post('/api/attendance', (req, res) => {
     employeeName: req.body.employeeName || employee?.name || '',
     eventName: req.body.eventName || event?.name || '',
     payPerDay: req.body.payPerDay ?? employee?.payPerDay ?? 0,
+    payPerHour: req.body.payPerHour ?? employee?.payPerHour ?? 0,
   }, existing || {});
   if (!record.employeeId || !record.date) return res.status(400).json({ message: 'Employee and date are required' });
   if (record.status === 'partial' && record.hours <= 0) return res.status(400).json({ message: 'Partial attendance requires hours' });
@@ -1775,6 +1785,7 @@ app.put('/api/events/:eventId/employee-assignments', (req, res) => {
         status: 'present',
         hours: 8,
         payPerDay: assignment.payPerDay,
+        payPerHour: assignment.payPerHour,
       }));
     }
   }
