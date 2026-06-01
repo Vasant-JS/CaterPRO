@@ -629,6 +629,7 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
 
 function documentInfoSection(doc, title, event, number, fonts, businessProfile, isInvoice) {
   const theme = documentTheme(businessProfile);
+  const hasBusinessGst = Boolean(String(businessProfile.gstin || '').trim());
   doc.roundedRect(36, 156, 523, 122, theme.name === 'minimal' ? 3 : 10).fill(theme.soft).strokeColor(theme.secondary).lineWidth(0.9).stroke();
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text('Bill To', 52, 174);
   doc.fillColor(theme.ink).font(fonts.bold).fontSize(12).text(event.primaryClient || 'Customer', 52, 194, { width: 220 });
@@ -637,7 +638,7 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
     .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', 52, 214)
     .text(addressLine, 52, 230, { width: 220, height: 14 })
     .text(`Event: ${event.name || 'Untitled Event'}`, 52, 246, { width: 220 });
-  if (event.clientGst) doc.text(`GST: ${event.clientGst}`, 52, 262, { width: 220 });
+  if (hasBusinessGst && event.clientGst) doc.text(`Client GSTIN: ${event.clientGst}`, 52, 262, { width: 220 });
 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text(`${title} Details`, 325, 174, { width: 210, align: 'right' });
@@ -677,11 +678,17 @@ function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = document
   doc.moveTo(36, y + 28).lineTo(559, y + 28).strokeColor('#e1e6e3').lineWidth(0.5).stroke();
 }
 
-function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile() }) {
+function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile(), clients = [] }) {
   const isInvoice = type === 'invoice';
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
   const number = documentNumber(isInvoice ? 'INV' : 'QUOTE', event);
   const totals = eventTotals(event);
+  const eventClient = clients.find((client) => normalizeMobile(client.mobile) === normalizeMobile(event.mobile));
+  const documentEvent = {
+    ...event,
+    clientAddress: event.clientAddress || eventClient?.address || eventClient?.city || '',
+    clientGst: event.clientGst || eventClient?.gst || '',
+  };
   const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${title} - ${event.name}` } });
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
@@ -689,8 +696,8 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
   doc.pipe(res);
 
-  writeDocumentHeader(doc, title, event, number, fonts, businessProfile);
-  documentInfoSection(doc, title, event, number, fonts, businessProfile, isInvoice);
+  writeDocumentHeader(doc, title, documentEvent, number, fonts, businessProfile);
+  documentInfoSection(doc, title, documentEvent, number, fonts, businessProfile, isInvoice);
   let y = 316;
   tableHeader(doc, y, fonts, theme);
   y += 32;
@@ -1603,7 +1610,7 @@ app.get('/api/events/:eventId/documents/:type', (req, res) => {
     return generateMenuPdf({ res, db, event, allDates: true, businessProfile: db.userData[user.id].businessProfile });
   }
   if (!['quotation', 'invoice'].includes(req.params.type)) return res.status(400).json({ message: 'Document type must be quotation, invoice, menu, or all-menus' });
-  return generateEventPdf({ res, db, event, type: req.params.type, businessProfile: db.userData[user.id].businessProfile });
+  return generateEventPdf({ res, db, event, type: req.params.type, businessProfile: db.userData[user.id].businessProfile, clients: db.userData[user.id].clients || [] });
 });
 
 app.get('/api/documents/upcoming-menus', (req, res) => {

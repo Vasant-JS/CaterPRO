@@ -2334,15 +2334,24 @@ class SearchBox extends StatelessWidget {
   }
 }
 
-class ClientCard extends StatelessWidget {
+class ClientCard extends StatefulWidget {
   const ClientCard({super.key, required this.summary, required this.onEvents, required this.onBills, required this.onEdit, required this.onDelete});
   final ClientSummary summary;
   final VoidCallback onEvents;
   final VoidCallback onBills;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
+
+  @override
+  State<ClientCard> createState() => _ClientCardState();
+}
+
+class _ClientCardState extends State<ClientCard> {
+  bool expanded = false;
+
   @override
   Widget build(BuildContext context) {
+    final summary = widget.summary;
     final client = summary.client;
     final initials = client.name.trim().isEmpty ? 'C' : client.name.trim().split(RegExp(r'\s+')).take(2).map((part) => part[0].toUpperCase()).join();
     return Padding(
@@ -2353,17 +2362,33 @@ class ClientCard extends StatelessWidget {
             CircleAvatar(radius: 24, backgroundColor: Cp.primaryContainer, child: Text(initials, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900))),
             const SizedBox(width: 14),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(client.name.isEmpty ? client.mobile : client.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)), Text(client.mobile, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600)), if (client.city.isNotEmpty) Text(client.city, style: const TextStyle(fontSize: 12, color: Cp.outline, fontWeight: FontWeight.w600))])),
-            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [Text(money(summary.revenue), style: const TextStyle(color: Cp.secondary, fontSize: 16, fontWeight: FontWeight.w900)), Text('${summary.events.length} events • ${summary.invoices.length} bills', style: const TextStyle(color: Cp.outline, fontSize: 12))]),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(money(summary.revenue), style: const TextStyle(color: Cp.secondary, fontSize: 16, fontWeight: FontWeight.w900)),
+              Text('${summary.events.length} events • ${summary.invoices.length} bills', style: const TextStyle(color: Cp.outline, fontSize: 12)),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: expanded ? 'Hide client options' : 'Show client options',
+                onPressed: () => setState(() => expanded = !expanded),
+                icon: Icon(expanded ? Icons.keyboard_arrow_up_rounded : Icons.more_horiz_rounded, color: Cp.primary),
+              ),
+            ]),
           ]),
-          const Divider(height: 24, color: Cp.outlineVariant),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            ActionChip(avatar: const Icon(Icons.event, size: 18), label: const Text('Events'), onPressed: onEvents),
-            ActionChip(avatar: const Icon(Icons.receipt_long, size: 18), label: const Text('Bills'), onPressed: onBills),
-            ActionChip(avatar: const Icon(Icons.call, size: 18), label: const Text('Call'), onPressed: () => launchUrl(Uri.parse('tel:${client.mobile}'))),
-            ActionChip(avatar: const Icon(Icons.chat, size: 18), label: const Text('WhatsApp'), onPressed: () => launchUrl(Uri.parse('https://wa.me/91${client.mobile}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank')),
-            ActionChip(avatar: const Icon(Icons.edit, size: 18), label: const Text('Edit'), onPressed: onEdit),
-            ActionChip(avatar: const Icon(Icons.delete, size: 18, color: Cp.error), label: const Text('Delete'), onPressed: onDelete),
-          ]),
+          AnimatedCrossFade(
+            firstChild: const SizedBox.shrink(),
+            secondChild: Column(children: [
+              const Divider(height: 24, color: Cp.outlineVariant),
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                ActionChip(avatar: const Icon(Icons.event, size: 18), label: const Text('Events'), onPressed: widget.onEvents),
+                ActionChip(avatar: const Icon(Icons.receipt_long, size: 18), label: const Text('Bills'), onPressed: widget.onBills),
+                ActionChip(avatar: const Icon(Icons.call, size: 18), label: const Text('Call'), onPressed: () => launchUrl(Uri.parse('tel:${client.mobile}'))),
+                ActionChip(avatar: const Icon(Icons.chat, size: 18), label: const Text('WhatsApp'), onPressed: () => launchUrl(Uri.parse('https://wa.me/91${client.mobile}'), mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank')),
+                ActionChip(avatar: const Icon(Icons.edit, size: 18), label: const Text('Edit'), onPressed: widget.onEdit),
+                ActionChip(avatar: const Icon(Icons.delete, size: 18, color: Cp.error), label: const Text('Delete'), onPressed: widget.onDelete),
+              ]),
+            ]),
+            crossFadeState: expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            duration: const Duration(milliseconds: 180),
+          ),
         ]),
       ),
     );
@@ -3129,7 +3154,6 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
             color: const Color(0xfffff7ff),
             child: Column(children: [
               AmountLine('Subtotal', money(total)),
-              const AmountLine('Tax', '₹0'),
               const Divider(height: 18),
               AmountLine('Grand Total', money(total), strong: true),
               AmountLine('Advance / Paid Till Now', money(paid), color: Cp.tertiaryContainer),
