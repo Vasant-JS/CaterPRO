@@ -897,7 +897,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   doc.end();
 }
 
-function generateAttendancePdf({ res, records, employees, month, businessProfile = emptyBusinessProfile() }) {
+function generateAttendancePdfOld({ res, records, employees, month, businessProfile = emptyBusinessProfile() }) {
   const doc = new PDFDocument({ size: 'A4', margin: 32, info: { Title: `Attendance - ${month}` } });
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
@@ -948,6 +948,92 @@ function generateAttendancePdf({ res, records, employees, month, businessProfile
       .text(money(salary || 0), 478, y, { width: 62, align: 'right' });
     doc.moveTo(32, y + 24).lineTo(563, y + 24).strokeColor('#d7dde2').lineWidth(0.5).stroke();
     y += 30;
+  }
+  if (records.length === 0) doc.fillColor(theme.muted).font(fonts.regular).fontSize(11).text('No attendance records for this month.', 42, y + 10);
+  doc.end();
+}
+
+function generateAttendancePdf({ res, records, employees, month, businessProfile = emptyBusinessProfile() }) {
+  const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 22, info: { Title: `Attendance - ${month}` } });
+  const fonts = configurePdfFonts(doc);
+  const theme = documentTheme(businessProfile);
+  const [year, rawMonth] = String(month).split('-').map(Number);
+  const daysInMonth = new Date(year, rawMonth, 0).getDate();
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="ATTENDANCE-${month}.pdf"`);
+  doc.pipe(res);
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+  doc.roundedRect(22, 18, 798, 42, 6).fill(theme.primary);
+  doc.fillColor('white').font(fonts.bold).fontSize(16).text('Attendance Sheet', 36, 31);
+  doc.font(fonts.regular).fontSize(8).text(`${businessProfile.businessName || 'CaterPro'} - ${month}`, 610, 33, { width: 180, align: 'right' });
+
+  const byEmployee = new Map();
+  for (const employee of employees) byEmployee.set(employee.id, { employee, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+  for (const record of records) {
+    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay }, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+    const bucket = byEmployee.get(record.employeeId);
+    const day = Number(String(record.date || '').slice(-2));
+    if (day > 0) bucket.days[day] = record;
+    bucket[record.status] = (bucket[record.status] || 0) + 1;
+    bucket.hours += Number(record.hours || 0);
+    const dayRatio = record.status === 'present' ? 1 : record.status === 'partial' ? Math.min(1, Number(record.hours || 0) / 8) : 0;
+    bucket.salary += Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0) * dayRatio);
+  }
+
+  const left = 22;
+  const nameW = 100;
+  const dayW = 16;
+  const pW = 20;
+  const aW = 20;
+  const hW = 28;
+  const salaryW = 55;
+  const tableW = nameW + daysInMonth * dayW + pW + aW + hW + salaryW;
+  let y = 78;
+  const dayText = (record) => {
+    if (!record) return '-';
+    if (record.status === 'present') return 'P';
+    if (record.status === 'absent') return 'A';
+    const hours = Number(record.hours || 0);
+    return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  };
+  const header = () => {
+    doc.rect(left, y, tableW, 20).fill(theme.primary);
+    doc.fillColor('white').font(fonts.bold).fontSize(6.2).text('Employee', left + 4, y + 7, { width: nameW - 6 });
+    let x = left + nameW;
+    for (let day = 1; day <= daysInMonth; day++) {
+      doc.text(String(day), x, y + 7, { width: dayW, align: 'center' });
+      x += dayW;
+    }
+    doc.text('P', x, y + 7, { width: pW, align: 'center' }); x += pW;
+    doc.text('A', x, y + 7, { width: aW, align: 'center' }); x += aW;
+    doc.text('Hrs', x, y + 7, { width: hW, align: 'center' }); x += hW;
+    doc.text('Salary', x, y + 7, { width: salaryW, align: 'right' });
+    y += 20;
+  };
+  header();
+  for (const { employee, days, present, absent, hours, salary } of byEmployee.values()) {
+    if (y > 555) {
+      doc.addPage();
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+      y = 28;
+      header();
+    }
+    const rowH = 19;
+    doc.rect(left, y, tableW, rowH).fill(y % 2 ? '#ffffff' : '#f7fafc').strokeColor('#d7dde2').lineWidth(0.35).stroke();
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(6.7).text(employee.name || '-', left + 4, y + 4, { width: nameW - 8, height: 8 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(5.5).text(employee.designation || '', left + 4, y + 12, { width: nameW - 8, height: 6 });
+    let x = left + nameW;
+    doc.fillColor(theme.ink).font(fonts.regular).fontSize(6.2);
+    for (let day = 1; day <= daysInMonth; day++) {
+      doc.text(dayText(days[day]), x, y + 6, { width: dayW, align: 'center' });
+      doc.moveTo(x, y).lineTo(x, y + rowH).strokeColor('#e4e8eb').lineWidth(0.25).stroke();
+      x += dayW;
+    }
+    doc.font(fonts.bold).text(String(present || 0), x, y + 6, { width: pW, align: 'center' }); x += pW;
+    doc.text(String(absent || 0), x, y + 6, { width: aW, align: 'center' }); x += aW;
+    doc.text(String(hours || 0), x, y + 6, { width: hW, align: 'center' }); x += hW;
+    doc.text(money(salary || 0), x, y + 6, { width: salaryW, align: 'right' });
+    y += rowH;
   }
   if (records.length === 0) doc.fillColor(theme.muted).font(fonts.regular).fontSize(11).text('No attendance records for this month.', 42, y + 10);
   doc.end();

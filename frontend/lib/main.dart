@@ -7103,6 +7103,11 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
   late String month = DateTime.now().toIso8601String().substring(0, 7);
   late Future<List<AttendanceRecord>> recordsFuture = widget.api.getAttendance(month: month);
 
+  int get daysInMonth {
+    final parts = month.split('-').map(int.parse).toList();
+    return DateTime(parts[0], parts[1] + 1, 0).day;
+  }
+
   void changeMonth(int delta) {
     final parts = month.split('-').map(int.parse).toList();
     final next = DateTime(parts[0], parts[1] + delta);
@@ -7139,35 +7144,58 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
                 final records = snapshot.data ?? const <AttendanceRecord>[];
                 if (snapshot.connectionState == ConnectionState.waiting) return const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator());
                 if (records.isEmpty) return const EmptyStateCard(title: 'No attendance', message: 'Attendance records for this month will appear here.');
-                final grouped = <String, List<AttendanceRecord>>{};
+                final grouped = <String, Map<int, AttendanceRecord>>{};
                 for (final record in records) {
-                  grouped.putIfAbsent(record.employeeId, () => []).add(record);
+                  final day = parseIsoDate(record.date)?.day;
+                  if (day == null) continue;
+                  grouped.putIfAbsent(record.employeeId, () => {})[day] = record;
+                }
+                String cellText(AttendanceRecord? record) {
+                  if (record == null) return '-';
+                  if (record.status == 'present') return 'P';
+                  if (record.status == 'absent') return 'A';
+                  return record.hours.toStringAsFixed(record.hours.truncateToDouble() == record.hours ? 0 : 1);
                 }
                 return ConstrainedBox(
                   constraints: const BoxConstraints(maxHeight: 420),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: grouped.entries.map((entry) {
+                  child: Scrollbar(
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SingleChildScrollView(
+                        child: DataTable(
+                          headingRowHeight: 36,
+                          dataRowMinHeight: 38,
+                          dataRowMaxHeight: 44,
+                          columnSpacing: 12,
+                          columns: [
+                            const DataColumn(label: SizedBox(width: 112, child: Text('Employee'))),
+                            for (var day = 1; day <= daysInMonth; day++) DataColumn(label: Text('$day')),
+                            const DataColumn(label: Text('P')),
+                            const DataColumn(label: Text('A')),
+                            const DataColumn(label: Text('Hrs')),
+                            const DataColumn(label: Text('Salary')),
+                          ],
+                          rows: grouped.entries.map((entry) {
                         final employee = widget.employees.where((item) => item.id == entry.key).firstOrNull;
-                        final name = employee?.name ?? entry.value.first.employeeName;
-                        final present = entry.value.where((record) => record.status == 'present').length;
-                        final absent = entry.value.where((record) => record.status == 'absent').length;
-                        final partial = entry.value.where((record) => record.status == 'partial').length;
-                        final hours = entry.value.fold<double>(0, (sum, record) => sum + record.hours);
-                        final salary = entry.value.fold<int>(0, (sum, record) {
+                            final name = employee?.name ?? entry.value.values.first.employeeName;
+                            final present = entry.value.values.where((record) => record.status == 'present').length;
+                            final absent = entry.value.values.where((record) => record.status == 'absent').length;
+                            final hours = entry.value.values.fold<double>(0, (sum, record) => sum + record.hours);
+                            final salary = entry.value.values.fold<int>(0, (sum, record) {
                           final ratio = record.status == 'present' ? 1.0 : record.status == 'partial' ? (record.hours / 8).clamp(0.0, 1.0) : 0.0;
                           return sum + (record.payPerDay * ratio).round();
                         });
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: CpCard(
-                            child: Row(children: [
-                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)), Text('P $present • A $absent • Partial $partial • ${hours.toStringAsFixed(hours.truncateToDouble() == hours ? 0 : 1)} hrs', style: const TextStyle(color: Cp.onVariant))])),
-                              Text(money(salary), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
-                            ]),
-                          ),
-                        );
-                      }).toList(),
+                            return DataRow(cells: [
+                              DataCell(SizedBox(width: 112, child: Text(name, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w800)))),
+                              for (var day = 1; day <= daysInMonth; day++) DataCell(Text(cellText(entry.value[day]))),
+                              DataCell(Text('$present')),
+                              DataCell(Text('$absent')),
+                              DataCell(Text(hours.toStringAsFixed(hours.truncateToDouble() == hours ? 0 : 1))),
+                              DataCell(Text(money(salary), style: const TextStyle(fontWeight: FontWeight.w800))),
+                            ]);
+                          }).toList(),
+                        ),
+                      ),
                     ),
                   ),
                 );
