@@ -5373,6 +5373,7 @@ class EventDetailsContent extends StatefulWidget {
 class _EventDetailsContentState extends State<EventDetailsContent> {
   int selectedTab = 0;
   static const tabs = ['Overview', 'Dates & Menus', 'Payments', 'Team'];
+  static const tabIcons = [Icons.notes, Icons.restaurant_menu, Icons.payments, Icons.groups];
 
   @override
   Widget build(BuildContext context) {
@@ -5400,12 +5401,18 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
             final selected = index == selectedTab;
             return Padding(
               padding: const EdgeInsets.only(right: 10),
-              child: ChoiceChip(
-                selected: selected,
-                label: Text(tabs[index]),
-                selectedColor: Cp.primaryContainer,
-                labelStyle: TextStyle(color: selected ? Colors.white : Cp.onVariant, fontWeight: FontWeight.w800),
-                onSelected: (_) => setState(() => selectedTab = index),
+              child: Tooltip(
+                message: tabs[index],
+                child: ChoiceChip(
+                  selected: selected,
+                  avatar: Icon(tabIcons[index], size: 18, color: selected ? Colors.white : Cp.primary),
+                  label: selected ? Text(tabs[index]) : const SizedBox.shrink(),
+                  selectedColor: Cp.primaryContainer,
+                  labelStyle: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (_) => setState(() => selectedTab = index),
+                ),
               ),
             );
           }),
