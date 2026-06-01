@@ -1,11 +1,15 @@
 # Flutter
 frontend/.dart_tool/
 frontend/build/
+frontend/android/build/
 frontend/.flutter-plugins-dependencies
 frontend/flutter-web-run*.log
 frontend/android/.gradle/
 frontend/android/.kotlin/
 frontend/ios/Flutter/ephemeral/
+
+# Old local Flutter folder kept only until Windows releases file handles.
+caterpro_flutter/
 
 # Backend
 backend/node_modules/

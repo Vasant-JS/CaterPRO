@@ -7,9 +7,10 @@ const PDFDocument = require('pdfkit');
 
 const app = express();
 const dbPath = path.join(__dirname, 'db.json');
+const universalCatalogBackupPath = path.join(__dirname, 'universal-catalog.backup.json');
 const port = Number(process.env.PORT || 8787);
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
@@ -19,11 +20,15 @@ app.use((req, res, next) => {
 });
 
 function readDb() {
-  return JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+  const db = JSON.parse(fs.readFileSync(dbPath, 'utf8').replace(/^\uFEFF/, ''));
+  ensureUniversal(db);
+  return db;
 }
 
 function writeDb(db) {
+  ensureUniversal(db);
   fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
+  persistUniversalCatalogBackup(db.universal);
 }
 
 function makeId(prefix) {
@@ -56,7 +61,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern' };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1 };
 }
 
 function defaultEmployees() {
@@ -276,11 +281,53 @@ function defaultProduceCatalog() {
   }));
 }
 
+const protectedUniversalCatalogKeys = ['menuItems', 'rawMaterials', 'produceItems'];
+
+function readUniversalCatalogBackup() {
+  if (!fs.existsSync(universalCatalogBackupPath)) return {};
+  try {
+    const backup = JSON.parse(fs.readFileSync(universalCatalogBackupPath, 'utf8'));
+    return backup && typeof backup === 'object' && !Array.isArray(backup) ? backup : {};
+  } catch {
+    return {};
+  }
+}
+
+function mergeCatalogById(existing = [], incoming = []) {
+  const merged = new Map();
+  for (const item of Array.isArray(existing) ? existing : []) {
+    if (item && typeof item === 'object') merged.set(item.id || JSON.stringify(item), item);
+  }
+  for (const item of Array.isArray(incoming) ? incoming : []) {
+    if (!item || typeof item !== 'object') continue;
+    const key = item.id || JSON.stringify(item);
+    merged.set(key, { ...(merged.get(key) || {}), ...item });
+  }
+  return [...merged.values()];
+}
+
+function mergeProtectedUniversalCatalog(existing = {}, incoming = {}) {
+  const merged = { ...existing, ...(incoming || {}) };
+  for (const key of protectedUniversalCatalogKeys) {
+    const currentList = Array.isArray(existing[key]) ? existing[key] : [];
+    const incomingList = Array.isArray(incoming?.[key]) ? incoming[key] : [];
+    merged[key] = incomingList.length > 0 ? mergeCatalogById(currentList, incomingList) : currentList;
+  }
+  return merged;
+}
+
+function persistUniversalCatalogBackup(universal = {}) {
+  const previous = readUniversalCatalogBackup();
+  const backup = mergeProtectedUniversalCatalog(previous, universal);
+  fs.writeFileSync(universalCatalogBackupPath, `${JSON.stringify(backup, null, 2)}\n`);
+}
+
 function ensureUniversal(db) {
   db.universal = db.universal || {};
-  db.universal.menuItems = db.universal.menuItems || [];
-  db.universal.rawMaterials = db.universal.rawMaterials || [];
-  db.universal.produceItems = db.universal.produceItems || [];
+  const backup = readUniversalCatalogBackup();
+  db.universal.menuItems = Array.isArray(db.universal.menuItems) && db.universal.menuItems.length > 0 ? db.universal.menuItems : backup.menuItems || [];
+  db.universal.rawMaterials = Array.isArray(db.universal.rawMaterials) && db.universal.rawMaterials.length > 0 ? db.universal.rawMaterials : backup.rawMaterials || [];
+  db.universal.produceItems = Array.isArray(db.universal.produceItems) && db.universal.produceItems.length > 0 ? db.universal.produceItems : backup.produceItems || [];
   const legacyNames = new Set(['Basmati Rice', 'Toor Dal', 'Cooking Oil', 'Tomato', 'Onion']);
   const hasOnlyLegacyRawMaterials = db.universal.rawMaterials.length > 0 && db.universal.rawMaterials.every((item) => legacyNames.has(item.name));
   if (db.universal.rawMaterials.length === 0 || hasOnlyLegacyRawMaterials) {
@@ -509,6 +556,36 @@ function eventTotals(event) {
   return { menuTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
 }
 
+function gstBreakdown(baseAmount, businessProfile = emptyBusinessProfile()) {
+  const gstin = String(businessProfile.gstin || '').trim();
+  const rate = Math.max(0, Number(businessProfile.gstRate ?? businessProfile.gstPercent ?? 5) || 0);
+  if (!gstin || rate <= 0) {
+    return { enabled: false, type: 'cgst_sgst', rate: 0, tax: 0, total: Number(baseAmount || 0), rows: [] };
+  }
+  const base = Number(baseAmount || 0);
+  const type = String(businessProfile.gstType || '').toLowerCase() === 'igst' ? 'igst' : 'cgst_sgst';
+  if (type === 'igst') {
+    const tax = Math.round(base * rate / 100);
+    return { enabled: true, type, rate, tax, total: base + tax, rows: [[`IGST (${formatPercent(rate)})`, tax]] };
+  }
+  const halfRate = rate / 2;
+  const cgst = Math.round(base * halfRate / 100);
+  const sgst = Math.round(base * halfRate / 100);
+  return {
+    enabled: true,
+    type,
+    rate,
+    tax: cgst + sgst,
+    total: base + cgst + sgst,
+    rows: [[`CGST (${formatPercent(halfRate)})`, cgst], [`SGST (${formatPercent(halfRate)})`, sgst]],
+  };
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0);
+  return `${Number.isInteger(number) ? number : number.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}%`;
+}
+
 function menuTitleById(db, id) {
   const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
   return item ? item.english || item.title || id : id;
@@ -517,17 +594,45 @@ function menuTitleById(db, id) {
 function menuDisplayById(db, id) {
   const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
   if (!item) return id;
-  return item.kannada ? `${item.kannada} / ${item.english}` : item.english || item.title || id;
+  return item.kannada ? `${repairMojibake(item.kannada)} / ${repairMojibake(item.english)}` : repairMojibake(item.english || item.title || id);
+}
+
+function invoiceMenuDisplayById(db, id) {
+  const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
+  if (!item) return id;
+  return repairMojibake(item.english || item.title || item.kannada || id);
 }
 
 function menuPartsById(db, id) {
   const item = (db.universal?.menuItems || []).find((menuItem) => menuItem.id === id);
   if (!item) return { kannada: '', english: id };
-  return { kannada: item.kannada || '', english: item.english || item.title || id };
+  return { kannada: repairMojibake(item.kannada || ''), english: repairMojibake(item.english || item.title || id) };
 }
 
 function hasKannadaText(value) {
   return /[\u0C80-\u0CFF]/.test(String(value || ''));
+}
+
+function repairMojibake(value) {
+  const text = String(value || '');
+  const looksMojibake = [...text].some((char) => [0x00c3, 0x00c2, 0x00e0].includes(char.charCodeAt(0)));
+  if (!looksMojibake) return text;
+  try {
+    const win1252 = {
+      0x20AC: 0x80, 0x201A: 0x82, 0x0192: 0x83, 0x201E: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87,
+      0x02C6: 0x88, 0x2030: 0x89, 0x0160: 0x8A, 0x2039: 0x8B, 0x0152: 0x8C, 0x017D: 0x8E, 0x2018: 0x91,
+      0x2019: 0x92, 0x201C: 0x93, 0x201D: 0x94, 0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02DC: 0x98,
+      0x2122: 0x99, 0x0161: 0x9A, 0x203A: 0x9B, 0x0153: 0x9C, 0x017E: 0x9E, 0x0178: 0x9F,
+    };
+    const bytes = [];
+    for (const char of text) {
+      const code = char.charCodeAt(0);
+      bytes.push(win1252[code] ?? (code <= 0xFF ? code : 0x3F));
+    }
+    return Buffer.from(bytes).toString('utf8');
+  } catch {
+    return text;
+  }
 }
 
 function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
@@ -661,12 +766,18 @@ function drawProfileImage(doc, value, x, y, options) {
 
 function documentTheme(businessProfile = emptyBusinessProfile()) {
   const template = businessProfile.documentTemplate || 'modern';
+  const normalized = template === 'premium' ? 'elegant' : template === 'minimal' ? 'classic' : template;
   const themes = {
-    modern: { name: 'modern', primary: '#06445d', secondary: '#f2a51a', accent: '#1c7c8a', soft: '#fff4db', page: '#fbf8f1', ink: '#202124', muted: '#59656b' },
-    premium: { name: 'premium', primary: '#1b4d3e', secondary: '#c9a84c', accent: '#7b1b44', soft: '#f8efd3', page: '#fbfaf6', ink: '#202124', muted: '#5f6368' },
-    minimal: { name: 'minimal', primary: '#111827', secondary: '#6b7280', accent: '#0f766e', soft: '#eef2f7', page: '#ffffff', ink: '#111827', muted: '#4b5563' },
+    classic: { name: 'classic', primary: '#111827', secondary: '#6b7280', accent: '#374151', soft: '#f3f4f6', page: '#ffffff', ink: '#111827', muted: '#4b5563', scale: businessProfile.invoiceTextScale || 1 },
+    elegant: { name: 'elegant', primary: '#1f3b32', secondary: '#b8943c', accent: '#7b1b44', soft: '#fbf6e8', page: '#fffdf8', ink: '#202124', muted: '#5f6368', scale: businessProfile.invoiceTextScale || 1 },
+    modern: { name: 'modern', primary: '#06445d', secondary: '#f2a51a', accent: '#1c7c8a', soft: '#fff4db', page: '#fbf8f1', ink: '#202124', muted: '#59656b', scale: businessProfile.invoiceTextScale || 1 },
   };
-  return themes[template] || themes.modern;
+  return themes[normalized] || themes.modern;
+}
+
+function documentMetrics(theme = documentTheme()) {
+  if (theme.name === 'elegant') return { left: 112, right: 559, width: 447, tableY: 306 };
+  return { left: 36, right: 559, width: 523, tableY: theme.name === 'classic' ? 302 : 316 };
 }
 
 function writeDocumentHeader(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
@@ -674,54 +785,114 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
   const businessName = businessProfile.businessName || 'CaterPro';
   const contactLine = [businessProfile.phone, businessProfile.email].filter(Boolean).join(' | ');
   const taxLine = [businessProfile.gstin ? `GSTIN: ${businessProfile.gstin}` : '', businessProfile.pan ? `PAN: ${businessProfile.pan}` : ''].filter(Boolean).join(' | ');
-  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
-  doc.roundedRect(36, 32, 523, 92, theme.name === 'minimal' ? 3 : 14).fill(theme.primary);
-  doc.roundedRect(36, 32, 8, 92, 3).fill(theme.secondary);
-  if (!drawProfileImage(doc, businessProfile.logoBase64, 58, 54, { fit: [48, 48] })) {
-    doc.circle(86, 78, 28).lineWidth(2).strokeColor(theme.secondary).stroke();
-    doc.fillColor('white').font(fonts.bold).fontSize(16).text(businessName.slice(0, 2).toUpperCase(), 62, 69, { width: 48, align: 'center' });
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill(theme.page);
+  if (theme.name === 'classic') {
+    doc.rect(36, 34, 523, 88).strokeColor(theme.ink).lineWidth(1).stroke();
+    doc.moveTo(366, 34).lineTo(366, 122).strokeColor(theme.ink).lineWidth(0.7).stroke();
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(17).text(businessName, 52, 48, { width: 290 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(businessProfile.address || 'Catering event management', 52, 72, { width: 290, height: 18 });
+    if (contactLine) doc.text(contactLine, 52, 92, { width: 290 });
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(18).text(title, 388, 48, { width: 142, align: 'right' });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(number, 388, 74, { width: 142, align: 'right' });
+    if (taxLine) doc.text(taxLine, 388, 92, { width: 142, align: 'right' });
+    return;
   }
-  doc.fillColor('white').font(fonts.bold).fontSize(18).text(businessName, 126, 48, { width: 248 });
-  doc.font(fonts.regular).fontSize(8).text(businessProfile.address || 'Catering event management', 126, 72, { width: 248, height: 22 });
-  if (contactLine) doc.text(contactLine, 126, 98, { width: 248 });
-  doc.font(fonts.bold).fontSize(22).text(title, 390, 48, { width: 140, align: 'right' });
-  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(8).text(number, 390, 78, { width: 140, align: 'right' });
-  if (taxLine) doc.text(taxLine, 330, 98, { width: 200, align: 'right' });
-  doc.moveTo(36, 140).lineTo(559, 140).strokeColor(theme.secondary).lineWidth(1.5).stroke();
+  if (theme.name === 'elegant') {
+    doc.rect(0, 0, 86, doc.page.height).fill(theme.primary);
+    doc.rect(86, 0, 5, doc.page.height).fill(theme.secondary);
+    if (!drawProfileImage(doc, businessProfile.logoBase64, 24, 44, { fit: [42, 42] })) {
+      doc.circle(45, 65, 22).lineWidth(1.2).strokeColor(theme.secondary).stroke();
+      doc.fillColor('white').font(fonts.bold).fontSize(12).text(businessName.slice(0, 2).toUpperCase(), 24, 58, { width: 42, align: 'center' });
+    }
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(21).text(businessName, 118, 38, { width: 250 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(businessProfile.address || 'Catering event management', 118, 66, { width: 250, height: 18 });
+    if (contactLine) doc.text(contactLine, 118, 88, { width: 250 });
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(25).text(title, 392, 40, { width: 148, align: 'right' });
+    doc.fillColor(theme.secondary).font(fonts.bold).fontSize(8).text(number, 392, 73, { width: 148, align: 'right' });
+    if (taxLine) doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(taxLine, 350, 93, { width: 190, align: 'right' });
+    doc.moveTo(112, 122).lineTo(559, 122).strokeColor(theme.secondary).lineWidth(0.9).stroke();
+    return;
+  }
+  doc.roundedRect(36, 30, 523, 90, 12).fill(theme.primary);
+  doc.roundedRect(36, 30, 9, 90, 3).fill(theme.secondary);
+  if (!drawProfileImage(doc, businessProfile.logoBase64, 58, 53, { fit: [46, 46] })) {
+    doc.circle(84, 76, 26).lineWidth(1.8).strokeColor(theme.secondary).stroke();
+    doc.fillColor('white').font(fonts.bold).fontSize(15).text(businessName.slice(0, 2).toUpperCase(), 60, 68, { width: 48, align: 'center' });
+  }
+  doc.fillColor('white').font(fonts.bold).fontSize(18).text(businessName, 122, 46, { width: 250 });
+  doc.font(fonts.regular).fontSize(8).text(businessProfile.address || 'Catering event management', 122, 70, { width: 250, height: 20 });
+  if (contactLine) doc.text(contactLine, 122, 94, { width: 250 });
+  doc.font(fonts.bold).fontSize(22).text(title, 390, 46, { width: 140, align: 'right' });
+  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(8).text(number, 390, 76, { width: 140, align: 'right' });
+  if (taxLine) doc.text(taxLine, 330, 96, { width: 200, align: 'right' });
 }
 
 function documentInfoSection(doc, title, event, number, fonts, businessProfile, isInvoice) {
   const theme = documentTheme(businessProfile);
+  const metrics = documentMetrics(theme);
   const hasBusinessGst = Boolean(String(businessProfile.gstin || '').trim());
-  doc.roundedRect(36, 156, 523, 122, theme.name === 'minimal' ? 3 : 10).fill(theme.soft).strokeColor(theme.secondary).lineWidth(0.9).stroke();
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text('Bill To', 52, 174);
-  doc.fillColor(theme.ink).font(fonts.bold).fontSize(12).text(event.primaryClient || 'Customer', 52, 194, { width: 220 });
+  const boxX = metrics.left;
+  const boxW = metrics.width;
+  const boxY = theme.name === 'classic' ? 140 : 148;
+  if (theme.name === 'classic') {
+    doc.rect(boxX, boxY, boxW, 116).strokeColor(theme.ink).lineWidth(0.7).stroke();
+    doc.moveTo(296, boxY).lineTo(296, boxY + 116).strokeColor('#c8ced4').lineWidth(0.6).stroke();
+  } else if (theme.name === 'elegant') {
+    doc.rect(boxX, boxY, boxW, 116).fill(theme.soft).strokeColor('#eadfcf').lineWidth(0.6).stroke();
+    doc.rect(boxX, boxY, 4, 116).fill(theme.secondary);
+  } else {
+    doc.roundedRect(boxX, boxY, boxW, 116, 10).fill('#ffffff').strokeColor('#d7e9ec').lineWidth(0.9).stroke();
+    doc.roundedRect(boxX, boxY, boxW, 8, 4).fill(theme.secondary);
+  }
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(11).text('Bill To', boxX + 16, boxY + 18);
+  doc.fillColor(theme.ink).font(fonts.bold).fontSize(11.5).text(event.primaryClient || 'Customer', boxX + 16, boxY + 37, { width: 220 });
   const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
   doc.fillColor(theme.muted).font(fonts.regular).fontSize(9)
-    .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', 52, 214)
-    .text(addressLine, 52, 230, { width: 220, height: 14 })
-    .text(`Event: ${event.name || 'Untitled Event'}`, 52, 246, { width: 220 });
-  if (hasBusinessGst && event.clientGst) doc.text(`Client GSTIN: ${event.clientGst}`, 52, 262, { width: 220 });
+    .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', boxX + 16, boxY + 56)
+    .text(addressLine, boxX + 16, boxY + 72, { width: 220, height: 15 })
+    .text(`Event: ${event.name || 'Untitled Event'}`, boxX + 16, boxY + 90, { width: 220 });
+  if (hasBusinessGst && event.clientGst) doc.text(`Client GSTIN: ${event.clientGst}`, boxX + 16, boxY + 104, { width: 220 });
 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(12).text(`${title} Details`, 325, 174, { width: 210, align: 'right' });
+  const detailX = boxX + boxW - 238;
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(11).text(`${title} Details`, detailX, boxY + 18, { width: 220, align: 'right' });
   doc.fillColor(theme.ink).font(fonts.regular).fontSize(9)
-    .text(`${title} No: ${number}`, 315, 196, { width: 220, align: 'right' })
-    .text(`${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`, 315, 214, { width: 220, align: 'right' })
-    .text(`Event Date: ${eventDates}`, 315, 232, { width: 220, align: 'right' });
-  if (!isInvoice) doc.text('Valid Till: 15 days from quotation date', 315, 250, { width: 220, align: 'right' });
-  if (businessProfile.bankName || businessProfile.accountNumber || businessProfile.upiId) {
-    doc.fillColor('#5f6368').fontSize(8).text([businessProfile.bankName, businessProfile.accountNumber, businessProfile.upiId].filter(Boolean).join(' | '), 52, 286, { width: 480 });
+    .text(`${title} No: ${number}`, detailX, boxY + 40, { width: 220, align: 'right' })
+    .text(`${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`, detailX, boxY + 58, { width: 220, align: 'right' })
+    .text(`Event Date: ${eventDates}`, detailX, boxY + 76, { width: 220, align: 'right' });
+  if (!isInvoice) doc.text('Valid Till: 15 days from quotation date', detailX, boxY + 94, { width: 220, align: 'right' });
+}
+
+function invoiceTableLayout(theme = documentTheme()) {
+  if (theme.name === 'elegant') {
+    return { x: 112, w: 447, descX: 126, descW: 194, qtyX: 328, qtyW: 46, rateX: 384, rateW: 62, amountX: 462, amountW: 78 };
   }
+  if (theme.name === 'classic') {
+    return { x: 36, w: 523, descX: 48, descW: 238, qtyX: 300, qtyW: 58, rateX: 372, rateW: 70, amountX: 460, amountW: 82 };
+  }
+  return { x: 36, w: 523, descX: 54, descW: 234, qtyX: 310, qtyW: 52, rateX: 374, rateW: 68, amountX: 462, amountW: 80 };
 }
 
 function tableHeader(doc, y, fonts, theme = documentTheme()) {
-  doc.roundedRect(36, y, 523, 24, 4).fill(theme.primary);
-  doc.fillColor('white').font(fonts.bold).fontSize(8)
-    .text('Description', 48, y + 7, { width: 250 })
-    .text('Pax/Qty', 310, y + 7, { width: 52, align: 'right' })
-    .text('Rate', 372, y + 7, { width: 70, align: 'right' })
-    .text('Amount', 460, y + 7, { width: 82, align: 'right' });
+  const layout = invoiceTableLayout(theme);
+  if (theme.name === 'classic') {
+    doc.rect(layout.x, y, layout.w, 24).strokeColor(theme.ink).lineWidth(0.9).stroke();
+    [296, 364, 450].forEach((x) => doc.moveTo(x, y).lineTo(x, y + 24).strokeColor(theme.ink).lineWidth(0.5).stroke());
+    doc.fillColor(theme.ink);
+  } else if (theme.name === 'elegant') {
+    doc.rect(layout.x, y, layout.w, 20).fill(theme.primary);
+    doc.rect(layout.x, y + 20, layout.w, 1.5).fill(theme.secondary);
+    doc.fillColor('white');
+  } else {
+    doc.roundedRect(layout.x, y, layout.w, 30, 8).fill(theme.primary);
+    doc.circle(layout.x + 16, y + 15, 4).fill(theme.secondary);
+    doc.fillColor('white');
+  }
+  doc.font(fonts.bold).fontSize(8 * Math.min(theme.scale || 1, 1.12))
+    .text('Description', layout.descX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.descW })
+    .text('Pax/Qty', layout.qtyX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.qtyW, align: 'right' })
+    .text('Rate', layout.rateX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.rateW, align: 'right' })
+    .text('Amount', layout.amountX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.amountW, align: 'right' });
 }
 
 function ensurePageSpace(doc, y, needed = 44, onNewPage = null) {
@@ -732,13 +903,96 @@ function ensurePageSpace(doc, y, needed = 44, onNewPage = null) {
 }
 
 function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = documentTheme()) {
-  if (shaded) doc.rect(36, y - 5, 523, 31).fill(theme.soft);
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5)
-    .text(columns.description, 48, y, { width: 250, height: 22 })
-    .text(columns.qty, 310, y, { width: 52, align: 'right' })
-    .text(columns.rate, 372, y, { width: 70, align: 'right' })
-    .text(columns.amount, 460, y, { width: 82, align: 'right' });
-  doc.moveTo(36, y + 28).lineTo(559, y + 28).strokeColor('#e1e6e3').lineWidth(0.5).stroke();
+  const layout = invoiceTableLayout(theme);
+  if (theme.name === 'classic') {
+    doc.rect(layout.x, y - 5, layout.w, 31).strokeColor('#111827').lineWidth(0.35).stroke();
+    [296, 364, 450].forEach((x) => doc.moveTo(x, y - 5).lineTo(x, y + 26).strokeColor('#9ca3af').lineWidth(0.3).stroke());
+  } else if (shaded) {
+    if (theme.name === 'elegant') {
+      doc.rect(layout.x, y - 4, layout.w, 30).fill('#fffaf0');
+    } else {
+      doc.roundedRect(layout.x, y - 5, layout.w, 31, 7).fill('#ffffff').strokeColor('#d9e8ea').lineWidth(0.6).stroke();
+    }
+  } else if (theme.name === 'modern') {
+    doc.roundedRect(layout.x, y - 5, layout.w, 31, 7).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
+  }
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.2 * Math.min(theme.scale || 1, 1.12))
+    .text(columns.description, layout.descX, y, { width: layout.descW, height: 22 })
+    .text(columns.qty, layout.qtyX, y, { width: layout.qtyW, align: 'right' })
+    .text(columns.rate, layout.rateX, y, { width: layout.rateW, align: 'right' })
+    .text(columns.amount, layout.amountX, y, { width: layout.amountW, align: 'right' });
+  if (theme.name === 'elegant') doc.moveTo(layout.x, y + 28).lineTo(layout.x + layout.w, y + 28).strokeColor('#e9dcc2').lineWidth(0.5).stroke();
+}
+
+function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
+  if (theme.name === 'classic') {
+    const h = Math.max(76, 26 + totalRows.length * 17);
+    doc.rect(332, y, 227, h).strokeColor(theme.ink).lineWidth(0.9).stroke();
+    doc.rect(332, y, 227, 22).strokeColor(theme.ink).lineWidth(0.6).stroke();
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(9).text('TOTALS', 344, y + 7, { width: 190, align: 'center' });
+    totalRows.forEach((row, index) => {
+      const rowY = y + 30 + index * 17;
+      doc.fillColor(row[2]).font(row[3]).fontSize(9).text(row[0], 348, rowY, { width: 92 });
+      doc.text(row[1], 448, rowY, { width: 92, align: 'right' });
+    });
+    return;
+  }
+  if (theme.name === 'elegant') {
+    const h = Math.max(78, 30 + totalRows.length * 18);
+    doc.rect(312, y, 247, h).fill('#fffdf8').strokeColor(theme.secondary).lineWidth(0.8).stroke();
+    doc.rect(312, y, 5, h).fill(theme.secondary);
+    totalRows.forEach((row, index) => {
+      const rowY = y + 14 + index * 18;
+      doc.fillColor(row[2]).font(row[3]).fontSize(index === totalRows.length - 1 ? 10 : 8.8).text(row[0], 330, rowY, { width: 95 });
+      doc.text(row[1], 444, rowY, { width: 92, align: 'right' });
+    });
+    return;
+  }
+  const h = Math.max(86, 32 + totalRows.length * 18);
+  doc.roundedRect(316, y, 243, h, 13).fill(theme.primary);
+  doc.roundedRect(316, y, 243, 8, 4).fill(theme.secondary);
+  totalRows.forEach((row, index) => {
+    const rowY = y + 18 + index * 18;
+    const isLast = index === totalRows.length - 1;
+    doc.fillColor(isLast ? '#ffffff' : '#d9edf2').font(isLast ? fonts.bold : row[3]).fontSize(isLast ? 10 : 8.5).text(row[0], 334, rowY, { width: 96 });
+    doc.text(row[1], 448, rowY, { width: 88, align: 'right' });
+  });
+}
+
+function bankDetailLines(businessProfile = emptyBusinessProfile()) {
+  const lines = [];
+  if (businessProfile.bankName) lines.push(`Bank: ${businessProfile.bankName}`);
+  if (businessProfile.accountNumber) lines.push(`A/C: ${businessProfile.accountNumber}`);
+  if (businessProfile.upiId) lines.push(`UPI: ${businessProfile.upiId}`);
+  return lines;
+}
+
+function drawPaymentDetails(doc, x, y, fonts, theme, businessProfile = emptyBusinessProfile()) {
+  const lines = bankDetailLines(businessProfile);
+  if (lines.length > 0) {
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Bank Details', x, y, { width: 220 });
+    doc.fillColor(theme.ink).font(fonts.regular).fontSize(7.8)
+      .text(lines.join('\n'), x, y + 14, { width: 220, height: 34 });
+  }
+  if (businessProfile.qrBase64) {
+    const qrY = lines.length > 0 ? y + 52 : y;
+    drawProfileImage(doc, businessProfile.qrBase64, x, qrY, { fit: [58, 58] });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text('Payment QR', x, qrY + 60, { width: 58, align: 'center' });
+  }
+}
+
+function resetDocumentPage(doc, theme) {
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill(theme.page);
+  if (theme.name === 'elegant') {
+    doc.rect(0, 0, 86, doc.page.height).fill(theme.primary);
+    doc.rect(86, 0, 5, doc.page.height).fill(theme.secondary);
+  }
+}
+
+function drawDocumentFooter(doc, fonts, theme, businessProfile) {
+  const metrics = documentMetrics(theme);
+  doc.moveTo(metrics.left, 778).lineTo(metrics.right, 778).strokeColor(theme.name === 'classic' ? '#9ca3af' : '#d6dde0').lineWidth(0.5).stroke();
+  doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(`Generated by CaterPro on ${prettyDate(new Date().toISOString().slice(0, 10))}`, metrics.left, 786, { width: metrics.width, align: 'center', lineBreak: false });
 }
 
 function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile(), clients = [] }) {
@@ -746,6 +1000,9 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
   const number = documentNumber(isInvoice ? 'INV' : 'QUOTE', event);
   const totals = eventTotals(event);
+  const gst = gstBreakdown(totals.total, businessProfile);
+  const grandTotal = gst.total;
+  const balanceDue = Math.max(0, grandTotal - totals.paid - totals.discount);
   const eventClient = clients.find((client) => normalizeMobile(client.mobile) === normalizeMobile(event.mobile));
   const documentEvent = {
     ...event,
@@ -761,21 +1018,21 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
 
   writeDocumentHeader(doc, title, documentEvent, number, fonts, businessProfile);
   documentInfoSection(doc, title, documentEvent, number, fonts, businessProfile, isInvoice);
-  let y = 316;
+  const metrics = documentMetrics(theme);
+  let y = metrics.tableY;
   tableHeader(doc, y, fonts, theme);
-  y += 32;
+  y += theme.name === 'modern' ? 38 : 30;
 
   let shaded = false;
   for (const date of event.dates) {
-    y = ensurePageSpace(doc, y, 26, () => tableHeader(doc, 36, fonts, theme));
-    doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, 42, y);
+    y = ensurePageSpace(doc, y, 26, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(9.5).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left, y, { width: metrics.width });
     y += 18;
     for (const slot of date.menuSlots) {
-      y = ensurePageSpace(doc, y, 36, () => tableHeader(doc, 36, fonts, theme));
-      const itemText = slot.menuItemIds.map((id) => menuDisplayById(db, id)).join(', ') || 'Menu items not selected';
+      y = ensurePageSpace(doc, y, 38, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       const amount = Number(slot.pax || 0) * Number(slot.pricePerPax || 0);
       drawInvoiceRow(doc, y, fonts, {
-        description: `${slot.type}${slot.time ? ` (${slot.time})` : ''}\n${itemText}`,
+        description: `${slot.type || 'Meal'}${slot.time ? ` (${slot.time})` : ''}`,
         qty: `${slot.pax || ''}`,
         rate: money(slot.pricePerPax),
         amount: money(amount),
@@ -785,11 +1042,11 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     }
   }
   if ((event.addOns || []).length > 0) {
-    y = ensurePageSpace(doc, y, 26, () => tableHeader(doc, 36, fonts, theme));
-    doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text('Event Add-ons', 42, y);
+    y = ensurePageSpace(doc, y, 26, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(9.5).text('Event Add-ons', metrics.left, y);
     y += 18;
     for (const addOn of event.addOns || []) {
-      y = ensurePageSpace(doc, y, 34, () => tableHeader(doc, 36, fonts, theme));
+      y = ensurePageSpace(doc, y, 34, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       drawInvoiceRow(doc, y, fonts, {
         description: addOn.title || 'Add-on',
         qty: '',
@@ -801,39 +1058,32 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     }
   }
 
-  y = ensurePageSpace(doc, y, 184);
+  y = ensurePageSpace(doc, y, 212);
   const totalsY = y + 6;
   const totalRows = [
     ['Menu Total', money(totals.menuTotal), '#202124', fonts.regular],
   ];
   if (totals.addOnTotal > 0) totalRows.push(['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
-  totalRows.push(['Grand Total', money(totals.total), theme.primary, fonts.bold]);
+  if (gst.enabled) gst.rows.forEach((row) => totalRows.push([row[0], money(row[1]), '#202124', fonts.regular]));
+  totalRows.push(['Grand Total', money(grandTotal), theme.primary, fonts.bold]);
   if (isInvoice) {
     totalRows.push(['Paid Till Now', money(totals.paid), '#0b6b3a', fonts.regular]);
     if (totals.discount > 0) totalRows.push(['Settled Discount', money(totals.discount), '#0b6b3a', fonts.regular]);
-    totalRows.push(['Balance Due', money(totals.balance), totals.balance > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
+    totalRows.push(['Balance Due', money(balanceDue), balanceDue > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
   }
-  doc.roundedRect(332, totalsY, 227, Math.max(76, 28 + totalRows.length * 17), 7).fill(theme.soft).strokeColor('#eadfcf').stroke();
-  totalRows.forEach((row, index) => {
-    const rowY = totalsY + 12 + index * 17;
-    doc.fillColor(row[2]).font(row[3]).fontSize(9).text(row[0], 348, rowY, { width: 92 });
-    doc.text(row[1], 448, rowY, { width: 92, align: 'right' });
-  });
+  drawTotalsPanel(doc, totalsY, totalRows, fonts, theme);
 
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Amount in words', 36, y + 10);
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5).text(amountInWords(isInvoice ? totals.balance || totals.total : totals.total), 36, y + 26, { width: 270 });
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Amount in words', metrics.left, y + 10);
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.2).text(amountInWords(isInvoice ? balanceDue || grandTotal : grandTotal), metrics.left, y + 26, { width: 260 });
   const terms = businessProfile.terms || (isInvoice ? 'Thank you for your payment. Balance, if any, is payable as per event agreement.' : 'Quotation is based on selected menu, pax and services. Final invoice may vary after confirmation.');
-  doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(terms, 36, y + 52, { width: 270, height: 48 });
-
-  if (businessProfile.qrBase64) {
-    drawProfileImage(doc, businessProfile.qrBase64, 36, y + 108, { fit: [58, 58] });
-    doc.fillColor('#5f6368').font(fonts.regular).fontSize(7).text('Payment QR', 36, y + 168, { width: 58, align: 'center' });
-  }
+  doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(terms, metrics.left, y + 52, { width: 260, height: 48 });
+  drawPaymentDetails(doc, metrics.left, y + 102, fonts, theme, businessProfile);
   const signatureY = Math.min(y + 130, 738);
-  if (businessProfile.signatureBase64) drawProfileImage(doc, businessProfile.signatureBase64, 410, signatureY, { fit: [128, 38] });
-  doc.moveTo(402, signatureY + 44).lineTo(546, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Authorized Signature', 402, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
-  doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(`Generated by CaterPro on ${prettyDate(new Date().toISOString().slice(0, 10))}`, 36, 780, { width: 523, align: 'center', lineBreak: false });
+  const signatureX = metrics.right - 154;
+  if (businessProfile.signatureBase64) drawProfileImage(doc, businessProfile.signatureBase64, signatureX + 8, signatureY, { fit: [128, 38] });
+  doc.moveTo(signatureX, signatureY + 44).lineTo(signatureX + 144, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Authorized Signature', signatureX, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
+  drawDocumentFooter(doc, fonts, theme, businessProfile);
   doc.end();
 }
 
@@ -858,12 +1108,13 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
 
   writeDocumentHeader(doc, 'INVOICE', event, number, fonts, businessProfile);
   documentInfoSection(doc, 'Invoice', event, number, fonts, businessProfile, true);
-  let y = 316;
+  const metrics = documentMetrics(theme);
+  let y = metrics.tableY;
   tableHeader(doc, y, fonts, theme);
-  y += 32;
+  y += theme.name === 'modern' ? 38 : 30;
   let shaded = false;
   for (const finalItem of invoice.items || []) {
-    y = ensurePageSpace(doc, y, 34, () => tableHeader(doc, 36, fonts, theme));
+    y = ensurePageSpace(doc, y, 34, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
     drawInvoiceRow(doc, y, fonts, {
       description: finalItem.title || 'Invoice item',
       qty: finalItem.quantity ? String(finalItem.quantity) : '',
@@ -874,33 +1125,34 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
     y += 34;
   }
 
-  y = ensurePageSpace(doc, y, 184);
+  const baseSubtotal = Number(invoice.subtotal ?? invoice.total ?? 0) || (invoice.items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const gst = gstBreakdown(baseSubtotal, businessProfile);
+  const grandTotal = gst.total;
+  const paid = Number(invoice.advance || 0);
+  const settlement = Number(invoice.settlement || 0);
+  const pending = Math.max(0, grandTotal - paid - settlement);
+
+  y = ensurePageSpace(doc, y, 212);
   const totalRows = [
-    ['Subtotal', money(invoice.subtotal), '#202124', fonts.regular],
-    ['Grand Total', money(invoice.total), theme.primary, fonts.bold],
-    ['Advance / Paid', money(invoice.advance), '#0b6b3a', fonts.regular],
+    ['Subtotal', money(baseSubtotal), '#202124', fonts.regular],
+    ...gst.rows.map((row) => [row[0], money(row[1]), '#202124', fonts.regular]),
+    ['Grand Total', money(grandTotal), theme.primary, fonts.bold],
+    ['Advance / Paid', money(paid), '#0b6b3a', fonts.regular],
   ];
-  if (invoice.settlement > 0) totalRows.push(['Settlement', money(invoice.settlement), '#0b6b3a', fonts.regular]);
-  totalRows.push(['Pending', money(invoice.pending), invoice.pending > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
+  if (settlement > 0) totalRows.push(['Settlement', money(settlement), '#0b6b3a', fonts.regular]);
+  totalRows.push(['Pending', money(pending), pending > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
   const totalsY = y + 6;
-  doc.roundedRect(332, totalsY, 227, Math.max(76, 28 + totalRows.length * 17), 7).fill(theme.soft).strokeColor('#eadfcf').stroke();
-  totalRows.forEach((row, index) => {
-    const rowY = totalsY + 12 + index * 17;
-    doc.fillColor(row[2]).font(row[3]).fontSize(9).text(row[0], 348, rowY, { width: 92 });
-    doc.text(row[1], 448, rowY, { width: 92, align: 'right' });
-  });
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Amount in words', 36, y + 10);
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5).text(amountInWords(invoice.pending || invoice.total), 36, y + 26, { width: 270 });
-  if (invoice.notes) doc.fillColor('#5f6368').font(fonts.regular).fontSize(8).text(invoice.notes, 36, y + 52, { width: 270, height: 48 });
-  if (businessProfile.qrBase64) {
-    drawProfileImage(doc, businessProfile.qrBase64, 36, y + 108, { fit: [58, 58] });
-    doc.fillColor('#5f6368').font(fonts.regular).fontSize(7).text('Payment QR', 36, y + 168, { width: 58, align: 'center' });
-  }
+  drawTotalsPanel(doc, totalsY, totalRows, fonts, theme);
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Amount in words', metrics.left, y + 10);
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.2).text(amountInWords(pending || grandTotal), metrics.left, y + 26, { width: 260 });
+  if (invoice.notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(invoice.notes, metrics.left, y + 52, { width: 260, height: 48 });
+  drawPaymentDetails(doc, metrics.left, y + 102, fonts, theme, businessProfile);
   const signatureY = Math.min(y + 130, 738);
-  if (businessProfile.signatureBase64) drawProfileImage(doc, businessProfile.signatureBase64, 410, signatureY, { fit: [128, 38] });
-  doc.moveTo(402, signatureY + 44).lineTo(546, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Authorized Signature', 402, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
-  doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(`Generated by CaterPro on ${prettyDate(new Date().toISOString().slice(0, 10))}`, 36, 780, { width: 523, align: 'center', lineBreak: false });
+  const signatureX = metrics.right - 154;
+  if (businessProfile.signatureBase64) drawProfileImage(doc, businessProfile.signatureBase64, signatureX + 8, signatureY, { fit: [128, 38] });
+  doc.moveTo(signatureX, signatureY + 44).lineTo(signatureX + 144, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(9).text('Authorized Signature', signatureX, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
+  drawDocumentFooter(doc, fonts, theme, businessProfile);
   doc.end();
 }
 
@@ -1062,28 +1314,17 @@ function menuDocumentTitle(event, date) {
 }
 
 function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo) {
-  const theme = documentTheme(businessProfile);
-  doc.rect(0, 0, doc.page.width, doc.page.height).fill(theme.page);
-  doc.roundedRect(28, 24, 539, 78, theme.name === 'minimal' ? 3 : 10).fill(theme.primary);
-  doc.roundedRect(28, 24, 8, 78, 3).fill(theme.secondary);
-  doc.circle(74, 63, 23).lineWidth(1.6).strokeColor(theme.secondary).stroke();
-  if (!drawProfileImage(doc, businessProfile.logoBase64, 52, 50, { fit: [44, 44] })) {
-    doc.fillColor('white').font(fonts.bold).fontSize(12).text((businessProfile.businessName || 'CP').slice(0, 2).toUpperCase(), 52, 57, { width: 44, align: 'center' });
-  }
-  doc.fillColor('white').font(fonts.bold).fontSize(15).text(businessProfile.businessName || 'CaterPro', 108, 40, { width: 260 });
-  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(7.5).text(businessProfile.address || 'Event menu', 108, 62, { width: 260, height: 18 });
-  doc.font(fonts.regular).fontSize(7).text([businessProfile.phone, businessProfile.email].filter(Boolean).join(' | '), 108, 84, { width: 260 });
-  doc.fillColor('white').font(fonts.bold).fontSize(16).text('EVENT MENU', 386, 40, { width: 140, align: 'right' });
-  doc.font(fonts.regular).fontSize(7.6).text(pageLabel, 386, 64, { width: 140, align: 'right' });
-  doc.text(`Page ${pageNo}`, 386, 84, { width: 140, align: 'right' });
-
-  doc.roundedRect(42, 118, 511, 48, 8).fill(theme.soft);
-  doc.roundedRect(42, 118, 6, 48, 3).fill(theme.secondary);
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(11).text(event.primaryClient || event.name || 'Customer', 58, 130, { width: 230 });
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8).text(`Event: ${event.name || '-'}`, 58, 146, { width: 230 });
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(date.label || 'Event Date', 320, 129, { width: 200, align: 'right' });
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8)
-    .text(prettyDate(date.date), 320, 145, { width: 200, align: 'right' });
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+  doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('EVENT MENU', 42, 36, { width: 180 });
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+    .text(`${businessProfile.businessName || 'CaterPro'} | ${pageLabel} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
+  doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
+  doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
+  doc.fillColor('#374151').font(fonts.regular).fontSize(8)
+    .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
+    .text(`Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`, 330, 78, { width: 220, align: 'right' })
+    .text(`Venue: ${event.venue || '-'}`, 330, 94, { width: 220, align: 'right' });
+  doc.moveTo(42, 116).lineTo(553, 116).strokeColor('#d1d5db').lineWidth(0.6).stroke();
 }
 
 function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
@@ -1095,14 +1336,14 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
-  doc.moveTo(42, 780).lineTo(553, 780).strokeColor('#e1d8c8').lineWidth(0.6).stroke();
-  doc.fillColor('#9a7c25').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
+  doc.moveTo(42, 780).lineTo(553, 780).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+  doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
   doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
 }
 
 function drawServiceSection(doc, date, y, fonts) {
   if (!date.additionalServices.length) return y;
-  doc.fillColor('#1b4d3e').font(fonts.bold).fontSize(10).text('Service Requirements', 42, y);
+  doc.fillColor('#111827').font(fonts.bold).fontSize(10).text('Service Requirements', 42, y);
   y += 16;
   date.additionalServices.forEach((service, index) => {
     const x = index % 2 === 0 ? 42 : 304;
@@ -1116,8 +1357,7 @@ function drawServiceSection(doc, date, y, fonts) {
 
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile, pageNo }) {
   menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
-  const theme = documentTheme(businessProfile);
-  let y = drawServiceSection(doc, date, 182, fonts);
+  let y = drawServiceSection(doc, date, 132, fonts);
   if (date.menuSlots.length === 0) {
     doc.fillColor('#5f6368').font(fonts.regular).fontSize(11).text('No menu configured for this date.', 42, y + 12);
     menuFooter(doc, fonts, businessProfile, pageNo);
@@ -1126,26 +1366,24 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
 
   for (const slot of date.menuSlots) {
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
-    const rowHeight = Math.max(50, 36 + Math.ceil(Math.max(items.length, 1) / 3) * 14);
+    const rowHeight = Math.max(34, 28 + Math.ceil(Math.max(items.length, 1) / 2) * 12);
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
       pageNo += 1;
       menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
-      y = 182;
+      y = 132;
     }
-    const color = mealAccent(slot.type);
-    doc.roundedRect(42, y, 511, rowHeight, 8).fill('white').strokeColor('#eadfcf').lineWidth(0.7).stroke();
-    doc.roundedRect(42, y, 7, rowHeight, 3).fill(color || theme.accent);
-    doc.fillColor(color || theme.accent).font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 58, y + 8, { width: 150 });
+    doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(slot.type || 'Menu', 52, y + 7, { width: 150 });
     const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
-    doc.fillColor('#4b565c').font(fonts.regular).fontSize(7.4).text(line, 58, y + 23, { width: 150 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.4).text(line, 52, y + 21, { width: 150 });
     items.forEach((item, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      drawChefMenuItem(doc, item, col === 0 ? 58 : col === 1 ? 224 : 390, y + 40 + row * 14, 148, fonts, row % 2 === 1);
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      drawChefMenuItem(doc, item, col === 0 ? 212 : 384, y + 8 + row * 12, 158, fonts, false);
     });
-    y += rowHeight + 10;
+    y += rowHeight + 7;
   }
   menuFooter(doc, fonts, businessProfile, pageNo);
   return pageNo;
@@ -1398,6 +1636,64 @@ app.get('/api/bootstrap', (req, res) => {
   res.json({ universal: db.universal, userData: db.userData[user.id] });
 });
 
+function exportBackup(req, res) {
+  const db = readDb();
+  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const backup = {
+    schemaVersion: 1,
+    app: 'CaterPro',
+    exportedAt: new Date().toISOString(),
+    user: { id: user.id, email: user.email, name: user.name },
+    userData: db.userData[user.id],
+    universal: db.universal,
+  };
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="caterpro-backup-${stamp}.json"`);
+  res.send(JSON.stringify(backup, null, 2));
+}
+
+app.get('/api/backup', exportBackup);
+app.get('/api/backup/export', exportBackup);
+
+app.post('/api/backup/import', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const payload = req.body || {};
+  const importedUserData = payload.userData || payload;
+  if (!importedUserData || typeof importedUserData !== 'object' || Array.isArray(importedUserData)) {
+    return res.status(400).json({ message: 'Invalid CaterPro backup file' });
+  }
+  db.userData[user.id] = ensureUserDataShape({
+    ...emptyUserData(),
+    ...importedUserData,
+    businessProfile: { ...emptyBusinessProfile(), ...(importedUserData.businessProfile || {}) },
+  });
+  if (payload.universal && typeof payload.universal === 'object' && !Array.isArray(payload.universal)) {
+    db.universal = mergeProtectedUniversalCatalog(db.universal || {}, payload.universal);
+  }
+  writeDb(db);
+  res.json({
+    message: 'Backup imported',
+    counts: {
+      events: db.userData[user.id].events.length,
+      clients: db.userData[user.id].clients.length,
+      employees: db.userData[user.id].employees.length,
+      attendance: db.userData[user.id].attendance.length,
+      additionalServices: db.userData[user.id].additionalServices.length,
+      customMenus: db.userData[user.id].customMenus.length,
+      manualInvoices: db.userData[user.id].manualInvoices.length,
+      menuItems: db.universal.menuItems.length,
+      rawMaterials: db.universal.rawMaterials.length,
+      produceItems: db.universal.produceItems.length,
+    },
+  });
+});
+
 app.get('/api/business-profile', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
@@ -1413,6 +1709,52 @@ app.put('/api/business-profile', (req, res) => {
   db.userData[user.id].businessProfile = profile;
   writeDb(db);
   res.json(profile);
+});
+
+app.post('/api/additional-services', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const service = {
+    id: req.body.id || makeId('srv'),
+    name: req.body.name || '',
+    unit: req.body.unit || '',
+    quantity: Number(req.body.quantity || 0),
+    price: Number(req.body.price || 0),
+    updatedAt: new Date().toISOString(),
+  };
+  upsertById(db.userData[user.id].additionalServices, service);
+  writeDb(db);
+  res.status(201).json(service);
+});
+
+app.put('/api/additional-services/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].additionalServices.find((item) => item.id === req.params.id);
+  const service = {
+    ...(existing || {}),
+    ...req.body,
+    id: req.params.id,
+    quantity: Number(req.body.quantity ?? existing?.quantity ?? 0),
+    price: Number(req.body.price ?? existing?.price ?? 0),
+    updatedAt: new Date().toISOString(),
+  };
+  upsertById(db.userData[user.id].additionalServices, service);
+  writeDb(db);
+  res.status(existing ? 200 : 201).json(service);
+});
+
+app.delete('/api/additional-services/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const before = db.userData[user.id].additionalServices.length;
+  db.userData[user.id].additionalServices = db.userData[user.id].additionalServices.filter((item) => item.id !== req.params.id);
+  if (db.userData[user.id].additionalServices.length === before) return res.status(404).json({ message: 'Additional service not found' });
+  writeDb(db);
+  res.json({ message: 'Additional service deleted' });
 });
 
 app.get('/api/clients', (req, res) => {
@@ -1661,11 +2003,10 @@ app.put('/api/menu-items/:id', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
   const existing = db.universal.menuItems.find((item) => item.id === req.params.id);
-  if (!existing) return res.status(404).json({ message: 'Menu item not found' });
-  const item = { ...existing, ...req.body, id: req.params.id };
+  const item = { ...(existing || {}), ...req.body, id: req.params.id };
   upsertById(db.universal.menuItems, item);
   writeDb(db);
-  res.json(item);
+  res.status(existing ? 200 : 201).json(item);
 });
 
 app.get('/api/raw-materials', (req, res) => {
