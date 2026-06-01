@@ -289,7 +289,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 class AppEvent {
-  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.addOns, required this.dates, required this.payments, required this.materialDocuments});
+  const AppEvent({required this.id, required this.name, required this.primaryClient, required this.mobile, required this.venue, required this.notes, required this.status, required this.addOns, required this.dates, required this.payments, required this.materialDocuments, required this.employeeAssignments});
   final String id;
   final String name;
   final String primaryClient;
@@ -301,6 +301,7 @@ class AppEvent {
   final List<AppEventDate> dates;
   final List<AppPayment> payments;
   final List<EventMaterialDocument> materialDocuments;
+  final List<EventEmployeeAssignment> employeeAssignments;
 
   factory AppEvent.fromJson(Map<String, dynamic> json) {
     return AppEvent(
@@ -315,8 +316,28 @@ class AppEvent {
       dates: ((json['dates'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppEventDate.fromJson).toList(),
       payments: ((json['payments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(AppPayment.fromJson).toList(),
       materialDocuments: ((json['materialDocuments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(EventMaterialDocument.fromJson).toList(),
+      employeeAssignments: ((json['employeeAssignments'] as List?) ?? []).whereType<Map<String, dynamic>>().map(EventEmployeeAssignment.fromJson).toList(),
     );
   }
+}
+
+class EventEmployeeAssignment {
+  const EventEmployeeAssignment({required this.employeeId, required this.employeeName, required this.mobile, required this.designation, required this.payPerDay});
+  final String employeeId;
+  final String employeeName;
+  final String mobile;
+  final String designation;
+  final int payPerDay;
+
+  factory EventEmployeeAssignment.fromJson(Map<String, dynamic> json) => EventEmployeeAssignment(
+        employeeId: json['employeeId']?.toString() ?? json['id']?.toString() ?? '',
+        employeeName: json['employeeName']?.toString() ?? json['name']?.toString() ?? '',
+        mobile: json['mobile']?.toString() ?? '',
+        designation: json['designation']?.toString() ?? '',
+        payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {'employeeId': employeeId, 'employeeName': employeeName, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay};
 }
 
 class AppClient {
@@ -350,6 +371,72 @@ class AppClient {
         address: address ?? this.address,
         gst: gst ?? this.gst,
       );
+}
+
+class Employee {
+  const Employee({required this.id, required this.name, required this.age, required this.mobile, required this.designation, required this.payPerDay});
+  final String id;
+  final String name;
+  final int age;
+  final String mobile;
+  final String designation;
+  final int payPerDay;
+
+  factory Employee.fromJson(Map<String, dynamic> json) => Employee(
+        id: json['id']?.toString() ?? '',
+        name: json['name']?.toString() ?? '',
+        age: int.tryParse(json['age']?.toString() ?? '') ?? 0,
+        mobile: json['mobile']?.toString() ?? '',
+        designation: json['designation']?.toString() ?? '',
+        payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+      );
+
+  factory Employee.fromAssignment(EventEmployeeAssignment assignment) => Employee(
+        id: assignment.employeeId,
+        name: assignment.employeeName,
+        age: 0,
+        mobile: assignment.mobile,
+        designation: assignment.designation,
+        payPerDay: assignment.payPerDay,
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'age': age, 'mobile': mobile, 'designation': designation, 'payPerDay': payPerDay};
+
+  Employee copyWith({String? id, String? name, int? age, String? mobile, String? designation, int? payPerDay}) => Employee(
+        id: id ?? this.id,
+        name: name ?? this.name,
+        age: age ?? this.age,
+        mobile: mobile ?? this.mobile,
+        designation: designation ?? this.designation,
+        payPerDay: payPerDay ?? this.payPerDay,
+      );
+}
+
+class AttendanceRecord {
+  const AttendanceRecord({required this.id, required this.employeeId, required this.employeeName, required this.eventId, required this.eventName, required this.date, required this.status, required this.hours, required this.payPerDay});
+  final String id;
+  final String employeeId;
+  final String employeeName;
+  final String eventId;
+  final String eventName;
+  final String date;
+  final String status;
+  final double hours;
+  final int payPerDay;
+
+  factory AttendanceRecord.fromJson(Map<String, dynamic> json) => AttendanceRecord(
+        id: json['id']?.toString() ?? '',
+        employeeId: json['employeeId']?.toString() ?? '',
+        employeeName: json['employeeName']?.toString() ?? '',
+        eventId: json['eventId']?.toString() ?? '',
+        eventName: json['eventName']?.toString() ?? '',
+        date: json['date']?.toString() ?? '',
+        status: json['status']?.toString() ?? 'absent',
+        hours: double.tryParse(json['hours']?.toString() ?? '') ?? 0,
+        payPerDay: int.tryParse(json['payPerDay']?.toString() ?? '') ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'employeeName': employeeName, 'eventId': eventId, 'eventName': eventName, 'date': date, 'status': status, 'hours': hours, 'payPerDay': payPerDay};
 }
 
 class EventMaterialLine {
@@ -656,6 +743,64 @@ class ApiService {
   Future<void> deleteClient(String id) async {
     final response = await http.delete(Uri.parse('${ApiConfig.baseUrl}/clients/$id'), headers: await authHeaders());
     if (response.statusCode != 200) throw Exception('Unable to delete client');
+  }
+
+  Future<List<Employee>> getEmployees() async {
+    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/employees'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load employees');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(Employee.fromJson).toList();
+  }
+
+  Future<Employee> saveEmployee(Employee employee) async {
+    final creating = employee.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse('${ApiConfig.baseUrl}/employees${creating ? '' : '/${employee.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(employee.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save employee');
+    return Employee.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteEmployee(String id) async {
+    final response = await http.delete(Uri.parse('${ApiConfig.baseUrl}/employees/$id'), headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to delete employee');
+  }
+
+  Future<AppEvent> saveEventEmployeeAssignments(String eventId, List<EventEmployeeAssignment> assignments) async {
+    final response = await http.put(
+      Uri.parse('${ApiConfig.baseUrl}/events/$eventId/employee-assignments'),
+      headers: await authHeaders(),
+      body: jsonEncode({'employeeAssignments': assignments.map((item) => item.toJson()).toList()}),
+    );
+    if (response.statusCode != 200) throw Exception('Unable to save employee assignments');
+    return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<AttendanceRecord>> getAttendance({String? month, String? eventId}) async {
+    final query = <String, String>{};
+    if (month != null && month.isNotEmpty) query['month'] = month;
+    if (eventId != null && eventId.isNotEmpty) query['eventId'] = eventId;
+    final uri = Uri.parse('${ApiConfig.baseUrl}/attendance').replace(queryParameters: query.isEmpty ? null : query);
+    final response = await http.get(uri, headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to load attendance');
+    return (jsonDecode(response.body) as List).whereType<Map<String, dynamic>>().map(AttendanceRecord.fromJson).toList();
+  }
+
+  Future<AttendanceRecord> saveAttendance(AttendanceRecord record) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/attendance'),
+      headers: await authHeaders(),
+      body: jsonEncode(record.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save attendance');
+    return AttendanceRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Uri> attendancePdfUri(String month) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/attendance/monthly.pdf').replace(queryParameters: {'token': token, 'month': month});
   }
 
   Future<List<CustomMenu>> getCustomMenus() async {
@@ -1134,6 +1279,7 @@ class _AppShellState extends State<AppShell> {
   String? loadError;
   final List<AppEvent> events = [];
   final List<AppClient> clients = [];
+  final List<Employee> employees = [];
   final List<ManualInvoice> manualInvoices = [];
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
@@ -1156,6 +1302,7 @@ class _AppShellState extends State<AppShell> {
     try {
       final loaded = await api.getEvents();
       final loadedClients = await api.getClients();
+      final loadedEmployees = await api.getEmployees();
       final loadedManualInvoices = await api.getManualInvoices();
       final menuItems = await api.getMenuItems();
       final additionalServices = await api.getAdditionalServices();
@@ -1169,6 +1316,9 @@ class _AppShellState extends State<AppShell> {
         clients
           ..clear()
           ..addAll(loadedClients);
+        employees
+          ..clear()
+          ..addAll(loadedEmployees);
         manualInvoices
           ..clear()
           ..addAll(loadedManualInvoices);
@@ -1234,6 +1384,23 @@ class _AppShellState extends State<AppShell> {
   Future<void> deleteClient(AppClient client) async {
     if (client.id.isNotEmpty) await api.deleteClient(client.id);
     setState(() => clients.removeWhere((item) => item.id == client.id || normalizeMobileText(item.mobile) == normalizeMobileText(client.mobile)));
+  }
+
+  Future<void> saveEmployee(Employee employee) async {
+    final saved = await api.saveEmployee(employee.copyWith(mobile: normalizeMobileText(employee.mobile)));
+    setState(() {
+      final index = employees.indexWhere((item) => item.id == saved.id || normalizeMobileText(item.mobile) == saved.mobile);
+      if (index == -1) {
+        employees.add(saved);
+      } else {
+        employees[index] = saved;
+      }
+    });
+  }
+
+  Future<void> deleteEmployee(Employee employee) async {
+    if (employee.id.isNotEmpty) await api.deleteEmployee(employee.id);
+    setState(() => employees.removeWhere((item) => item.id == employee.id || normalizeMobileText(item.mobile) == normalizeMobileText(employee.mobile)));
   }
 
   Future<void> openManualInvoiceForm() async {
@@ -1317,10 +1484,10 @@ class _AppShellState extends State<AppShell> {
     BillingScreen(events: events, manualInvoices: manualInvoices, api: api, onSaveManualInvoice: saveManualInvoice, onAddManualInvoice: openManualInvoiceForm),
     SettingsScreen(openBusiness: () => setState(() => tab = 8), openMenu: () => setState(() => tab = 7), openCustomMenus: () => setState(() => tab = 11), openEmployees: () => setState(() => tab = 9), openRawMaterials: () => setState(() => tab = 10), openProduceItems: () => setState(() => tab = 12), businessProfile: businessProfile, services: services, onSaveService: upsertService, onDeleteService: removeService),
     CreateEventScreen(key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'), initialEvent: editingEvent, onDraftSaved: updateSelectedEvent, onClose: () => setState(() { editingEvent = null; tab = 1; }), onCreate: createEvent, services: services, customMenus: customMenus, customerEvents: events, onSaveService: upsertService, onDeleteService: removeService),
-    EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
+    EventDetailsScreen(event: events.where((event) => event.id == selectedEventId).firstOrNull, api: api, employees: employees, onEdit: openEditEvent, onEventUpdated: updateSelectedEvent, onClose: () => setState(() => tab = 1)),
     MenuMasterScreen(onClose: () => setState(() => tab = 4)),
     BusinessProfileScreen(profile: businessProfile, onSave: saveBusinessProfile, onClose: () => setState(() => tab = 4)),
-    EmployeeScreen(onClose: () => setState(() => tab = 4)),
+    EmployeeScreen(api: api, employees: employees, onSave: saveEmployee, onDelete: deleteEmployee, onClose: () => setState(() => tab = 4)),
     RawMaterialScreen(onClose: () => setState(() => tab = 4)),
     CustomMenuScreen(onClose: () => setState(() => tab = 4), customMenus: customMenus, onSave: saveCustomMenu),
     ProduceItemScreen(onClose: () => setState(() => tab = 4)),
@@ -5004,9 +5171,10 @@ class ShareMenuTile extends StatelessWidget {
 }
 
 class EventDetailsScreen extends StatelessWidget {
-  const EventDetailsScreen({super.key, required this.event, required this.api, required this.onEdit, required this.onEventUpdated, required this.onClose});
+  const EventDetailsScreen({super.key, required this.event, required this.api, required this.employees, required this.onEdit, required this.onEventUpdated, required this.onClose});
   final AppEvent? event;
   final ApiService api;
+  final List<Employee> employees;
   final ValueChanged<AppEvent> onEdit;
   final ValueChanged<AppEvent> onEventUpdated;
   final VoidCallback onClose;
@@ -5182,14 +5350,15 @@ class EventDetailsScreen extends StatelessWidget {
         ),
         children: event == null
             ? const [EmptyStateCard(title: 'Select an event', message: 'Open an event from the event list to view details, payments, invoices, and quotations.')]
-            : [EventDetailsContent(event: event!, api: api, onEventUpdated: onEventUpdated)],
+            : [EventDetailsContent(event: event!, api: api, employees: employees, onEventUpdated: onEventUpdated)],
       );
 }
 
 class EventDetailsContent extends StatefulWidget {
-  const EventDetailsContent({super.key, required this.event, required this.api, required this.onEventUpdated});
+  const EventDetailsContent({super.key, required this.event, required this.api, required this.employees, required this.onEventUpdated});
   final AppEvent event;
   final ApiService api;
+  final List<Employee> employees;
   final ValueChanged<AppEvent> onEventUpdated;
 
   @override
@@ -5198,7 +5367,7 @@ class EventDetailsContent extends StatefulWidget {
 
 class _EventDetailsContentState extends State<EventDetailsContent> {
   int selectedTab = 0;
-  static const tabs = ['Overview', 'Dates & Menus', 'Payments'];
+  static const tabs = ['Overview', 'Dates & Menus', 'Payments', 'Team'];
 
   @override
   Widget build(BuildContext context) {
@@ -5238,16 +5407,17 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
         ),
       ),
       const SizedBox(height: 16),
-      EventDetailsTabContent(tab: selectedTab, event: event, api: widget.api, onEventUpdated: widget.onEventUpdated),
+      EventDetailsTabContent(tab: selectedTab, event: event, api: widget.api, employees: widget.employees, onEventUpdated: widget.onEventUpdated),
     ]);
   }
 }
 
 class EventDetailsTabContent extends StatelessWidget {
-  const EventDetailsTabContent({super.key, required this.tab, required this.event, required this.api, required this.onEventUpdated});
+  const EventDetailsTabContent({super.key, required this.tab, required this.event, required this.api, required this.employees, required this.onEventUpdated});
   final int tab;
   final AppEvent event;
   final ApiService api;
+  final List<Employee> employees;
   final ValueChanged<AppEvent> onEventUpdated;
 
   @override
@@ -5284,10 +5454,227 @@ class EventDetailsTabContent extends StatelessWidget {
             ),
           ),
         ]);
+      case 3:
+        return EventTeamSection(event: event, api: api, employees: employees, onEventUpdated: onEventUpdated);
       default:
         return MaterialDocumentsSection(event: event, api: api, onEventUpdated: onEventUpdated);
     }
   }
+}
+
+class EventTeamSection extends StatefulWidget {
+  const EventTeamSection({super.key, required this.event, required this.api, required this.employees, required this.onEventUpdated});
+  final AppEvent event;
+  final ApiService api;
+  final List<Employee> employees;
+  final ValueChanged<AppEvent> onEventUpdated;
+
+  @override
+  State<EventTeamSection> createState() => _EventTeamSectionState();
+}
+
+class _EventTeamSectionState extends State<EventTeamSection> {
+  late Future<List<AttendanceRecord>> attendanceFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    attendanceFuture = widget.api.getAttendance(eventId: widget.event.id);
+  }
+
+  void reloadAttendance() {
+    setState(() => attendanceFuture = widget.api.getAttendance(eventId: widget.event.id));
+  }
+
+  Future<void> assignEmployees() async {
+    final selected = widget.event.employeeAssignments.map((item) => item.employeeId).toSet();
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        final draft = selected.toSet();
+        return StatefulBuilder(builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Assign Employees'),
+            content: SizedBox(
+              width: 520,
+              child: widget.employees.isEmpty
+                  ? const Text('Add employees in Settings > Employees first.')
+                  : SingleChildScrollView(
+                      child: Column(mainAxisSize: MainAxisSize.min, children: widget.employees.map((employee) {
+                        final checked = draft.contains(employee.id);
+                        return CheckboxListTile(
+                          value: checked,
+                          title: Text(employee.name, style: const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: Text('${employee.designation} • ${money(employee.payPerDay)}/day'),
+                          onChanged: (_) => setDialogState(() => checked ? draft.remove(employee.id) : draft.add(employee.id)),
+                        );
+                      }).toList()),
+                    ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: widget.employees.isEmpty
+                    ? null
+                    : () async {
+                        final assignments = widget.employees.where((employee) => draft.contains(employee.id)).map((employee) => EventEmployeeAssignment(employeeId: employee.id, employeeName: employee.name, mobile: employee.mobile, designation: employee.designation, payPerDay: employee.payPerDay)).toList();
+                        final saved = await widget.api.saveEventEmployeeAssignments(widget.event.id, assignments);
+                        if (mounted) {
+                          widget.onEventUpdated(saved);
+                          Navigator.of(this.context).pop();
+                          showCpSnack(this.context, 'Employees assigned');
+                        }
+                      },
+                child: const Text('Save'),
+              ),
+            ],
+          );
+        });
+      },
+    );
+  }
+
+  Future<void> markAttendance(Employee employee, String date, AttendanceRecord? existing) async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AttendanceEditorDialog(
+        employee: employee,
+        event: widget.event,
+        date: date,
+        existing: existing,
+        onSave: (record) async {
+          await widget.api.saveAttendance(record);
+          reloadAttendance();
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final assigned = widget.event.employeeAssignments.map(Employee.fromAssignment).toList();
+    final dates = widget.event.dates.map((date) => date.date).where((date) => date.isNotEmpty).toList();
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        const Expanded(child: Text('Assigned Employees', style: TextStyle(color: Cp.primary, fontSize: 20, fontWeight: FontWeight.w900))),
+        OutlinedButton.icon(onPressed: assignEmployees, icon: const Icon(Icons.group_add), label: const Text('Assign')),
+      ]),
+      const SizedBox(height: 10),
+      if (assigned.isEmpty)
+        const EmptyStateCard(title: 'No employees assigned', message: 'Assign employees to this event to track attendance, salary, and reports later.')
+      else
+        FutureBuilder<List<AttendanceRecord>>(
+          future: attendanceFuture,
+          builder: (context, snapshot) {
+            final records = snapshot.data ?? const <AttendanceRecord>[];
+            AttendanceRecord? findRecord(Employee employee, String date) => records.where((record) => record.employeeId == employee.id && record.date == date).firstOrNull;
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              ...assigned.map((employee) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: CpCard(
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          CircleAvatar(backgroundColor: Cp.primaryFixed, child: Text(employee.name.isEmpty ? 'E' : employee.name[0].toUpperCase(), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900))),
+                          const SizedBox(width: 12),
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text(employee.name, style: const TextStyle(color: Cp.primary, fontSize: 17, fontWeight: FontWeight.w900)),
+                            Text('${employee.designation} • ${money(employee.payPerDay)}/day', style: const TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                          ])),
+                        ]),
+                        const SizedBox(height: 12),
+                        if (dates.isEmpty)
+                          const Text('Add event dates before marking attendance.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700))
+                        else
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: dates.map((date) {
+                              final record = findRecord(employee, date);
+                              final label = record == null ? 'Mark ${readableDateLabel(date)}' : '${readableDateLabel(date)} • ${record.status}${record.status == 'partial' ? ' ${record.hours}h' : ''}';
+                              return ActionChip(
+                                avatar: Icon(record == null ? Icons.radio_button_unchecked : Icons.check_circle, size: 18, color: record == null ? Cp.outline : Cp.tertiary),
+                                label: Text(label),
+                                onPressed: () => markAttendance(employee, date, record),
+                              );
+                            }).toList(),
+                          ),
+                      ]),
+                    ),
+                  )),
+            ]);
+          },
+        ),
+    ]);
+  }
+}
+
+class AttendanceEditorDialog extends StatefulWidget {
+  const AttendanceEditorDialog({super.key, required this.employee, required this.event, required this.date, this.existing, required this.onSave});
+  final Employee employee;
+  final AppEvent event;
+  final String date;
+  final AttendanceRecord? existing;
+  final Future<void> Function(AttendanceRecord record) onSave;
+
+  @override
+  State<AttendanceEditorDialog> createState() => _AttendanceEditorDialogState();
+}
+
+class _AttendanceEditorDialogState extends State<AttendanceEditorDialog> {
+  late String status = widget.existing?.status ?? 'present';
+  late final hours = TextEditingController(text: widget.existing?.hours == null || widget.existing!.hours == 0 ? '' : '${widget.existing!.hours}');
+  bool saving = false;
+
+  @override
+  void dispose() {
+    hours.dispose();
+    super.dispose();
+  }
+
+  Future<void> save() async {
+    final parsedHours = status == 'partial' ? double.tryParse(hours.text.trim()) ?? 0 : status == 'present' ? 8.0 : 0.0;
+    if (status == 'partial' && parsedHours <= 0) {
+      showCpSnack(context, 'Mention hours for partial attendance');
+      return;
+    }
+    setState(() => saving = true);
+    await widget.onSave(AttendanceRecord(
+      id: widget.existing?.id ?? '',
+      employeeId: widget.employee.id,
+      employeeName: widget.employee.name,
+      eventId: widget.event.id,
+      eventName: widget.event.name,
+      date: widget.date,
+      status: status,
+      hours: parsedHours,
+      payPerDay: widget.employee.payPerDay,
+    ));
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Text('Attendance • ${widget.employee.name}'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'present', label: Text('Present')),
+              ButtonSegment(value: 'absent', label: Text('Absent')),
+              ButtonSegment(value: 'partial', label: Text('Partial')),
+            ],
+            selected: {status},
+            onSelectionChanged: (value) => setState(() => status = value.first),
+          ),
+          if (status == 'partial') ...[
+            const SizedBox(height: 12),
+            TextField(controller: hours, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Hours worked')),
+          ],
+        ]),
+        actions: [
+          TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+          FilledButton(onPressed: saving ? null : save, child: Text(saving ? 'Saving...' : 'Save')),
+        ],
+      );
 }
 
 class MaterialDocumentsSection extends StatelessWidget {
@@ -6440,17 +6827,12 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
       );
 }
 
-class Employee {
-  const Employee({required this.name, required this.age, required this.mobile, required this.designation, required this.payPerDay});
-  final String name;
-  final int age;
-  final String mobile;
-  final String designation;
-  final int payPerDay;
-}
-
 class EmployeeScreen extends StatefulWidget {
-  const EmployeeScreen({super.key, required this.onClose});
+  const EmployeeScreen({super.key, required this.api, required this.employees, required this.onSave, required this.onDelete, required this.onClose});
+  final ApiService api;
+  final List<Employee> employees;
+  final Future<void> Function(Employee employee) onSave;
+  final Future<void> Function(Employee employee) onDelete;
   final VoidCallback onClose;
 
   @override
@@ -6459,7 +6841,6 @@ class EmployeeScreen extends StatefulWidget {
 
 class _EmployeeScreenState extends State<EmployeeScreen> {
   final search = TextEditingController();
-  final employees = <Employee>[];
   String selectedFilter = 'All';
   String query = '';
 
@@ -6470,25 +6851,34 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   }
 
   List<String> get filters {
-    final designations = employees.map((employee) => employee.designation).toSet().toList()..sort();
+    final designations = widget.employees.map((employee) => employee.designation).toSet().toList()..sort();
     return ['All', ...designations];
   }
 
   List<Employee> get visibleEmployees {
     final normalizedQuery = query.trim().toLowerCase();
-    return employees.where((employee) {
+    return widget.employees.where((employee) {
       final matchesFilter = selectedFilter == 'All' || employee.designation == selectedFilter;
       final text = '${employee.name} ${employee.mobile} ${employee.designation}'.toLowerCase();
       return matchesFilter && (normalizedQuery.isEmpty || text.contains(normalizedQuery));
     }).toList();
   }
 
-  void addEmployee(Employee employee) {
-    setState(() {
-      employees.add(employee);
-      selectedFilter = 'All';
-    });
-    showCpSnack(context, '${employee.name} added');
+  Future<void> saveEmployee(Employee employee) async {
+    await widget.onSave(employee);
+    if (mounted) {
+      setState(() => selectedFilter = 'All');
+      showCpSnack(context, '${employee.name} saved');
+    }
+  }
+
+  Future<void> deleteEmployee(Employee employee) async {
+    await widget.onDelete(employee);
+    if (mounted) showCpSnack(context, '${employee.name} deleted');
+  }
+
+  Future<void> openAttendanceSheet() async {
+    await showDialog<void>(context: context, builder: (context) => AttendanceSheetDialog(api: widget.api, employees: widget.employees));
   }
 
   @override
@@ -6498,7 +6888,12 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
       children: [
         ScreenFrame(
           bottomPadding: 92,
-          topBar: TopBar(title: 'Employees', avatar: false, leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+          topBar: TopBar(
+            title: 'Employees',
+            avatar: false,
+            leading: IconButton(onPressed: widget.onClose, icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+            actions: [IconButton(onPressed: openAttendanceSheet, icon: const Icon(Icons.calendar_month, color: Cp.primary), tooltip: 'Attendance sheet')],
+          ),
           children: [
             TextField(
               controller: search,
@@ -6535,7 +6930,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
             if (visible.isEmpty)
               CpCard(color: Cp.surfaceLow, child: const Text('No employees match this search/filter.', style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w800)))
             else
-              ...visible.map((employee) => EmployeeCard(employee: employee, onTap: () => showCpSnack(context, '${employee.name} selected'))),
+              ...visible.map((employee) => EmployeeCard(employee: employee, onTap: () => showEmployeeEditor(context, employee: employee, onSave: saveEmployee), onDelete: () => deleteEmployee(employee))),
           ],
         ),
         Positioned(
@@ -6545,7 +6940,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
             heroTag: 'addEmployee',
             backgroundColor: Cp.secondaryContainer,
             foregroundColor: const Color(0xff694000),
-            onPressed: () => showEmployeeEditor(context, onSave: addEmployee),
+            onPressed: () => showEmployeeEditor(context, onSave: saveEmployee),
             icon: const Icon(Icons.person_add),
             label: const Text('Add Employee', style: TextStyle(fontWeight: FontWeight.w900)),
           ),
@@ -6556,9 +6951,10 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
 }
 
 class EmployeeCard extends StatelessWidget {
-  const EmployeeCard({super.key, required this.employee, required this.onTap});
+  const EmployeeCard({super.key, required this.employee, required this.onTap, required this.onDelete});
   final Employee employee;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -6578,7 +6974,8 @@ class EmployeeCard extends StatelessWidget {
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             const Text('Pay/Day', style: TextStyle(color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)),
-            Text('₹${employee.payPerDay}', style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            Text(money(employee.payPerDay), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+            IconButton(visualDensity: VisualDensity.compact, onPressed: onDelete, icon: const Icon(Icons.delete, color: Cp.error), tooltip: 'Delete employee'),
           ]),
         ]),
       ),
@@ -6586,30 +6983,32 @@ class EmployeeCard extends StatelessWidget {
   }
 }
 
-void showEmployeeEditor(BuildContext context, {required ValueChanged<Employee> onSave}) {
+void showEmployeeEditor(BuildContext context, {Employee? employee, required Future<void> Function(Employee employee) onSave}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => EmployeeEditorSheet(onSave: onSave),
+    builder: (context) => EmployeeEditorSheet(employee: employee, onSave: onSave),
   );
 }
 
 class EmployeeEditorSheet extends StatefulWidget {
-  const EmployeeEditorSheet({super.key, required this.onSave});
-  final ValueChanged<Employee> onSave;
+  const EmployeeEditorSheet({super.key, this.employee, required this.onSave});
+  final Employee? employee;
+  final Future<void> Function(Employee employee) onSave;
 
   @override
   State<EmployeeEditorSheet> createState() => _EmployeeEditorSheetState();
 }
 
 class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
-  final name = TextEditingController();
-  final age = TextEditingController();
-  final mobile = TextEditingController();
-  final designation = TextEditingController();
-  final payPerDay = TextEditingController();
+  late final name = TextEditingController(text: widget.employee?.name ?? '');
+  late final age = TextEditingController(text: widget.employee?.age == null || widget.employee!.age == 0 ? '' : '${widget.employee!.age}');
+  late final mobile = TextEditingController(text: widget.employee?.mobile ?? '');
+  late final designation = TextEditingController(text: widget.employee?.designation ?? '');
+  late final payPerDay = TextEditingController(text: widget.employee?.payPerDay == null || widget.employee!.payPerDay == 0 ? '' : '${widget.employee!.payPerDay}');
   String? error;
+  bool saving = false;
 
   @override
   void dispose() {
@@ -6621,7 +7020,7 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
     super.dispose();
   }
 
-  void save() {
+  Future<void> save() async {
     final parsedAge = int.tryParse(age.text.trim());
     final parsedPay = int.tryParse(payPerDay.text.replaceAll(RegExp(r'[^0-9]'), ''));
     final cleanMobile = normalizeMobileText(mobile.text);
@@ -6641,8 +7040,9 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
       setState(() => error = 'Pay/Day must be more than zero.');
       return;
     }
-    widget.onSave(Employee(name: name.text.trim(), age: parsedAge, mobile: cleanMobile, designation: designation.text.trim(), payPerDay: parsedPay));
-    Navigator.pop(context);
+    setState(() => saving = true);
+    await widget.onSave(Employee(id: widget.employee?.id ?? '', name: name.text.trim(), age: parsedAge, mobile: cleanMobile, designation: designation.text.trim(), payPerDay: parsedPay));
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -6655,19 +7055,108 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Center(child: Container(width: 48, height: 6, margin: const EdgeInsets.only(bottom: 20), decoration: BoxDecoration(color: Cp.outlineVariant, borderRadius: BorderRadius.circular(99)))),
-            const Text('Add Employee', style: TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
+            Text(widget.employee == null ? 'Add Employee' : 'Edit Employee', style: const TextStyle(color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
             const SizedBox(height: 16),
             EditableInlineField(label: 'Name', controller: name),
             Row(children: [Expanded(child: EditableInlineField(label: 'Age', controller: age, keyboardType: TextInputType.number)), const SizedBox(width: 12), Expanded(child: EditableInlineField(label: 'Pay/Day', controller: payPerDay, keyboardType: TextInputType.number))]),
             EditableInlineField(label: 'Mobile', controller: mobile, keyboardType: TextInputType.phone, inputFormatters: mobileInputFormatters),
             EditableInlineField(label: 'Designation', controller: designation),
             if (error != null) Padding(padding: const EdgeInsets.only(bottom: 12), child: Text(error!, style: const TextStyle(color: Cp.error, fontWeight: FontWeight.w800))),
-            SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: const Text('Save Employee', style: TextStyle(fontWeight: FontWeight.w900)))),
+            SizedBox(width: double.infinity, height: 52, child: FilledButton.icon(onPressed: saving ? null : save, style: FilledButton.styleFrom(backgroundColor: Cp.primaryContainer), icon: const Icon(Icons.save), label: Text(saving ? 'Saving...' : 'Save Employee', style: const TextStyle(fontWeight: FontWeight.w900)))),
           ]),
         ),
       ),
     );
   }
+}
+
+class AttendanceSheetDialog extends StatefulWidget {
+  const AttendanceSheetDialog({super.key, required this.api, required this.employees});
+  final ApiService api;
+  final List<Employee> employees;
+
+  @override
+  State<AttendanceSheetDialog> createState() => _AttendanceSheetDialogState();
+}
+
+class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
+  late String month = DateTime.now().toIso8601String().substring(0, 7);
+  late Future<List<AttendanceRecord>> recordsFuture = widget.api.getAttendance(month: month);
+
+  void changeMonth(int delta) {
+    final parts = month.split('-').map(int.parse).toList();
+    final next = DateTime(parts[0], parts[1] + delta);
+    setState(() {
+      month = '${next.year}-${next.month.toString().padLeft(2, '0')}';
+      recordsFuture = widget.api.getAttendance(month: month);
+    });
+  }
+
+  Future<void> download() async {
+    final uri = await widget.api.attendancePdfUri(month);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (mounted) showCpSnack(context, launched ? 'Attendance sheet download started' : 'Unable to start download');
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: Row(children: [
+          const Expanded(child: Text('Monthly Attendance')),
+          IconButton(onPressed: download, icon: const Icon(Icons.download, color: Cp.primary), tooltip: 'Export PDF'),
+        ]),
+        content: SizedBox(
+          width: 720,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              IconButton(onPressed: () => changeMonth(-1), icon: const Icon(Icons.chevron_left)),
+              Expanded(child: Center(child: Text(month, style: const TextStyle(color: Cp.primary, fontSize: 18, fontWeight: FontWeight.w900)))),
+              IconButton(onPressed: () => changeMonth(1), icon: const Icon(Icons.chevron_right)),
+            ]),
+            const SizedBox(height: 8),
+            FutureBuilder<List<AttendanceRecord>>(
+              future: recordsFuture,
+              builder: (context, snapshot) {
+                final records = snapshot.data ?? const <AttendanceRecord>[];
+                if (snapshot.connectionState == ConnectionState.waiting) return const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator());
+                if (records.isEmpty) return const EmptyStateCard(title: 'No attendance', message: 'Attendance records for this month will appear here.');
+                final grouped = <String, List<AttendanceRecord>>{};
+                for (final record in records) {
+                  grouped.putIfAbsent(record.employeeId, () => []).add(record);
+                }
+                return ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 420),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: grouped.entries.map((entry) {
+                        final employee = widget.employees.where((item) => item.id == entry.key).firstOrNull;
+                        final name = employee?.name ?? entry.value.first.employeeName;
+                        final present = entry.value.where((record) => record.status == 'present').length;
+                        final absent = entry.value.where((record) => record.status == 'absent').length;
+                        final partial = entry.value.where((record) => record.status == 'partial').length;
+                        final hours = entry.value.fold<double>(0, (sum, record) => sum + record.hours);
+                        final salary = entry.value.fold<int>(0, (sum, record) {
+                          final ratio = record.status == 'present' ? 1.0 : record.status == 'partial' ? (record.hours / 8).clamp(0.0, 1.0) : 0.0;
+                          return sum + (record.payPerDay * ratio).round();
+                        });
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: CpCard(
+                            child: Row(children: [
+                              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(name, style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)), Text('P $present • A $absent • Partial $partial • ${hours.toStringAsFixed(hours.truncateToDouble() == hours ? 0 : 1)} hrs', style: const TextStyle(color: Cp.onVariant))])),
+                              Text(money(salary), style: const TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+                            ]),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ]),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      );
 }
 
 class BusinessProfileScreen extends StatefulWidget {

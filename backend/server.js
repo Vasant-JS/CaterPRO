@@ -52,7 +52,7 @@ function requireUser(req, res, db) {
 }
 
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], additionalServices: [], customMenus: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
+  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], customMenus: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
 }
 
 function emptyBusinessProfile() {
@@ -63,6 +63,7 @@ function ensureUserDataShape(userData) {
   userData.events = userData.events || [];
   userData.clients = userData.clients || [];
   userData.employees = userData.employees || [];
+  userData.attendance = userData.attendance || [];
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
   userData.payments = userData.payments || [];
@@ -305,8 +306,20 @@ function eventFromBody(body, existing = {}) {
     dates: Array.isArray(body.dates) ? body.dates : existing.dates || [],
     payments: Array.isArray(body.payments) ? body.payments : existing.payments || [],
     materialDocuments: Array.isArray(body.materialDocuments) ? body.materialDocuments.map(materialDocumentFromBody) : existing.materialDocuments || [],
+    employeeAssignments: Array.isArray(body.employeeAssignments) ? body.employeeAssignments.map(employeeAssignmentFromBody) : existing.employeeAssignments || [],
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function employeeAssignmentFromBody(body, existing = {}) {
+  return {
+    ...existing,
+    employeeId: body.employeeId || body.id || existing.employeeId || '',
+    employeeName: body.employeeName || body.name || existing.employeeName || '',
+    mobile: normalizeMobile(body.mobile || existing.mobile || ''),
+    designation: body.designation || existing.designation || '',
+    payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
   };
 }
 
@@ -425,6 +438,38 @@ function clientFromBody(body, existing = {}) {
     gst: body.gst || body.gstin || existing.gst || '',
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+  };
+}
+
+function employeeFromBody(body, existing = {}) {
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('emp'),
+    name: body.name || existing.name || '',
+    age: Number(body.age ?? existing.age ?? 0),
+    mobile: normalizeMobile(body.mobile || existing.mobile || ''),
+    designation: body.designation || existing.designation || '',
+    payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
+    createdAt: existing.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function attendanceFromBody(body, existing = {}) {
+  const status = ['present', 'absent', 'partial'].includes(body.status) ? body.status : existing.status || 'absent';
+  return {
+    ...existing,
+    id: existing.id || body.id || makeId('att'),
+    employeeId: body.employeeId || existing.employeeId || '',
+    employeeName: body.employeeName || existing.employeeName || '',
+    eventId: body.eventId || existing.eventId || '',
+    eventName: body.eventName || existing.eventName || '',
+    date: body.date || existing.date || '',
+    status,
+    hours: status === 'partial' ? Number(body.hours ?? existing.hours ?? 0) : status === 'present' ? 8 : 0,
+    payPerDay: Number(body.payPerDay ?? existing.payPerDay ?? 0),
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || new Date().toISOString(),
   };
 }
 
@@ -841,6 +886,62 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   doc.end();
 }
 
+function generateAttendancePdf({ res, records, employees, month, businessProfile = emptyBusinessProfile() }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 32, info: { Title: `Attendance - ${month}` } });
+  const fonts = configurePdfFonts(doc);
+  const theme = documentTheme(businessProfile);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="ATTENDANCE-${month}.pdf"`);
+  doc.pipe(res);
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+  doc.roundedRect(32, 28, 531, 58, 8).fill(theme.primary);
+  doc.fillColor('white').font(fonts.bold).fontSize(18).text('Attendance Sheet', 48, 44);
+  doc.font(fonts.regular).fontSize(9).text(`${businessProfile.businessName || 'CaterPro'} • ${month}`, 360, 48, { width: 180, align: 'right' });
+  const byEmployee = new Map();
+  for (const employee of employees) byEmployee.set(employee.id, { employee, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+  for (const record of records) {
+    if (!byEmployee.has(record.employeeId)) byEmployee.set(record.employeeId, { employee: { name: record.employeeName, designation: '', payPerDay: record.payPerDay }, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
+    const bucket = byEmployee.get(record.employeeId);
+    bucket[record.status] = (bucket[record.status] || 0) + 1;
+    bucket.hours += Number(record.hours || 0);
+    const dayRatio = record.status === 'present' ? 1 : record.status === 'partial' ? Math.min(1, Number(record.hours || 0) / 8) : 0;
+    bucket.salary += Math.round(Number(record.payPerDay || bucket.employee.payPerDay || 0) * dayRatio);
+  }
+  let y = 112;
+  const header = () => {
+    doc.roundedRect(32, y, 531, 24, 4).fill(theme.primary);
+    doc.fillColor('white').font(fonts.bold).fontSize(8)
+      .text('Employee', 42, y + 7, { width: 142 })
+      .text('Present', 205, y + 7, { width: 48, align: 'right' })
+      .text('Absent', 270, y + 7, { width: 48, align: 'right' })
+      .text('Partial', 334, y + 7, { width: 48, align: 'right' })
+      .text('Hours', 400, y + 7, { width: 48, align: 'right' })
+      .text('Salary', 478, y + 7, { width: 62, align: 'right' });
+    y += 30;
+  };
+  header();
+  for (const { employee, present, absent, partial, hours, salary } of byEmployee.values()) {
+    if (y > 760) {
+      doc.addPage();
+      doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+      y = 42;
+      header();
+    }
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(8.5).text(employee.name || '-', 42, y, { width: 142 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(employee.designation || '', 42, y + 11, { width: 142 });
+    doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5)
+      .text(String(present || 0), 205, y, { width: 48, align: 'right' })
+      .text(String(absent || 0), 270, y, { width: 48, align: 'right' })
+      .text(String(partial || 0), 334, y, { width: 48, align: 'right' })
+      .text(String(hours || 0), 400, y, { width: 48, align: 'right' })
+      .text(money(salary || 0), 478, y, { width: 62, align: 'right' });
+    doc.moveTo(32, y + 24).lineTo(563, y + 24).strokeColor('#d7dde2').lineWidth(0.5).stroke();
+    y += 30;
+  }
+  if (records.length === 0) doc.fillColor(theme.muted).font(fonts.regular).fontSize(11).text('No attendance records for this month.', 42, y + 10);
+  doc.end();
+}
+
 function mealAccent(type) {
   const key = String(type || '').toLowerCase();
   if (key.includes('breakfast')) return '#f2a51a';
@@ -1151,7 +1252,7 @@ const apiDocs = {
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
     universal: ['menuItems', 'rawMaterials', 'produceItems'],
-    userOwned: ['events', 'clients', 'employees', 'additionalServices', 'customMenus', 'businessProfile', 'payments', 'manualInvoices'],
+    userOwned: ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'businessProfile', 'payments', 'manualInvoices'],
   },
 };
 
@@ -1254,6 +1355,91 @@ app.delete('/api/clients/:id', (req, res) => {
   if (db.userData[user.id].clients.length === before) return res.status(404).json({ message: 'Client not found' });
   writeDb(db);
   res.json({ message: 'Client deleted' });
+});
+
+app.get('/api/employees', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].employees);
+});
+
+app.post('/api/employees', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const employee = employeeFromBody(req.body);
+  if (!employee.name || !employee.mobile || !employee.designation) return res.status(400).json({ message: 'Name, mobile, and designation are required' });
+  if (employee.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
+  const existing = db.userData[user.id].employees.find((item) => normalizeMobile(item.mobile) === employee.mobile);
+  const saved = employeeFromBody(employee, existing || {});
+  upsertById(db.userData[user.id].employees, saved);
+  writeDb(db);
+  res.status(existing ? 200 : 201).json(saved);
+});
+
+app.put('/api/employees/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].employees.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Employee not found' });
+  const employee = employeeFromBody({ ...req.body, id: req.params.id }, existing);
+  if (!employee.name || !employee.mobile || !employee.designation) return res.status(400).json({ message: 'Name, mobile, and designation are required' });
+  if (employee.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
+  upsertById(db.userData[user.id].employees, employee);
+  writeDb(db);
+  res.json(employee);
+});
+
+app.delete('/api/employees/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const before = db.userData[user.id].employees.length;
+  db.userData[user.id].employees = db.userData[user.id].employees.filter((item) => item.id !== req.params.id);
+  if (db.userData[user.id].employees.length === before) return res.status(404).json({ message: 'Employee not found' });
+  writeDb(db);
+  res.json({ message: 'Employee deleted' });
+});
+
+app.get('/api/attendance', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const month = req.query.month ? String(req.query.month) : '';
+  const eventId = req.query.eventId ? String(req.query.eventId) : '';
+  const records = db.userData[user.id].attendance.filter((record) => (!month || String(record.date || '').startsWith(month)) && (!eventId || record.eventId === eventId));
+  res.json(records);
+});
+
+app.post('/api/attendance', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const employee = db.userData[user.id].employees.find((item) => item.id === req.body.employeeId);
+  const event = findUserEvent(db, user.id, req.body.eventId);
+  const existing = db.userData[user.id].attendance.find((item) => item.employeeId === req.body.employeeId && item.eventId === req.body.eventId && item.date === req.body.date);
+  const record = attendanceFromBody({
+    ...req.body,
+    employeeName: req.body.employeeName || employee?.name || '',
+    eventName: req.body.eventName || event?.name || '',
+    payPerDay: req.body.payPerDay ?? employee?.payPerDay ?? 0,
+  }, existing || {});
+  if (!record.employeeId || !record.date) return res.status(400).json({ message: 'Employee and date are required' });
+  if (record.status === 'partial' && record.hours <= 0) return res.status(400).json({ message: 'Partial attendance requires hours' });
+  upsertById(db.userData[user.id].attendance, record);
+  writeDb(db);
+  res.status(existing ? 200 : 201).json(record);
+});
+
+app.get('/api/attendance/monthly.pdf', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  const records = db.userData[user.id].attendance.filter((record) => String(record.date || '').startsWith(month));
+  return generateAttendancePdf({ res, records, employees: db.userData[user.id].employees, month, businessProfile: db.userData[user.id].businessProfile });
 });
 
 app.get('/api/manual-invoices', (req, res) => {
@@ -1462,6 +1648,22 @@ app.put('/api/events/:eventId', (req, res) => {
   if (!event) return res.status(404).json({ message: 'Event not found' });
   const updated = eventFromBody({ ...req.body, id: req.params.eventId }, event);
   Object.assign(event, updated);
+  writeDb(db);
+  res.json(event);
+});
+
+app.put('/api/events/:eventId/employee-assignments', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  const assignments = Array.isArray(req.body.employeeAssignments) ? req.body.employeeAssignments : [];
+  event.employeeAssignments = assignments.map((assignment) => {
+    const employee = db.userData[user.id].employees.find((item) => item.id === (assignment.employeeId || assignment.id));
+    return employeeAssignmentFromBody({ ...employee, ...assignment });
+  }).filter((assignment) => assignment.employeeId && assignment.employeeName);
+  event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.json(event);
 });
