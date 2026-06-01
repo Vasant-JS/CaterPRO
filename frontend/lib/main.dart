@@ -5504,6 +5504,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
       context: context,
       builder: (context) {
         final draft = selected.toSet();
+        var saving = false;
         return StatefulBuilder(builder: (context, setDialogState) {
           return AlertDialog(
             title: const Text('Assign Employees'),
@@ -5524,20 +5525,27 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                     ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+              TextButton(onPressed: saving ? null : () => Navigator.pop(context), child: const Text('Cancel')),
               FilledButton(
-                onPressed: widget.employees.isEmpty
+                onPressed: widget.employees.isEmpty || saving
                     ? null
                     : () async {
-                        final assignments = widget.employees.where((employee) => draft.contains(employee.id)).map((employee) => EventEmployeeAssignment(employeeId: employee.id, employeeName: employee.name, mobile: employee.mobile, designation: employee.designation, payPerDay: employee.payPerDay)).toList();
-                        final saved = await widget.api.saveEventEmployeeAssignments(widget.event.id, assignments);
-                        if (mounted) {
-                          widget.onEventUpdated(saved);
-                          Navigator.of(this.context).pop();
-                          showCpSnack(this.context, 'Employees assigned');
+                        setDialogState(() => saving = true);
+                        try {
+                          final assignments = widget.employees.where((employee) => draft.contains(employee.id)).map((employee) => EventEmployeeAssignment(employeeId: employee.id, employeeName: employee.name, mobile: employee.mobile, designation: employee.designation, payPerDay: employee.payPerDay)).toList();
+                          final saved = await widget.api.saveEventEmployeeAssignments(widget.event.id, assignments);
+                          if (mounted) {
+                            widget.onEventUpdated(saved);
+                            reloadAttendance();
+                            Navigator.of(this.context).pop();
+                            showCpSnack(this.context, 'Employees assigned and marked present');
+                          }
+                        } catch (error) {
+                          setDialogState(() => saving = false);
+                          if (mounted) showCpSnack(this.context, error.toString().replaceFirst('Exception: ', ''));
                         }
                       },
-                child: const Text('Save'),
+                child: Text(saving ? 'Saving...' : 'Save'),
               ),
             ],
           );
@@ -5602,7 +5610,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                             runSpacing: 8,
                             children: dates.map((date) {
                               final record = findRecord(employee, date);
-                              final label = record == null ? 'Mark ${readableDateLabel(date)}' : '${readableDateLabel(date)} • ${record.status}${record.status == 'partial' ? ' ${record.hours}h' : ''}';
+                              final label = record == null ? 'Mark ${readableDateLabel(date)}' : '${readableDateLabel(date)} • ${record.status == 'present' ? 'Present full day' : record.status}${record.status == 'partial' ? ' ${record.hours}h' : ''}';
                               return ActionChip(
                                 avatar: Icon(record == null ? Icons.radio_button_unchecked : Icons.check_circle, size: 18, color: record == null ? Cp.outline : Cp.tertiary),
                                 label: Text(label),

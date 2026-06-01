@@ -1675,6 +1675,23 @@ app.put('/api/events/:eventId/employee-assignments', (req, res) => {
     const employee = db.userData[user.id].employees.find((item) => item.id === (assignment.employeeId || assignment.id));
     return employeeAssignmentFromBody({ ...employee, ...assignment });
   }).filter((assignment) => assignment.employeeId && assignment.employeeName);
+  for (const assignment of event.employeeAssignments) {
+    for (const date of event.dates || []) {
+      if (!date.date) continue;
+      const existing = db.userData[user.id].attendance.find((item) => item.employeeId === assignment.employeeId && item.eventId === event.id && item.date === date.date);
+      if (existing) continue;
+      db.userData[user.id].attendance.push(attendanceFromBody({
+        employeeId: assignment.employeeId,
+        employeeName: assignment.employeeName,
+        eventId: event.id,
+        eventName: event.name,
+        date: date.date,
+        status: 'present',
+        hours: 8,
+        payPerDay: assignment.payPerDay,
+      }));
+    }
+  }
   event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.json(event);
