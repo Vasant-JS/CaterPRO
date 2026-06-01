@@ -802,7 +802,16 @@ class ApiService {
       headers: await authHeaders(),
       body: jsonEncode(record.toJson()),
     );
-    if (response.statusCode != 200 && response.statusCode != 201) throw Exception('Unable to save attendance');
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      var message = 'Unable to save attendance';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> && decoded['message'] != null) message = decoded['message'].toString();
+      } catch (_) {
+        if (response.body.trim().isNotEmpty) message = response.body.trim();
+      }
+      throw Exception(message);
+    }
     return AttendanceRecord.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
@@ -5575,8 +5584,8 @@ class _EventTeamSectionState extends State<EventTeamSection> {
           try {
             await widget.api.saveAttendance(record);
             reloadAttendance();
-          } catch (_) {
-            if (mounted) showCpSnack(this.context, 'Unable to save attendance');
+          } catch (error) {
+            if (mounted) showCpSnack(this.context, error.toString().replaceFirst('Exception: ', ''));
           }
         },
       ),
