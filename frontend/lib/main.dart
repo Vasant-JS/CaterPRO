@@ -785,6 +785,22 @@ class ApiService {
     return Uri.parse('${ApiConfig.baseUrl}/documents/upcoming-menus').replace(queryParameters: {'token': token, 'days': '$days'});
   }
 
+  Future<String?> upcomingMenusError({int days = 3}) async {
+    final uri = await upcomingMenusUri(days: days);
+    final response = await http.get(uri, headers: await authHeaders());
+    if (response.statusCode == 200) {
+      final contentType = response.headers['content-type'] ?? '';
+      return contentType.toLowerCase().contains('application/pdf') ? null : 'Upcoming menu is not available yet.';
+    }
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['message'] != null) return body['message'].toString();
+    } catch (_) {
+      // Fall through to the friendly default below.
+    }
+    return 'No upcoming menus found';
+  }
+
   Future<Uri> materialDocumentPdfUri(String eventId, String documentId) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
@@ -1641,10 +1657,24 @@ class DashboardScreen extends StatelessWidget {
 
   List<AppEventDate> upcomingDatesFor(AppEvent event) => event.dates.where(upcomingDate).toList()..sort((a, b) => a.date.compareTo(b.date));
 
+  bool hasMenuContent(AppEventDate date) => date.menuSlots.any((slot) => slot.enabled && slot.menuItemIds.isNotEmpty);
+
+  List<AppEventDate> upcomingMenuDatesFor(AppEvent event) => upcomingDatesFor(event).where(hasMenuContent).toList();
+
   Future<void> downloadUpcomingMenus(BuildContext context) async {
-    final uri = await api.upcomingMenusUri(days: 3);
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-    if (context.mounted) showCpSnack(context, launched ? 'Upcoming menus download started' : 'Unable to start menu download');
+    try {
+      final error = await api.upcomingMenusError(days: 3);
+      if (!context.mounted) return;
+      if (error != null) {
+        showCpSnack(context, error);
+        return;
+      }
+      final uri = await api.upcomingMenusUri(days: 3);
+      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      if (context.mounted) showCpSnack(context, launched ? 'Upcoming menus download started' : 'Unable to start menu download');
+    } catch (error) {
+      if (context.mounted) showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   @override
@@ -1653,6 +1683,7 @@ class DashboardScreen extends StatelessWidget {
     final totalSlots = events.fold<int>(0, (sum, event) => sum + event.dates.fold<int>(0, (dateSum, date) => dateSum + date.menuSlots.length));
     final paidTotal = events.fold<int>(0, (sum, event) => sum + eventPaid(event));
     final upcomingEvents = events.where((event) => upcomingDatesFor(event).isNotEmpty).toList();
+    final upcomingMenuEvents = events.where((event) => upcomingMenuDatesFor(event).isNotEmpty).toList();
     return ScreenFrame(
       topBar: TopBar(
         title: 'CaterPro',
@@ -1684,7 +1715,11 @@ class DashboardScreen extends StatelessWidget {
         Row(
           children: [
             const Expanded(child: Text('Upcoming Events', style: TextStyle(fontSize: 22, color: Cp.primary, fontWeight: FontWeight.w700))),
-            IconButton(onPressed: upcomingEvents.isEmpty ? null : () => downloadUpcomingMenus(context), icon: const Icon(Icons.restaurant_menu, color: Cp.primary), tooltip: 'Download upcoming menus'),
+            IconButton(
+              onPressed: upcomingMenuEvents.isEmpty ? null : () => downloadUpcomingMenus(context),
+              icon: Icon(Icons.restaurant_menu, color: upcomingMenuEvents.isEmpty ? Cp.outline : Cp.primary),
+              tooltip: upcomingMenuEvents.isEmpty ? 'No upcoming menus to download' : 'Download upcoming menus',
+            ),
             Pill('${upcomingEvents.length} Upcoming', color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
           ],
         ),
