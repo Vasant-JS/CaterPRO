@@ -10,12 +10,23 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final formKey = GlobalKey<FormState>();
   final authService = AuthService();
+  final biometricService = BiometricAuthService();
   final email = TextEditingController(text: 'admin@caterpro.in');
   final password = TextEditingController(text: 'password');
   bool obscurePassword = true;
   bool rememberMe = true;
   bool loading = false;
+  bool checkingBiometric = true;
+  bool biometricSupported = false;
+  bool biometricEnabled = false;
+  bool hasSavedSession = false;
   String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    loadBiometricState();
+  }
 
   @override
   void dispose() {
@@ -37,6 +48,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       await authService.login(email: emailText, password: passwordText);
+      await setupFingerprintAfterFirstLogin();
       if (!mounted) return;
       Navigator.of(context)
           .pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
@@ -48,8 +60,66 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void fingerprintLogin() {
-    showCpSnack(context, 'Fingerprint authenticated');
+  Future<void> loadBiometricState() async {
+    final supported = await biometricService.isSupported();
+    final enabled = await biometricService.isEnabled();
+    final session = await authService.savedSession();
+    if (!mounted) return;
+    setState(() {
+      biometricSupported = supported;
+      biometricEnabled = enabled;
+      hasSavedSession = session != null;
+      checkingBiometric = false;
+    });
+  }
+
+  Future<void> setupFingerprintAfterFirstLogin() async {
+    if (!rememberMe) return;
+    final supported = await biometricService.isSupported();
+    final enabled = await biometricService.isEnabled();
+    if (!supported || enabled) return;
+    final confirmed = await biometricService.authenticate(
+        'Confirm fingerprint to enable CaterPro fingerprint login');
+    if (confirmed) {
+      await biometricService.setEnabled(true);
+      if (mounted) {
+        setState(() {
+          biometricSupported = true;
+          biometricEnabled = true;
+          hasSavedSession = true;
+        });
+        showCpSnack(context, 'Fingerprint login enabled');
+      }
+    }
+  }
+
+  Future<void> fingerprintLogin() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    final session = await authService.savedSession();
+    if (session == null) {
+      await biometricService.setEnabled(false);
+      if (!mounted) return;
+      setState(() {
+        biometricEnabled = false;
+        hasSavedSession = false;
+        loading = false;
+        error = 'Login with password once to set up fingerprint login.';
+      });
+      return;
+    }
+    final ok = await biometricService
+        .authenticate('Use fingerprint to unlock CaterPro');
+    if (!mounted) return;
+    if (!ok) {
+      setState(() {
+        loading = false;
+        error = 'Fingerprint authentication failed. Try again or use password.';
+      });
+      return;
+    }
     Navigator.of(context)
         .pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
   }
@@ -183,17 +253,22 @@ class _LoginScreenState extends State<LoginScreen> {
                               label: Text(loading ? 'Logging in...' : 'Login',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w900)))),
-                      const SizedBox(height: 14),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 54,
-                        child: OutlinedButton.icon(
-                          onPressed: fingerprintLogin,
-                          icon: const Icon(Icons.fingerprint, size: 28),
-                          label: const Text('Authenticate with Fingerprint',
-                              style: TextStyle(fontWeight: FontWeight.w900)),
+                      if (!checkingBiometric &&
+                          biometricSupported &&
+                          biometricEnabled &&
+                          hasSavedSession) ...[
+                        const SizedBox(height: 14),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 54,
+                          child: OutlinedButton.icon(
+                            onPressed: loading ? null : fingerprintLogin,
+                            icon: const Icon(Icons.fingerprint, size: 28),
+                            label: const Text('Login with Fingerprint',
+                                style: TextStyle(fontWeight: FontWeight.w900)),
+                          ),
                         ),
-                      ),
+                      ],
                     ]),
               ),
             ),

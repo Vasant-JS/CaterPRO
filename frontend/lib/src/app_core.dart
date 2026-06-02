@@ -637,6 +637,47 @@ class AuthService {
     await prefs.remove('auth.userId');
     await prefs.remove('auth.email');
     await prefs.remove('auth.name');
+    await prefs.remove('auth.biometric.enabled');
+  }
+}
+
+class BiometricAuthService {
+  final LocalAuthentication _auth = LocalAuthentication();
+
+  Future<bool> isSupported() async {
+    try {
+      final deviceSupported = await _auth.isDeviceSupported();
+      final canCheck = await _auth.canCheckBiometrics;
+      if (!deviceSupported || !canCheck) return false;
+      final biometrics = await _auth.getAvailableBiometrics();
+      return biometrics.contains(BiometricType.fingerprint) ||
+          biometrics.contains(BiometricType.strong) ||
+          biometrics.contains(BiometricType.weak);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> isEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('auth.biometric.enabled') ?? false;
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('auth.biometric.enabled', enabled);
+  }
+
+  Future<bool> authenticate(String reason) async {
+    try {
+      return await _auth.authenticate(
+        localizedReason: reason,
+        biometricOnly: true,
+        persistAcrossBackgrounding: true,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 }
 
@@ -649,6 +690,7 @@ class AuthGate extends StatefulWidget {
 
 class _AuthGateState extends State<AuthGate> {
   final auth = AuthService();
+  final biometric = BiometricAuthService();
   bool checking = true;
   bool loggedIn = false;
 
@@ -660,9 +702,12 @@ class _AuthGateState extends State<AuthGate> {
 
   Future<void> restore() async {
     final session = await auth.savedSession();
+    final needsBiometric = session != null &&
+        await biometric.isSupported() &&
+        await biometric.isEnabled();
     if (!mounted) return;
     setState(() {
-      loggedIn = session != null;
+      loggedIn = session != null && !needsBiometric;
       checking = false;
     });
   }
