@@ -736,6 +736,18 @@ function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
     if (english) doc.fillColor(color).font(fonts.regular).fontSize(fontSize - 0.2).text(`/ ${english}`, x + used, y + 0.5, { ...textOptions, width: Math.max(8, width - used) });
     return;
   }
+  if (hasKannadaText(source) && /[A-Za-z0-9]/.test(source)) {
+    const runs = source.match(/[\u0C80-\u0CFF]+|[^\u0C80-\u0CFF]+/g) || [source];
+    let cursor = x;
+    for (const run of runs) {
+      const font = hasKannadaText(run) ? fonts.kannada : fonts.regular;
+      const remaining = x + width - cursor;
+      if (remaining <= 4) break;
+      doc.fillColor(color).font(font).fontSize(fontSize).text(run, cursor, y, { ...textOptions, width: remaining });
+      cursor += doc.widthOfString(run);
+    }
+    return;
+  }
   const font = hasKannadaText(source) ? fonts.kannada : fonts.regular;
   doc.fillColor(color).font(font).fontSize(fontSize).text(source, x, y, textOptions);
 }
@@ -1598,13 +1610,21 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   }
 
   function drawTableHeader(y) {
+    const cellWidth = (511 - 16) / 3;
     doc.rect(42, y, 511, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(8)
-      .text('', 50, y + 6, { width: 12 })
-      .text('#', 68, y + 6, { width: 38 })
-      .text('Item', 118, y + 6, { width: 224 })
-      .text('Category', 366, y + 6, { width: 92 })
-      .text('Qty', 482, y + 6, { width: 64, align: 'right' });
+    [42, 42 + cellWidth + 8, 42 + (cellWidth + 8) * 2].forEach((x) => {
+      doc.fillColor('#111827').font(fonts.bold).fontSize(8)
+        .text('Item', x + 10, y + 6, { width: cellWidth - 54 })
+        .text('Qty', x + cellWidth - 44, y + 6, { width: 34, align: 'right' });
+    });
+  }
+
+  function drawMaterialCell(item, serial, x, y, width) {
+    const qtyText = [item.quantity, item.unit].filter(Boolean).join(' ');
+    const serialText = `(${serial})`;
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.6).text(serialText, x + 8, y + 7, { width: 24, lineBreak: false });
+    drawSingleLineText(doc, item.name || item.itemId, x + 34, y + 6, width - 82, fonts, { fontSize: 8.1, height: 13, color: '#111827' });
+    drawSingleLineText(doc, qtyText, x + width - 44, y + 6, 34, fonts, { fontSize: 7.6, height: 13, color: '#111827', align: 'right' });
   }
 
   function drawFooter(pageNo = 1) {
@@ -1619,8 +1639,10 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   let y = 144;
   drawTableHeader(y);
   y += 20;
-  const rowHeight = 24;
-  materialDocument.items.forEach((item, index) => {
+  const rowHeight = 25;
+  const cellGap = 8;
+  const cellWidth = (511 - cellGap * 2) / 3;
+  for (let rowStart = 0; rowStart < materialDocument.items.length; rowStart += 3) {
     if (y + rowHeight > 772) {
       drawFooter(pageNo);
       doc.addPage();
@@ -1630,14 +1652,19 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
       drawTableHeader(y);
       y += 20;
     }
-    doc.rect(42, y, 511, rowHeight).fill(index % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
-    doc.rect(50, y + 8, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.8).text(`(${index + 1})`, 68, y + 7, { width: 38 });
-    drawSingleLineText(doc, item.name || item.itemId, 118, y + 6, 224, fonts, { fontSize: 8.2, height: 13, color: '#111827' });
-    drawSingleLineText(doc, item.category || '-', 366, y + 6, 92, fonts, { fontSize: 7.8, height: 13, color: '#4b5563' });
-    drawSingleLineText(doc, [item.quantity, item.unit].filter(Boolean).join(' '), 482, y + 7, 64, fonts, { fontSize: 7.8, height: 13, color: '#111827', align: 'right' });
+    const rowIndex = Math.floor(rowStart / 3);
+    doc.rect(42, y, 511, rowHeight).fill(rowIndex % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
+    for (let col = 1; col <= 2; col += 1) {
+      const lineX = 42 + col * cellWidth + (col - 0.5) * cellGap;
+      doc.moveTo(lineX, y).lineTo(lineX, y + rowHeight).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
+    }
+    for (let col = 0; col < 3; col += 1) {
+      const item = materialDocument.items[rowStart + col];
+      if (!item) continue;
+      drawMaterialCell(item, rowStart + col + 1, 42 + col * (cellWidth + cellGap), y, cellWidth);
+    }
     y += rowHeight;
-  });
+  }
   if (materialDocument.items.length === 0) {
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(10).text('No items added.', 42, y + 14);
   }
