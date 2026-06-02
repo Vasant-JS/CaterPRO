@@ -48,14 +48,25 @@ class _AppShellState extends State<AppShell> {
       });
     }
     try {
-      final loaded = await api.getEvents();
-      final loadedClients = await api.getClients();
-      final loadedEmployees = await api.getEmployees();
-      final loadedManualInvoices = await api.getManualInvoices();
-      final menuItems = await api.getMenuItems();
-      final additionalServices = await api.getAdditionalServices();
-      final loadedCustomMenus = await api.getCustomMenus();
-      final loadedBusinessProfile = await api.getBusinessProfile();
+      final bootstrap = await api.bootstrap();
+      final universal = (bootstrap['universal'] as Map?) ?? {};
+      final userData = (bootstrap['userData'] as Map?) ?? {};
+      final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
+      final loadedClients =
+          decodeJsonList(userData['clients'], AppClient.fromJson);
+      final loadedEmployees =
+          decodeJsonList(userData['employees'], Employee.fromJson);
+      final loadedManualInvoices =
+          decodeJsonList(userData['manualInvoices'], ManualInvoice.fromJson);
+      final menuItems =
+          decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
+      final additionalServices = decodeJsonList(
+          userData['additionalServices'], AdditionalServiceItem.fromJson);
+      final loadedCustomMenus =
+          decodeJsonList(userData['customMenus'], CustomMenu.fromJson);
+      final loadedBusinessProfile = BusinessProfile.fromJson(
+          Map<String, dynamic>.from(
+              (userData['businessProfile'] as Map?) ?? const {}));
       if (!mounted) return;
       setState(() {
         events
@@ -81,10 +92,14 @@ class _AppShellState extends State<AppShell> {
           ..addAll(loadedCustomMenus);
         businessProfile = loadedBusinessProfile;
         lastSyncedAt = DateTime.now();
+        loadError = null;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => loadError = e.toString().replaceFirst('Exception: ', ''));
+      final message = friendlyNetworkMessage(e);
+      setState(() {
+        if (!silent || events.isEmpty) loadError = message;
+      });
     } finally {
       if (mounted) setState(() => loading = false);
     }

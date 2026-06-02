@@ -1254,20 +1254,35 @@ class ApiService {
   Future<http.Response> getWithRetry(Uri uri,
       {Map<String, String>? headers}) async {
     Object? lastError;
-    for (var attempt = 0; attempt < 2; attempt++) {
+    const delays = [
+      Duration(milliseconds: 300),
+      Duration(milliseconds: 900),
+      Duration(seconds: 2),
+    ];
+    for (var attempt = 0; attempt < 4; attempt++) {
       try {
         return await http
             .get(uri, headers: headers)
-            .timeout(const Duration(seconds: 12));
+            .timeout(const Duration(seconds: 18));
       } catch (error) {
         lastError = error;
-        if (attempt == 0) {
-          await Future<void>.delayed(const Duration(milliseconds: 450));
+        if (attempt < delays.length) {
+          await Future<void>.delayed(delays[attempt]);
         }
       }
     }
-    throw Exception(
-        'Backend connection was interrupted. Make sure CaterPro API is running on port 8787, then tap refresh. ${lastError ?? ''}');
+    throw Exception(friendlyNetworkMessage(lastError ?? 'Network error'));
+  }
+
+  Future<Map<String, dynamic>> bootstrap() async {
+    final response = await getWithRetry(
+      Uri.parse('${ApiConfig.baseUrl}/bootstrap'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to sync CaterPro data');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<List<AppEvent>> getEvents() async {
@@ -1781,6 +1796,14 @@ class ApiService {
             '${ApiConfig.baseUrl}/events/$eventId/material-documents/$documentId/pdf')
         .replace(queryParameters: {'token': token});
   }
+}
+
+List<T> decodeJsonList<T>(
+    Object? value, T Function(Map<String, dynamic> json) fromJson) {
+  return ((value as List?) ?? [])
+      .whereType<Map>()
+      .map((item) => fromJson(Map<String, dynamic>.from(item)))
+      .toList();
 }
 
 String money(int value) =>
