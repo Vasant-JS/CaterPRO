@@ -625,7 +625,7 @@ function attendanceFromBody(body, existing = {}) {
 }
 
 function money(value) {
-  return `\u20B9${Number(value || 0).toLocaleString('en-IN')}`;
+  return `Rs. ${Number(value || 0).toLocaleString('en-IN')}`;
 }
 
 function serviceQuantityText(service) {

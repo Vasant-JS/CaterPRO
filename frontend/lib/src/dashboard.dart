@@ -40,6 +40,7 @@ class DashboardScreen extends StatelessWidget {
 
   Future<void> downloadUpcomingMenus(BuildContext context) async {
     try {
+      showCpSnack(context, 'Downloading upcoming menus...');
       final error = await api.upcomingMenusError(days: 3);
       if (!context.mounted) return;
       if (error != null) {

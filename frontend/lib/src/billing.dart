@@ -31,6 +31,7 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Future<void> downloadDocument(
       BuildContext context, AppEvent event, String type) async {
+    showCpSnack(context, 'Downloading...');
     final uri = await widget.api.documentUri(event.id, type);
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -55,6 +56,7 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Future<void> downloadManualInvoice(
       BuildContext context, ManualInvoice invoice) async {
+    showCpSnack(context, 'Downloading invoice...');
     final uri = await widget.api.manualInvoicePdfUri(invoice.id);
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -731,6 +733,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   final ApiService api;
 
   Future<void> download(BuildContext context) async {
+    showCpSnack(context, 'Downloading invoice...');
     final uri = await api.manualInvoicePdfUri(invoice.id);
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -1047,6 +1050,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       api.documentUri(event.id, isInvoice ? 'invoice' : 'quotation');
 
   Future<void> download(BuildContext context) async {
+    showCpSnack(context, 'Downloading...');
     final uri = await documentUri();
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');

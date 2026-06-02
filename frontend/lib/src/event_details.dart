@@ -73,6 +73,7 @@ class EventDetailsScreen extends StatelessWidget {
       BuildContext context, AppEvent event, String type,
       {String? dateId}) async {
     try {
+      showCpSnack(context, 'Downloading...');
       final uri = await api.documentUri(event.id, type, dateId: dateId);
       final launched = await launchUrl(uri,
           mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -975,6 +976,7 @@ class MaterialDocumentsSection extends StatelessWidget {
 
   Future<void> download(
       BuildContext context, EventMaterialDocument document) async {
+    showCpSnack(context, 'Downloading material PDF...');
     final uri = await api.materialDocumentPdfUri(event.id, document.id);
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -1134,7 +1136,7 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
           ..addAll(loaded);
         for (final item in items) {
           quantityControllers[item.id] = TextEditingController();
-          unitControllers[item.id] = TextEditingController(text: item.unit);
+          unitControllers[item.id] = TextEditingController();
         }
         for (final line
             in widget.document?.items ?? const <EventMaterialLine>[]) {
@@ -1178,7 +1180,7 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
           name: item.name,
           category: item.category,
           quantity: quantity,
-          unit: unitControllers[item.id]?.text.trim() ?? item.unit));
+          unit: unitControllers[item.id]?.text.trim() ?? ''));
     }
     if (lines.isEmpty) {
       setState(() => error = 'Enter quantity/count for at least one item.');
@@ -1188,6 +1190,7 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
       saving = true;
       error = null;
     });
+    showCpSnack(context, 'Saving $typeLabel list...');
     try {
       final savedEvent = await widget.api.saveMaterialDocument(
           widget.event.id,
@@ -1278,6 +1281,11 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
                                       child: TextField(
                                           controller:
                                               quantityControllers[item.id],
+                                          keyboardType: TextInputType.number,
+                                          inputFormatters: [
+                                            FilteringTextInputFormatter
+                                                .digitsOnly
+                                          ],
                                           decoration: const InputDecoration(
                                               labelText: 'Count/Qty',
                                               isDense: true),

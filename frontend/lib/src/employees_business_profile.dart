@@ -59,6 +59,7 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
   }
 
   Future<void> deleteEmployee(Employee employee) async {
+    showCpSnack(context, 'Deleting ${employee.name}...');
     await widget.onDelete(employee);
     if (mounted) showCpSnack(context, '${employee.name} deleted');
   }
@@ -451,6 +452,7 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
   }
 
   Future<void> download() async {
+    showCpSnack(context, 'Preparing attendance sheet...');
     final freshRecords = await widget.api.getAttendance(month: month);
     if (mounted) {
       setState(() => recordsFuture = Future.value(freshRecords));

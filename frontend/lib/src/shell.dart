@@ -106,6 +106,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> createEvent(EventDraft draft) async {
+    showCpSnack(context,
+        (draft.id ?? '').isEmpty ? 'Creating event...' : 'Updating event...');
     final event = await api.saveEventDraft(draft, eventId: draft.id);
     setState(() {
       final index = events.indexWhere((item) => item.id == event.id);
@@ -121,6 +123,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> saveManualInvoice(ManualInvoice invoice) async {
+    showCpSnack(context, 'Saving invoice...');
     final saved = await api.saveManualInvoice(invoice);
     setState(() {
       final index = manualInvoices.indexWhere((item) => item.id == saved.id);
@@ -134,6 +137,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> saveClient(AppClient client) async {
+    showCpSnack(
+        context, client.id.isEmpty ? 'Saving client...' : 'Updating client...');
     final saved = await api.saveClient(
         client.copyWith(mobile: normalizeMobileText(client.mobile)));
     setState(() {
@@ -149,6 +154,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> deleteClient(AppClient client) async {
+    showCpSnack(context, 'Deleting client...');
     if (client.id.isNotEmpty) await api.deleteClient(client.id);
     setState(() => clients.removeWhere((item) =>
         item.id == client.id ||
@@ -157,6 +163,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> saveEmployee(Employee employee) async {
+    showCpSnack(context,
+        employee.id.isEmpty ? 'Saving employee...' : 'Updating employee...');
     final saved = await api.saveEmployee(
         employee.copyWith(mobile: normalizeMobileText(employee.mobile)));
     setState(() {
@@ -172,6 +180,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> deleteEmployee(Employee employee) async {
+    showCpSnack(context, 'Deleting employee...');
     if (employee.id.isNotEmpty) await api.deleteEmployee(employee.id);
     setState(() => employees.removeWhere((item) =>
         item.id == employee.id ||
@@ -224,6 +233,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void upsertService(AdditionalServiceItem service) {
+    showCpSnack(context, 'Updating service...');
     setState(() {
       final index = services.indexWhere((item) => item.id == service.id);
       if (index == -1) {
@@ -250,6 +260,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void removeService(String id) {
+    showCpSnack(context, 'Deleting service...');
     setState(() => services.removeWhere((item) => item.id == id));
     unawaited(api.deleteAdditionalService(id).catchError((error) {
       if (mounted) {
@@ -259,6 +270,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> saveCustomMenu(CustomMenu menu) async {
+    showCpSnack(context, 'Saving custom menu...');
     final saved = await api.saveCustomMenu(menu);
     setState(() {
       final index = customMenus.indexWhere((item) => item.id == saved.id);
@@ -271,11 +283,13 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> saveBusinessProfile(BusinessProfile profile) async {
+    showCpSnack(context, 'Updating business profile...');
     final saved = await api.saveBusinessProfile(profile);
     setState(() => businessProfile = saved);
   }
 
   Future<void> saveInvoiceSettings(BusinessProfile profile) async {
+    showCpSnack(context, 'Updating invoice settings...');
     final saved = await api.saveBusinessProfile(profile);
     setState(() => businessProfile = saved);
   }
@@ -303,6 +317,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> exportData() async {
+    showCpSnack(context, 'Preparing export...');
     final uri = await api.backupExportUri();
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -321,6 +336,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> importData() async {
+    showCpSnack(context, 'Select backup file to import...');
     final result = await fp.FilePicker.pickFiles(
       type: fp.FileType.custom,
       allowedExtensions: ['json'],
@@ -330,6 +346,8 @@ class _AppShellState extends State<AppShell> {
     final bytes = file?.bytes;
     if (bytes == null) return;
     try {
+      if (!mounted) return;
+      showCpSnack(context, 'Importing data...');
       final decoded = jsonDecode(utf8.decode(bytes));
       if (decoded is! Map<String, dynamic>) {
         throw Exception('Invalid CaterPro backup file');
@@ -361,6 +379,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> backupToGoogleDrive() async {
+    showCpSnack(context, 'Preparing Google Drive backup...');
     await exportData();
     final launched = await launchUrl(
         Uri.parse('https://drive.google.com/drive/my-drive'),
@@ -382,6 +401,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> syncNow() async {
+    showCpSnack(context, 'Syncing...');
     await refreshEvents(silent: true);
     if (mounted) showCpSnack(context, 'Synced with server');
   }
