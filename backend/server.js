@@ -1934,7 +1934,7 @@ app.post('/api/auth/forgot-password', (req, res) => {
   res.json({ message: `Password reset requested for ${req.body.email || 'unknown email'}` });
 });
 
-app.post('/api/auth/change-password', (req, res) => {
+function changePasswordHandler(req, res) {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
@@ -1949,7 +1949,12 @@ app.post('/api/auth/change-password', (req, res) => {
   user.password = newPassword;
   writeDb(db);
   res.json({ message: 'Password updated' });
-});
+}
+
+app.post('/api/auth/change-password', changePasswordHandler);
+app.post('/api/auth/reset-password', changePasswordHandler);
+app.put('/api/auth/change-password', changePasswordHandler);
+app.put('/api/auth/reset-password', changePasswordHandler);
 
 app.post('/api/dev/reset-user-data', (req, res) => {
   const db = readDb();

@@ -104,6 +104,9 @@ class SettingsScreen extends StatelessWidget {
     final confirmPassword = TextEditingController();
     var saving = false;
     String? error;
+    var showOldPassword = false;
+    var showNewPassword = false;
+    var showConfirmPassword = false;
     try {
       await showDialog<void>(
         context: context,
@@ -115,26 +118,53 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 TextField(
                   controller: oldPassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showOldPassword,
+                  decoration: InputDecoration(
                       labelText: 'Old Password',
-                      prefixIcon: Icon(Icons.lock_outline)),
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                          tooltip: showOldPassword
+                              ? 'Hide password'
+                              : 'Show password',
+                          onPressed: () => setDialogState(
+                              () => showOldPassword = !showOldPassword),
+                          icon: Icon(showOldPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility))),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: newPassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showNewPassword,
+                  decoration: InputDecoration(
                       labelText: 'New Password',
-                      prefixIcon: Icon(Icons.password)),
+                      prefixIcon: const Icon(Icons.password),
+                      suffixIcon: IconButton(
+                          tooltip: showNewPassword
+                              ? 'Hide password'
+                              : 'Show password',
+                          onPressed: () => setDialogState(
+                              () => showNewPassword = !showNewPassword),
+                          icon: Icon(showNewPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility))),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: confirmPassword,
-                  obscureText: true,
-                  decoration: const InputDecoration(
+                  obscureText: !showConfirmPassword,
+                  decoration: InputDecoration(
                       labelText: 'Confirm New Password',
-                      prefixIcon: Icon(Icons.verified_user_outlined)),
+                      prefixIcon: const Icon(Icons.verified_user_outlined),
+                      suffixIcon: IconButton(
+                          tooltip: showConfirmPassword
+                              ? 'Hide password'
+                              : 'Show password',
+                          onPressed: () => setDialogState(
+                              () => showConfirmPassword = !showConfirmPassword),
+                          icon: Icon(showConfirmPassword
+                              ? Icons.visibility_off
+                              : Icons.visibility))),
                 ),
                 if (error != null) ...[
                   const SizedBox(height: 12),

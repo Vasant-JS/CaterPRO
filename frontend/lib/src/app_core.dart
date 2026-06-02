@@ -717,17 +717,29 @@ class AuthService {
       {required String oldPassword, required String newPassword}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/auth/change-password'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token'
-      },
-      body:
-          jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
-    );
+    if (token.isEmpty) {
+      throw Exception('Please login again before changing password');
+    }
+    final payload =
+        jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword});
+    Future<http.Response> submit(String path) => http.post(
+          Uri.parse('${ApiConfig.baseUrl}$path'),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token'
+          },
+          body: payload,
+        );
+    var response = await submit('/auth/change-password');
+    if (response.statusCode == 404) {
+      response = await submit('/auth/reset-password');
+    }
     if (response.statusCode != 200) {
-      var message = 'Unable to reset password';
+      var message = response.statusCode == 401
+          ? 'Session expired. Please login again.'
+          : response.statusCode == 404
+              ? 'Password reset API is not available yet. Update/restart the backend.'
+              : 'Unable to reset password';
       try {
         final decoded = jsonDecode(response.body);
         if (decoded is Map<String, dynamic> && decoded['message'] != null) {
