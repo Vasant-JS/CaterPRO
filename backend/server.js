@@ -4,11 +4,20 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
+const { Pool } = require('pg');
 
 const app = express();
 const dbPath = path.join(__dirname, 'db.json');
 const universalCatalogBackupPath = path.join(__dirname, 'universal-catalog.backup.json');
 const port = Number(process.env.PORT || 8787);
+const databaseUrl = process.env.DATABASE_URL || '';
+const pgStateId = process.env.PG_STATE_ID || 'default';
+const pgPool = databaseUrl ? new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.PGSSL === 'false' ? false : { rejectUnauthorized: false },
+}) : null;
+let runtimeDb = null;
+let pendingPostgresWrite = Promise.resolve();
 
 app.use(express.json({ limit: '50mb' }));
 app.use((req, res, next) => {
@@ -19,16 +28,93 @@ app.use((req, res, next) => {
   next();
 });
 
-function readDb() {
+function readLocalDb() {
   const db = JSON.parse(fs.readFileSync(dbPath, 'utf8').replace(/^\uFEFF/, ''));
   ensureUniversal(db);
   return db;
 }
 
+function readDb() {
+  if (!runtimeDb) runtimeDb = readLocalDb();
+  ensureUniversal(runtimeDb);
+  return runtimeDb;
+}
+
 function writeDb(db) {
   ensureUniversal(db);
+  runtimeDb = db;
   fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
   persistUniversalCatalogBackup(db.universal);
+  schedulePostgresSave(db);
+}
+
+async function ensurePostgresStateTable() {
+  if (!pgPool) return;
+  await pgPool.query(`
+    create table if not exists caterpro_state (
+      id text primary key,
+      data jsonb not null,
+      updated_at timestamptz not null default now()
+    )
+  `);
+}
+
+async function loadPostgresDb() {
+  if (!pgPool) return null;
+  await ensurePostgresStateTable();
+  const result = await pgPool.query('select data from caterpro_state where id = $1', [pgStateId]);
+  if (result.rows.length === 0) return null;
+  const db = result.rows[0].data;
+  ensureUniversal(db);
+  return db;
+}
+
+async function savePostgresDb(db) {
+  if (!pgPool) return;
+  await ensurePostgresStateTable();
+  await pgPool.query(
+    `insert into caterpro_state (id, data, updated_at)
+     values ($1, $2::jsonb, now())
+     on conflict (id) do update set data = excluded.data, updated_at = now()`,
+    [pgStateId, JSON.stringify(db)],
+  );
+}
+
+function schedulePostgresSave(db) {
+  if (!pgPool) return;
+  const snapshot = JSON.parse(JSON.stringify(db));
+  pendingPostgresWrite = pendingPostgresWrite
+    .catch(() => {})
+    .then(() => savePostgresDb(snapshot))
+    .catch((error) => console.error('PostgreSQL sync failed:', error.message));
+}
+
+async function flushPostgresWrites() {
+  await pendingPostgresWrite.catch(() => {});
+}
+
+async function initializeStorage() {
+  const localDb = readLocalDb();
+  runtimeDb = localDb;
+  if (!pgPool) {
+    console.log('CaterPro storage: local db.json');
+    return;
+  }
+  try {
+    const postgresDb = await loadPostgresDb();
+    if (postgresDb) {
+      postgresDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, postgresDb.universal || {});
+      runtimeDb = postgresDb;
+      writeDb(runtimeDb);
+      await flushPostgresWrites();
+      console.log(`CaterPro storage: loaded PostgreSQL state "${pgStateId}"`);
+      return;
+    }
+    await savePostgresDb(localDb);
+    console.log(`CaterPro storage: seeded PostgreSQL state "${pgStateId}" from db.json`);
+  } catch (error) {
+    console.error('PostgreSQL unavailable, using local db.json:', error.message);
+  }
 }
 
 function makeId(prefix) {
@@ -2290,8 +2376,94 @@ app.get('/api/documents/upcoming-menus', (req, res) => {
   return generateUpcomingMenusPdf({ res, db, events: db.userData[user.id].events, days, businessProfile: db.userData[user.id].businessProfile });
 });
 
+app.get('/api/storage/status', async (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  let postgres = { enabled: Boolean(pgPool), connected: false, updatedAt: null };
+  if (pgPool) {
+    try {
+      await ensurePostgresStateTable();
+      const result = await pgPool.query('select updated_at from caterpro_state where id = $1', [pgStateId]);
+      postgres = {
+        enabled: true,
+        connected: true,
+        stateId: pgStateId,
+        updatedAt: result.rows[0]?.updated_at || null,
+      };
+    } catch (error) {
+      postgres = { enabled: true, connected: false, stateId: pgStateId, error: error.message };
+    }
+  }
+  res.json({
+    storage: pgPool ? 'postgresql+db.json' : 'db.json',
+    postgres,
+    counts: {
+      users: db.users.length,
+      events: db.userData[user.id].events.length,
+      menuItems: db.universal.menuItems.length,
+      rawMaterials: db.universal.rawMaterials.length,
+      produceItems: db.universal.produceItems.length,
+    },
+  });
+});
+
+app.post('/api/storage/push-local-to-postgres', async (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  try {
+    await savePostgresDb(db);
+    res.json({
+      message: 'Current backend state pushed to PostgreSQL',
+      stateId: pgStateId,
+      counts: {
+        events: db.userData[user.id].events.length,
+        menuItems: db.universal.menuItems.length,
+        rawMaterials: db.universal.rawMaterials.length,
+        produceItems: db.universal.produceItems.length,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to push to PostgreSQL', error: error.message });
+  }
+});
+
+app.post('/api/storage/pull-postgres-to-local', async (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  try {
+    const postgresDb = await loadPostgresDb();
+    if (!postgresDb) return res.status(404).json({ message: 'No PostgreSQL state found' });
+    postgresDb.universal = mergeProtectedUniversalCatalog(db.universal || {}, postgresDb.universal || {});
+    writeDb(postgresDb);
+    await flushPostgresWrites();
+    const pulledUserData = postgresDb.userData[user.id] || emptyUserData();
+    res.json({
+      message: 'PostgreSQL state pulled into local db.json',
+      stateId: pgStateId,
+      counts: {
+        events: pulledUserData.events.length,
+        menuItems: postgresDb.universal.menuItems.length,
+        rawMaterials: postgresDb.universal.rawMaterials.length,
+        produceItems: postgresDb.universal.produceItems.length,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to pull from PostgreSQL', error: error.message });
+  }
+});
+
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`CaterPro API running on port ${port}`);
+initializeStorage().then(() => {
+  app.listen(port, '0.0.0.0', () => {
+    console.log(`CaterPro API running on port ${port}`);
+  });
+}).catch((error) => {
+  console.error('Unable to initialize CaterPro storage:', error);
+  process.exit(1);
 });

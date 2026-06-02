@@ -6,9 +6,9 @@ Repository: https://github.com/Vasant-JS/CaterPRO
 
 ```text
 CaterPRO/
-  backend/           # Node API, deploy this as Render Web Service
-  caterpro_flutter/  # Flutter frontend
-  render.yaml        # Render Blueprint for backend
+  backend/     # Node API, deploy this as Render Web Service
+  frontend/    # Flutter Android/iOS/web app
+  render.yaml  # Render Blueprint for backend
 ```
 
 ## Local API
@@ -46,6 +46,7 @@ password
    - Start Command: `npm start`
    - Health Check Path: `/health`
    - Environment Variable: `NODE_VERSION=20`
+   - Environment Variable: `DATABASE_URL=<your Render PostgreSQL internal connection string>`
 7. Deploy.
 8. After deploy, open:
 
@@ -74,4 +75,32 @@ For Android emulator, use your computer IP instead of `127.0.0.1`, or use a host
 - Universal data: menu items and raw materials.
 - User-owned data: events, clients, employees, additional services, payments.
 
-The current local backend uses `backend/db.json`. Render free instances have ephemeral filesystem behavior, so production should move this to PostgreSQL before real use.
+## PostgreSQL Sync
+
+The backend keeps `backend/db.json` as a local fallback and syncs the full app state into PostgreSQL when `DATABASE_URL` is present.
+
+Render setup:
+
+1. Create a Render PostgreSQL database.
+2. Copy the database **Internal Database URL**.
+3. Add it to the `caterpro-api` web service as `DATABASE_URL`.
+4. Redeploy the service.
+5. Open `/api/storage/status` with a bearer token to confirm `postgres.connected: true`.
+
+The PostgreSQL table is:
+
+```sql
+select id, updated_at, data from caterpro_state;
+```
+
+To visualize it, use Render's PostgreSQL console, pgAdmin, DBeaver, TablePlus, or any PostgreSQL client.
+
+Authenticated sync endpoints:
+
+```text
+GET  /api/storage/status
+POST /api/storage/push-local-to-postgres
+POST /api/storage/pull-postgres-to-local
+```
+
+Universal catalog data is protected during sync so menu items, raw materials, and vegetables/fruits are merged instead of being deleted by an empty state.
