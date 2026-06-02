@@ -142,8 +142,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Cp.background,
+      backgroundColor: scheme.surface,
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 36, 24, 24),
@@ -160,15 +161,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   color: Colors.white, size: 42),
             ),
             const SizedBox(height: 26),
-            const Text('CaterPro',
+            Text('CaterPro',
                 style: TextStyle(
-                    color: Cp.primary,
+                    color: scheme.primary,
                     fontSize: 38,
                     fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const Text('Sign in to manage events, menus, billing, and teams.',
+            Text('Sign in to manage events, menus, billing, and teams.',
                 style: TextStyle(
-                    color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 28),
             Form(
               key: formKey,
@@ -176,9 +178,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Login',
+                      Text('Login',
                           style: TextStyle(
-                              color: Cp.primary,
+                              color: scheme.primary,
                               fontSize: 24,
                               fontWeight: FontWeight.w900)),
                       const SizedBox(height: 18),
@@ -224,9 +226,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                 style: TextStyle(fontWeight: FontWeight.w700))),
                         TextButton(
                             onPressed: forgotPassword,
-                            child: const Text('Forgot Password?',
+                            child: Text('Forgot Password?',
                                 style: TextStyle(
-                                    color: Cp.primary,
+                                    color: scheme.primary,
                                     fontWeight: FontWeight.w900))),
                       ]),
                       if (error != null)
@@ -242,7 +244,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: FilledButton.icon(
                               onPressed: loading ? null : login,
                               style: FilledButton.styleFrom(
-                                  backgroundColor: Cp.primary),
+                                  backgroundColor: scheme.primary,
+                                  foregroundColor: scheme.onPrimary),
                               icon: loading
                                   ? const SizedBox(
                                       width: 18,

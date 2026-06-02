@@ -30,10 +30,20 @@ class _CaterProAppState extends State<CaterProApp> {
           locale: Locale(settings.languageCode),
           builder: (context, child) {
             final media = MediaQuery.of(context);
-            return MediaQuery(
-              data: media.copyWith(
-                  textScaler: TextScaler.linear(settings.textScale)),
-              child: child ?? const SizedBox.shrink(),
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return AnnotatedRegion<SystemUiOverlayStyle>(
+              value: isDark
+                  ? SystemUiOverlayStyle.light.copyWith(
+                      statusBarColor: Colors.transparent,
+                      systemNavigationBarColor: const Color(0xff111827))
+                  : SystemUiOverlayStyle.dark.copyWith(
+                      statusBarColor: Colors.transparent,
+                      systemNavigationBarColor: Cp.background),
+              child: MediaQuery(
+                data: media.copyWith(
+                    textScaler: TextScaler.linear(settings.textScale)),
+                child: child ?? const SizedBox.shrink(),
+              ),
             );
           },
           theme: ThemeData(
@@ -51,33 +61,46 @@ class _CaterProAppState extends State<CaterProApp> {
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
-            brightness: Brightness.light,
-            scaffoldBackgroundColor: Cp.background,
+            brightness: Brightness.dark,
+            scaffoldBackgroundColor: const Color(0xff111827),
             colorScheme: ColorScheme.fromSeed(
               seedColor: Cp.primary,
-              brightness: Brightness.light,
-              primary: Cp.primary,
-              secondary: Cp.secondaryContainer,
-              surface: Cp.surface,
-              error: Cp.error,
+              brightness: Brightness.dark,
+              primary: const Color(0xff9bd8ff),
+              onPrimary: const Color(0xff00263d),
+              primaryContainer: const Color(0xff0f4a68),
+              secondary: const Color(0xffffc266),
+              onSecondary: const Color(0xff422900),
+              secondaryContainer: const Color(0xff6a4300),
+              surface: const Color(0xff17212f),
+              onSurface: const Color(0xffeef2f7),
+              surfaceContainerHighest: const Color(0xff243244),
+              onSurfaceVariant: const Color(0xffcbd5e1),
+              outline: const Color(0xff7c8796),
+              outlineVariant: const Color(0xff3b4758),
+              error: const Color(0xffffb4ab),
+              errorContainer: const Color(0xff6f1d1b),
             ),
             inputDecorationTheme: InputDecorationTheme(
-              labelStyle: const TextStyle(color: Cp.onVariant),
-              floatingLabelStyle: const TextStyle(color: Cp.primary),
-              prefixIconColor: Cp.onVariant,
-              suffixIconColor: Cp.onVariant,
+              labelStyle: const TextStyle(color: Color(0xffcbd5e1)),
+              floatingLabelStyle: const TextStyle(color: Color(0xff9bd8ff)),
+              prefixIconColor: const Color(0xffcbd5e1),
+              suffixIconColor: const Color(0xffcbd5e1),
               filled: true,
-              fillColor: Cp.card,
+              fillColor: const Color(0xff1f2937),
               border:
                   OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             checkboxTheme: CheckboxThemeData(
               fillColor: WidgetStateProperty.resolveWith((states) =>
-                  states.contains(WidgetState.selected) ? Cp.primary : Cp.card),
-              checkColor: WidgetStateProperty.all(Colors.white),
+                  states.contains(WidgetState.selected)
+                      ? const Color(0xff9bd8ff)
+                      : const Color(0xff1f2937)),
+              checkColor: WidgetStateProperty.all(const Color(0xff00263d)),
             ),
             textTheme: textTheme.apply(
-                bodyColor: Cp.onSurface, displayColor: Cp.onSurface),
+                bodyColor: const Color(0xffeef2f7),
+                displayColor: const Color(0xffeef2f7)),
           ),
           home: const AuthGate(),
         );

@@ -595,8 +595,9 @@ class CaterSideDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Drawer(
-      backgroundColor: Cp.surface,
+      backgroundColor: scheme.surface,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.horizontal(right: Radius.circular(24))),
       child: SafeArea(
@@ -617,15 +618,15 @@ class CaterSideDrawer extends StatelessWidget {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text('CaterPro',
                             style: TextStyle(
-                                color: Cp.primary,
+                                color: scheme.primary,
                                 fontSize: 20,
                                 fontWeight: FontWeight.w900)),
                         Text('CaterPro Manager',
                             style: TextStyle(
-                                color: Cp.onVariant,
+                                color: scheme.onSurfaceVariant,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w700)),
                       ],
@@ -634,7 +635,7 @@ class CaterSideDrawer extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Cp.outlineVariant),
+            Divider(height: 1, color: scheme.outlineVariant),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
@@ -646,18 +647,18 @@ class CaterSideDrawer extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 6),
                       child: ListTile(
                         selected: selected,
-                        selectedTileColor: Cp.secondaryContainer,
+                        selectedTileColor: scheme.secondaryContainer,
                         shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(999)),
                         leading: Icon(item.$1,
                             color: selected
-                                ? const Color(0xff694000)
-                                : Cp.onVariant),
+                                ? scheme.onSecondaryContainer
+                                : scheme.onSurfaceVariant),
                         title: Text(t(item.$2),
                             style: TextStyle(
                                 color: selected
-                                    ? const Color(0xff694000)
-                                    : Cp.onSurface,
+                                    ? scheme.onSecondaryContainer
+                                    : scheme.onSurface,
                                 fontWeight: selected
                                     ? FontWeight.w900
                                     : FontWeight.w700)),
@@ -669,12 +670,12 @@ class CaterSideDrawer extends StatelessWidget {
                     );
                   }),
                   const SizedBox(height: 12),
-                  const Divider(color: Cp.outlineVariant),
+                  Divider(color: scheme.outlineVariant),
                   ListTile(
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
-                    leading:
-                        const Icon(Icons.restaurant_menu, color: Cp.onVariant),
+                    leading: Icon(Icons.restaurant_menu,
+                        color: scheme.onSurfaceVariant),
                     title: Text(t('Menu Master'),
                         style: const TextStyle(fontWeight: FontWeight.w700)),
                     onTap: () {
@@ -710,13 +711,14 @@ class TopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final canOpenDrawer = Scaffold.maybeOf(context)?.hasDrawer ?? false;
     final defaultLeading = canOpenDrawer
         ? Builder(
             builder: (context) => IconButton(
               tooltip: 'Open menu',
               onPressed: () => Scaffold.of(context).openDrawer(),
-              icon: const Icon(Icons.menu_rounded, color: Cp.primary),
+              icon: Icon(Icons.menu_rounded, color: scheme.primary),
             ),
           )
         : (avatar
@@ -732,7 +734,7 @@ class TopBar extends StatelessWidget {
       child: Container(
         height: 64,
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        color: Cp.surface,
+        color: scheme.surface,
         child: Row(
           children: [
             leading ?? defaultLeading,
@@ -747,14 +749,14 @@ class TopBar extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                          color: Cp.primary,
-                          fontSize: 22,
-                          height: 1.1,
-                          fontWeight: FontWeight.w800)),
+                              fontSize: 22,
+                              height: 1.1,
+                              fontWeight: FontWeight.w800)
+                          .copyWith(color: scheme.primary)),
                   if (subtitle != null)
                     Text(t(subtitle!),
-                        style: const TextStyle(
-                            color: Cp.onVariant,
+                        style: TextStyle(
+                            color: scheme.onSurfaceVariant,
                             fontSize: 12,
                             fontWeight: FontWeight.w600)),
                 ],
@@ -785,16 +787,21 @@ class CpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final actualColor = color == Cp.card ? scheme.surface : color;
+    final actualBorder =
+        borderColor ?? scheme.outlineVariant.withValues(alpha: .45);
+    final shadowAlpha =
+        Theme.of(context).brightness == Brightness.dark ? .18 : .04;
     final card = Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: color,
+        color: actualColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-            color: borderColor ?? Cp.outlineVariant.withValues(alpha: .35)),
+        border: Border.all(color: actualBorder),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withValues(alpha: .04),
+              color: Colors.black.withValues(alpha: shadowAlpha),
               blurRadius: 12,
               offset: const Offset(0, 4))
         ],
@@ -821,20 +828,27 @@ class Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final actualColor =
+        color == Cp.surfaceHigh ? scheme.surfaceContainerHighest : color;
+    final actualTextColor =
+        textColor == Cp.onVariant ? scheme.onSurfaceVariant : textColor;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration:
-          BoxDecoration(color: color, borderRadius: BorderRadius.circular(999)),
+      decoration: BoxDecoration(
+          color: actualColor, borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           if (icon != null) ...[
-            Icon(icon, size: 14, color: textColor),
+            Icon(icon, size: 14, color: actualTextColor),
             const SizedBox(width: 4)
           ],
           Text(text,
               style: TextStyle(
-                  color: textColor, fontSize: 11, fontWeight: FontWeight.w800)),
+                  color: actualTextColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800)),
         ],
       ),
     );
