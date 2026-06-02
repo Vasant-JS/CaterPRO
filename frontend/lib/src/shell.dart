@@ -613,6 +613,15 @@ class CaterSideDrawer extends StatelessWidget {
     (Icons.settings_rounded, 'Settings'),
   ];
 
+  static const settingsSubItems = [
+    (9, Icons.badge, 'Employees'),
+    (16, Icons.description, 'Invoice Settings'),
+    (13, Icons.notifications, 'Notifications'),
+    (15, Icons.wb_sunny, 'App Appearance'),
+  ];
+
+  static const settingsTabs = {4, 8, 9, 10, 11, 12, 13, 15, 16};
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -661,48 +670,78 @@ class CaterSideDrawer extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
                 children: [
                   ...List.generate(items.length, (i) {
-                    final selected = i == index;
+                    final selected =
+                        i == index || (i == 4 && settingsTabs.contains(index));
                     final item = items[i];
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
-                      child: ListTile(
-                        selected: selected,
-                        selectedTileColor: scheme.secondaryContainer,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999)),
-                        leading: Icon(item.$1,
-                            color: selected
-                                ? scheme.onSecondaryContainer
-                                : scheme.onSurfaceVariant),
-                        title: Text(t(item.$2),
-                            style: TextStyle(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ListTile(
+                            selected: selected,
+                            selectedTileColor: scheme.secondaryContainer,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999)),
+                            leading: Icon(item.$1,
                                 color: selected
                                     ? scheme.onSecondaryContainer
-                                    : scheme.onSurface,
-                                fontWeight: selected
-                                    ? FontWeight.w900
-                                    : FontWeight.w700)),
-                        onTap: () {
-                          Navigator.pop(context);
-                          onChanged(i);
-                        },
+                                    : scheme.onSurfaceVariant),
+                            title: Text(t(item.$2),
+                                style: TextStyle(
+                                    color: selected
+                                        ? scheme.onSecondaryContainer
+                                        : scheme.onSurface,
+                                    fontWeight: selected
+                                        ? FontWeight.w900
+                                        : FontWeight.w700)),
+                            onTap: () {
+                              Navigator.pop(context);
+                              onChanged(i);
+                            },
+                          ),
+                          if (i == 4 && settingsTabs.contains(index))
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(52, 4, 8, 2),
+                              child: Column(
+                                children: settingsSubItems.map((subItem) {
+                                  final subSelected = index == subItem.$1;
+                                  return ListTile(
+                                    dense: true,
+                                    minLeadingWidth: 24,
+                                    visualDensity: VisualDensity.compact,
+                                    selected: subSelected,
+                                    selectedTileColor:
+                                        scheme.primary.withValues(alpha: .12),
+                                    shape: RoundedRectangleBorder(
+                                        borderRadius:
+                                            BorderRadius.circular(14)),
+                                    leading: Icon(subItem.$2,
+                                        size: 19,
+                                        color: subSelected
+                                            ? scheme.primary
+                                            : scheme.onSurfaceVariant),
+                                    title: Text(t(subItem.$3),
+                                        style: TextStyle(
+                                            color: subSelected
+                                                ? scheme.primary
+                                                : scheme.onSurfaceVariant,
+                                            fontSize: 13,
+                                            fontWeight: subSelected
+                                                ? FontWeight.w900
+                                                : FontWeight.w700)),
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      onChanged(subItem.$1);
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   }),
-                  const SizedBox(height: 12),
-                  Divider(color: scheme.outlineVariant),
-                  ListTile(
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    leading: Icon(Icons.restaurant_menu,
-                        color: scheme.onSurfaceVariant),
-                    title: Text(t('Menu Master'),
-                        style: const TextStyle(fontWeight: FontWeight.w700)),
-                    onTap: () {
-                      Navigator.pop(context);
-                      onChanged(7);
-                    },
-                  ),
                 ],
               ),
             ),
