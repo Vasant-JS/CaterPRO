@@ -884,7 +884,6 @@ void showCpSnack(BuildContext context, String message) {
 }
 
 enum EventScreenAction {
-  assignEmployees,
   downloadQuotation,
   downloadInvoice,
   currentDayMenu,
@@ -906,8 +905,6 @@ class EventActionMenuItem {
 }
 
 const eventScreenActions = [
-  EventActionMenuItem(
-      EventScreenAction.assignEmployees, 'Assign Employees', Icons.group_add),
   EventActionMenuItem(EventScreenAction.downloadQuotation, 'Download Quotation',
       Icons.request_quote),
   EventActionMenuItem(EventScreenAction.downloadInvoice, 'Download Invoice',

@@ -21,9 +21,6 @@ class EventDetailsScreen extends StatelessWidget {
     final selectedEvent = event;
     if (selectedEvent == null) return;
     switch (action) {
-      case EventScreenAction.assignEmployees:
-        showCpSnack(context, 'Open the Team tab, then tap Assign.');
-        break;
       case EventScreenAction.downloadQuotation:
         await downloadDocument(context, selectedEvent, 'quotation');
         break;
