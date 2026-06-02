@@ -724,8 +724,8 @@ function repairMojibake(value) {
 function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
   const fontSize = options.fontSize || 7;
   const color = options.color || '#202124';
-  const source = String(text || '');
-  const textOptions = { width, height: options.height || 12, ellipsis: true, lineBreak: false };
+  const source = repairMojibake(String(text || ''));
+  const textOptions = { width, height: options.height || 12, ellipsis: true, lineBreak: false, align: options.align };
   if (!source) return;
   const parts = source.split(/\s*\/\s*/);
   if (parts.length > 1 && hasKannadaText(parts[0])) {
@@ -1450,7 +1450,7 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.3, height: 11 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.6, height: 11 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -1484,7 +1484,7 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
 
   for (const slot of date.menuSlots) {
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
-    const rowHeight = Math.max(34, 28 + Math.ceil(Math.max(items.length, 1) / 2) * 12);
+    const rowHeight = Math.max(52, 34 + Math.ceil(Math.max(items.length, 1) / 3) * 13);
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
@@ -1493,13 +1493,14 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       y = 132;
     }
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(slot.type || 'Menu', 52, y + 7, { width: 112 });
     const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 52, y + 22, { width: 112 });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 52, y + 22, { width: 220 });
+    doc.moveTo(52, y + 32).lineTo(543, y + 32).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
     items.forEach((item, index) => {
-      const col = index % 2;
-      const row = Math.floor(index / 2);
-      drawChefMenuItem(doc, item, col === 0 ? 178 : 370, y + 8 + row * 12, 178, fonts, false);
+      const col = index % 3;
+      const row = Math.floor(index / 3);
+      drawChefMenuItem(doc, item, 56 + col * 166, y + 40 + row * 13, 152, fonts, false);
     });
     y += rowHeight + 7;
   }
@@ -1600,10 +1601,10 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
     doc.rect(42, y, 511, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
     doc.fillColor('#111827').font(fonts.bold).fontSize(8)
       .text('', 50, y + 6, { width: 12 })
-      .text('#', 68, y + 6, { width: 22 })
-      .text('Item', 98, y + 6, { width: 246 })
-      .text('Category', 352, y + 6, { width: 104 })
-      .text('Qty', 468, y + 6, { width: 78, align: 'right' });
+      .text('#', 68, y + 6, { width: 38 })
+      .text('Item', 118, y + 6, { width: 224 })
+      .text('Category', 366, y + 6, { width: 92 })
+      .text('Qty', 482, y + 6, { width: 64, align: 'right' });
   }
 
   function drawFooter(pageNo = 1) {
@@ -1631,10 +1632,10 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
     }
     doc.rect(42, y, 511, rowHeight).fill(index % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
     doc.rect(50, y + 8, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.6).text(String(index + 1), 68, y + 7, { width: 22 });
-    drawSingleLineText(doc, item.name || item.itemId, 98, y + 6, 246, fonts, { fontSize: 8.2, height: 13, color: '#111827' });
-    drawSingleLineText(doc, item.category || '-', 352, y + 6, 104, fonts, { fontSize: 7.8, height: 13, color: '#4b5563' });
-    doc.fillColor('#111827').font(fonts.bold).fontSize(8).text([item.quantity, item.unit].filter(Boolean).join(' '), 468, y + 7, { width: 78, align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.8).text(`(${index + 1})`, 68, y + 7, { width: 38 });
+    drawSingleLineText(doc, item.name || item.itemId, 118, y + 6, 224, fonts, { fontSize: 8.2, height: 13, color: '#111827' });
+    drawSingleLineText(doc, item.category || '-', 366, y + 6, 92, fonts, { fontSize: 7.8, height: 13, color: '#4b5563' });
+    drawSingleLineText(doc, [item.quantity, item.unit].filter(Boolean).join(' '), 482, y + 7, 64, fonts, { fontSize: 7.8, height: 13, color: '#111827', align: 'right' });
     y += rowHeight;
   });
   if (materialDocument.items.length === 0) {
