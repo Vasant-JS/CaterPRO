@@ -3475,925 +3475,925 @@
         "id": "RAW-001",
         "name": "ಅರಿಶಿಣ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-002",
         "name": "ಕುಂಕುಮ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-003",
         "name": "ಬಾಸುಮತಿ ಅಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-004",
         "name": "ವಾಸನೆ ಅಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-005",
         "name": "ಗರಂ ಮಸಾಲ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-006",
         "name": "ತೊಗರಿಬೇಳೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-007",
         "name": "ಕಡಲೆ ಬೇಳೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-008",
         "name": "ಉದ್ದಿನ ಬೇಳೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-009",
         "name": "ಹೆಸರು ಬೇಳೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-010",
         "name": "ಹೆಸರು ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-011",
         "name": "ಕಡಲೆ ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-012",
         "name": "ಕಾಬುಲ್ ಕಡಲೆ ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-013",
         "name": "ಬಟಾಣಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-014",
         "name": "ಹುರಿಗಡಲೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-015",
         "name": "ಶೇಂಗಾ ಬೀಜ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-016",
         "name": "ಕೊತ್ತಂಬರಿ ಬೀಜ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-017",
         "name": "ಬ್ಯಾಡಗಿ ಮೆಣಸಿನಕಾಯಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-018",
         "name": "ಗಿಡ್ಡ ಮೆಣಸಿನಕಾಯಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-019",
         "name": "ಜೀರಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-020",
         "name": "ಮೆಂತ್ಯ ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-021",
         "name": "ಸಾಸಿವೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-022",
         "name": "SSP ಇಂಗು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-023",
         "name": "ಲವಂಗ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-024",
         "name": "ಯಾಲಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-025",
         "name": "ಚಕ್ಕೆಮೊಗ್ಗು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-026",
         "name": "ಜಾಯಿಕಾಯಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-027",
         "name": "ಜಾವತ್ರಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-028",
         "name": "ಗಸಗಸೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-029",
         "name": "ಪಲಾವ್ ಎಲೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-030",
         "name": "ಸೋಂಪು ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-031",
         "name": "ಬೇಬಿ ಗೋಡಂಬಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-032",
         "name": "ಮಗಜ್ ಬೀಜ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-033",
         "name": "ಕಲ್ಲಂಗಡಿ ಬೀಜ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-034",
         "name": "ಬಾದಾಮಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-035",
         "name": "ಗೋಡಂಬಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-036",
         "name": "ದ್ರಾಕ್ಷಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-037",
         "name": "ಖರ್ಜೂರ ಸೀಡ್ಲೆಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-038",
         "name": "ಉತ್ತತ್ತಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-039",
         "name": "ಚೆರ್ರಿ ಫ್ರೂಟ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-040",
         "name": "ಚಾರು ಪಪ್ಪು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-041",
         "name": "ಪಿಸ್ತಾ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-042",
         "name": "MTR ಬಾದಾಮ್ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-043",
         "name": "ಮಿಲ್ಕ್ ಮೇಡ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "tin"
       },
       {
         "id": "RAW-044",
         "name": "ಬೆಲ್ಲ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-045",
         "name": "ಸಕ್ಕರೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-046",
         "name": "ಡೈಮಂಡ್ ಸಕ್ಕರೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-047",
         "name": "ಹುಣಸೆಹಣ್ಣು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-048",
         "name": "ಪುಡಿ ಉಪ್ಪು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-049",
         "name": "ಕಲ್ಲು ಉಪ್ಪು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-050",
         "name": "ಜಲ್-ಜಿರ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-051",
         "name": "ಓಮಿನ ಕಾಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-052",
         "name": "ಧನಿಯಾ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-053",
         "name": "ಅಡುಗೆ ಸೋಡಾ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-054",
         "name": "ಅಚ್ಚು ಖಾರದಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-055",
         "name": "ಉದ್ದಿನ ಹಪ್ಪಳ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-056",
         "name": "ಚಿಪ್ಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-057",
         "name": "ಹಪ್ಪಳ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-058",
         "name": "ಸಂಡಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-059",
         "name": "ಕಾರ್ನ್ ಫ್ಲೇಕ್ಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-060",
         "name": "ಕಾರ್ನ್ ಫ್ಲೋರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-061",
         "name": "ಕೊಬ್ಬರಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-062",
         "name": "ಕೊಬ್ಬರಿ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-063",
         "name": "ಕೇಸರಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-064",
         "name": "ಪಚ್ಚಕರ್ಪೂರ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-065",
         "name": "ಎಲ್ಲೋ ಕಲರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-066",
         "name": "ರೆಡ್ ಕಲರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-067",
         "name": "ರೋಸ್ ವಾಟರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-068",
         "name": "ಸ್ವೀಟ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-069",
         "name": "ಜಾಮೂನ್ ಮಿಕ್ಸ್(ಸಾತ್ವಿಕ್)",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-070",
         "name": "ನಂದಿನಿ ತುಪ್ಪ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-071",
         "name": "ರಿಫೈನ್ಡ್ ಆಯಿಲ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "litre"
       },
       {
         "id": "RAW-072",
         "name": "ಶೇಂಗಾ ಎಣ್ಣೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "litre"
       },
       {
         "id": "RAW-073",
         "name": "ಕೊಬ್ಬರಿ ಎಣ್ಣೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "litre"
       },
       {
         "id": "RAW-074",
         "name": "ಡಾಲ್ಡಾ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-075",
         "name": "ಲಿಲ್ಲಿ ಮಾಸ್ಟರ್ ಲೈನ್ಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-076",
         "name": "ನಂದಿನಿ ಬೆಣ್ಣೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-077",
         "name": "ಕಾಶಿ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-078",
         "name": "ಟೀ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-079",
         "name": "ಬೂಸ್ಟ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-080",
         "name": "ಬೋರ್ನ್-ವಿಟ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-081",
         "name": "ಹಾರ್ಲಿಕ್ಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-082",
         "name": "ಹಾಲಿನ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-083",
         "name": "ಗೋಧಿ ಕಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-084",
         "name": "ಪಾಯಸದ ಶಾವಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-085",
         "name": "ಡ್ರ್ಯಾಗನ್ ಶಾವಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-086",
         "name": "ಅನಿಲ್ ಶಾವಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-087",
         "name": "ಸೀಮೆಅಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-088",
         "name": "ನೈಲಾನ್ ಸೀಮೆಅಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-089",
         "name": "ಬಿಳಿ ಎಳ್ಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-090",
         "name": "ಕರಿ ಎಳ್ಳು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-091",
         "name": "ಚಿರೋಟಿ ರವೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-092",
         "name": "ಬೆಂಗಳೂರು ರವೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-093",
         "name": "ಬನ್ಸಿ ರವೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-094",
         "name": "ಇಡ್ಲಿ ರವೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-095",
         "name": "ಅಕ್ಕಿತರಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-096",
         "name": "ಗೋಧಿ ಹಿಟ್ಟು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-097",
         "name": "ಅಕ್ಕಿ ಹಿಟ್ಟು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-098",
         "name": "ಮೈದಾ ಹಿಟ್ಟು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-099",
         "name": "ಕಡಲೆ ಹಿಟ್ಟು",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-100",
         "name": "ಬೆಂಕಿ-ಪೆಟ್ಟಿಗೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "box"
       },
       {
         "id": "RAW-101",
         "name": "ಸಬಿನ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-102",
         "name": "ಸೋಪಿನ ಪುಡಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-103",
         "name": "ದಪ್ಪ ಅವಲಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-104",
         "name": "ಮಿಡಿಯಂ ಅವಲಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-105",
         "name": "ಪೇಪರ್ ಅವಲಕ್ಕಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-106",
         "name": "ಕುರಿ ಸಾಣಿ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-107",
         "name": "ಸೋಯಾ ಸಾಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-108",
         "name": "ಟೊಮೆಟೊ ಕೆಚಪ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-109",
         "name": "ಟೊಮೆಟೊ ಸಾಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-110",
         "name": "ಚಿಲ್ಲಿ ಸಾಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-111",
         "name": "ವಿನಿಗರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "bottle"
       },
       {
         "id": "RAW-112",
         "name": "ಕಸ್ಟರ್ಡ್ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-113",
         "name": "ಟೇಸ್ಟಿಂಗ್ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-114",
         "name": "ಬೇಕಿಂಗ್ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-115",
         "name": "ಕೋಕೋ ಪೌಡರ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-116",
         "name": "ಚಾಟ್ ಮಸಾಲ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-117",
         "name": "ಚನ-ಮಸಾಲ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-118",
         "name": "ಬಿರಿಯಾನಿ ಮಸಾಲೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-119",
         "name": "ವೆಜ್ ಕಬಾಬ್ ಮಸಾಲೆ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "g"
       },
       {
         "id": "RAW-120",
         "name": "ಪನೀರ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-121",
         "name": "ಬೇಬಿ ಕಾರ್ನ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-122",
         "name": "ಸ್ವೀಟ್ ಕಾರ್ನ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       },
       {
         "id": "RAW-123",
         "name": "ಪುನಪುಳಿ ಜ್ಯೂಸ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "litre"
       },
       {
         "id": "RAW-124",
         "name": "ಪೇಪರ್ ರೋಲ್",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "roll"
       },
       {
         "id": "RAW-125",
         "name": "ನೀರಿನ ಲೋಟ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-126",
         "name": "ಲೋಟ",
         "category": "ಕಿರಾಣಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-127",
         "name": "ಜ್ಯೂಸ್ ಲೋಟ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-128",
         "name": "ಕಾಫಿ ಲೋಟ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-129",
         "name": "ಪ್ಲಾಸ್ಟಿಕ್ ರೋಲ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "roll"
       },
       {
         "id": "RAW-130",
         "name": "ಪೇಣಿ ಚಿರೋಟಿ ಪ್ಲೇಟ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-131",
         "name": "ಸೂಪ್ ಬೌಲ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-132",
         "name": "ಸೂಪ್ ಸ್ಪೂನ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-133",
         "name": "ಫ್ರೂಟ್ ಬೌಲ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-134",
         "name": "ಫ್ರೂಟ್ ಸ್ಟಿಕ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-135",
         "name": "ಸ್ಪೂನ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-136",
         "name": "ವೇಟ್ ಟಿಶ್ಯೂ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-137",
         "name": "ನ್ಯಾಪ್ಕಿನ್ಸ್ (ಟಿಶ್ಯೂ)",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-138",
         "name": "ಹೆಡ್ ಕ್ಯಾಪ್ಸ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-139",
         "name": "ಹ್ಯಾಂಡ್ ಗ್ಲೌಸ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-140",
         "name": "ತಾಂಬೂಲ ಕವರ್(ಬಟ್ಟೆಯದ್ದು)",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-141",
         "name": "ತಾಂಬೂಲ ಕವರ್(ಹಣ್ಣಿನದ್ದು)",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-142",
         "name": "ಇಡ್ಲಿ ಕವರ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-143",
         "name": "ಹೋಳಿಗೆ ಹೆಡ್",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-144",
         "name": "ಜಿಪ್ ಲಾಕ್ ಕವರ್ 4/5",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-145",
         "name": "ಜಿಪ್ ಲಾಕ್ ಕವರ್ 5/6",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "pack"
       },
       {
         "id": "RAW-146",
         "name": "ಕಾಟನ್ ಸೋಳೆ ಪರದೆ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-147",
         "name": "ಕೋರಾ ಬಟ್ಟೆ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-148",
         "name": "ಪಾಣಿ ಪಂಚೆ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-149",
         "name": "ಅನ್ನದ ಬುಟ್ಟಿ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-150",
         "name": "ಚಿರೋಟಿ ಬುಟ್ಟಿ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-151",
         "name": "ಕಡ್ಡಿ ಪೊರಕೆ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-152",
         "name": "ಖಾಲಿ ಈರುಳ್ಳಿ ಚೀಲ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-153",
         "name": "ಗೋಣಿ ಚೀಲ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "piece"
       },
       {
         "id": "RAW-154",
         "name": "ಉಪ್ಪಿನ ಕಾಯಿ",
         "category": "ಸಾಮಗ್ರಿ",
-        "unit": "ಪ್ರಮಾಣ"
+        "unit": "kg"
       }
     ],
     "produceItems": [
