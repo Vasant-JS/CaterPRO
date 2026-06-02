@@ -1450,7 +1450,7 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 6.5, height: 11 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.3, height: 11 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -1493,13 +1493,13 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       y = 132;
     }
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(slot.type || 'Menu', 52, y + 7, { width: 150 });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(slot.type || 'Menu', 52, y + 7, { width: 112 });
     const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.4).text(line, 52, y + 21, { width: 150 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 52, y + 22, { width: 112 });
     items.forEach((item, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      drawChefMenuItem(doc, item, col === 0 ? 212 : 384, y + 8 + row * 12, 158, fonts, false);
+      drawChefMenuItem(doc, item, col === 0 ? 178 : 370, y + 8 + row * 12, 178, fonts, false);
     });
     y += rowHeight + 7;
   }
@@ -1574,74 +1574,73 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   const title = materialDocument.type === 'produce' ? 'VEGETABLES & FRUITS' : 'RAW MATERIALS';
   const filePrefix = materialDocument.type === 'produce' ? 'PRODUCE' : 'RAW';
   const number = `${filePrefix}_${event.id}_${materialDocument.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
-  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: `${title} - ${event.name}` } });
+  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: `${title} - ${event.name}` }, autoFirstPage: false });
   const fonts = configurePdfFonts(doc);
-  const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
   doc.pipe(res);
 
   function drawHeader(pageNo = 1) {
-    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#fbf8f1');
-    doc.roundedRect(28, 24, 539, 70, 8).fill(theme.primary);
-    doc.roundedRect(28, 24, 8, 70, 3).fill(theme.secondary);
-    doc.fillColor('white').font(fonts.bold).fontSize(17).text(title, 46, 42, { width: 230 });
-    doc.fillColor('#f6f2df').font(fonts.regular).fontSize(8).text(materialDocument.title || title, 46, 66, { width: 260 });
-    doc.fillColor('white').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Event', 320, 40, { width: 210, align: 'right' });
-    doc.fillColor('#f6f2df').font(fonts.regular).fontSize(7.5)
-      .text(event.name || 'Untitled Event', 320, 58, { width: 210, align: 'right' })
-      .text(`${prettyDate(new Date().toISOString().slice(0, 10))} | Page ${pageNo}`, 320, 76, { width: 210, align: 'right' });
+    doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+    doc.fillColor('#111827').font(fonts.bold).fontSize(16).text(title, 42, 36, { width: 220 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+      .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
+    doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
+    doc.fillColor('#374151').font(fonts.regular).fontSize(8)
+      .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
+      .text(`Venue: ${event.venue || '-'}`, 42, 108, { width: 240 })
+      .text(`Document: ${materialDocument.title || title}`, 330, 78, { width: 220, align: 'right' })
+      .text(`Generated: ${prettyDate(new Date().toISOString().slice(0, 10))}`, 330, 94, { width: 220, align: 'right' })
+      .text(`${materialDocument.items.length} items`, 330, 108, { width: 220, align: 'right' });
+    doc.moveTo(42, 128).lineTo(553, 128).strokeColor('#d1d5db').lineWidth(0.6).stroke();
   }
 
   function drawTableHeader(y) {
-    doc.rect(36, y, 522, 18).fill(theme.secondary).strokeColor('#8a6b18').lineWidth(0.5).stroke();
-    const groups = [36, 210, 384];
-    groups.forEach((x) => {
-      doc.rect(x, y, 174, 18).strokeColor('#8a6b18').lineWidth(0.5).stroke();
-      doc.fillColor('#3b2a00').font(fonts.bold).fontSize(7)
-        .text('#', x + 5, y + 5, { width: 18 })
-        .text('Item', x + 25, y + 5, { width: 98 })
-        .text('Qty', x + 125, y + 5, { width: 42, align: 'right' });
-    });
+    doc.rect(42, y, 511, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(8)
+      .text('', 50, y + 6, { width: 12 })
+      .text('#', 68, y + 6, { width: 22 })
+      .text('Item', 98, y + 6, { width: 246 })
+      .text('Category', 352, y + 6, { width: 104 })
+      .text('Qty', 468, y + 6, { width: 78, align: 'right' });
   }
 
-  drawHeader();
-  doc.roundedRect(36, 110, 523, 38, 6).fill(theme.soft);
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(event.venue || 'Event requirements', 50, 120, { width: 290 });
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8).text([event.mobile, businessProfile.businessName].filter(Boolean).join(' | '), 50, 134, { width: 290 });
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(`${materialDocument.items.length} items`, 430, 124, { width: 90, align: 'right' });
+  function drawFooter(pageNo = 1) {
+    doc.moveTo(42, 780).lineTo(553, 780).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
+    doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
+  }
 
+  doc.addPage();
+  drawHeader();
   let pageNo = 1;
-  let y = 166;
+  let y = 144;
   drawTableHeader(y);
-  y += 18;
-  const groupWidth = 174;
-  const rowHeight = 22;
-  const rows = Math.ceil(materialDocument.items.length / 3);
-  for (let rowIndex = 0; rowIndex < rows; rowIndex += 1) {
-    if (y + rowHeight > 792) {
-      doc.fillColor('#9a7c25').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 36, 788, { width: 220, lineBreak: false });
+  y += 20;
+  const rowHeight = 24;
+  materialDocument.items.forEach((item, index) => {
+    if (y + rowHeight > 772) {
+      drawFooter(pageNo);
       doc.addPage();
       pageNo += 1;
       drawHeader(pageNo);
-      y = 116;
+      y = 144;
       drawTableHeader(y);
-      y += 18;
+      y += 20;
     }
-    const shaded = rowIndex % 2 === 0;
-    for (let col = 0; col < 3; col += 1) {
-      const index = rowIndex * 3 + col;
-      const item = materialDocument.items[index];
-      const x = 36 + col * groupWidth;
-      doc.rect(x, y, groupWidth, rowHeight).fill(shaded ? '#ffffff' : '#f6f0e4').strokeColor('#8f9aa3').lineWidth(0.45).stroke();
-      if (!item) continue;
-      doc.fillColor(theme.muted).font(fonts.regular).fontSize(6.8).text(String(index + 1), x + 5, y + 7, { width: 16 });
-      drawSingleLineText(doc, item.name || item.itemId, x + 25, y + 5, 96, fonts, { fontSize: 7.1, height: 12, color: theme.ink });
-      doc.fillColor(theme.primary).font(fonts.bold).fontSize(7.2).text([item.quantity, item.unit].filter(Boolean).join(' '), x + 125, y + 6, { width: 42, align: 'right' });
-    }
+    doc.rect(42, y, 511, rowHeight).fill(index % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
+    doc.rect(50, y + 8, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.6).text(String(index + 1), 68, y + 7, { width: 22 });
+    drawSingleLineText(doc, item.name || item.itemId, 98, y + 6, 246, fonts, { fontSize: 8.2, height: 13, color: '#111827' });
+    drawSingleLineText(doc, item.category || '-', 352, y + 6, 104, fonts, { fontSize: 7.8, height: 13, color: '#4b5563' });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(8).text([item.quantity, item.unit].filter(Boolean).join(' '), 468, y + 7, { width: 78, align: 'right' });
     y += rowHeight;
+  });
+  if (materialDocument.items.length === 0) {
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(10).text('No items added.', 42, y + 14);
   }
-  doc.fillColor('#9a7c25').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 36, 788, { width: 220, lineBreak: false });
+  drawFooter(pageNo);
   doc.end();
 }
 
