@@ -42,7 +42,7 @@ class _LoginScreenState extends State<LoginScreen> {
           .pushReplacement(MaterialPageRoute(builder: (_) => const AppShell()));
     } catch (e) {
       if (!mounted) return;
-      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+      setState(() => error = friendlyNetworkMessage(e));
     } finally {
       if (mounted) setState(() => loading = false);
     }
@@ -202,4 +202,15 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+}
+
+String friendlyNetworkMessage(Object error) {
+  final message = error.toString().replaceFirst('Exception: ', '');
+  if (message.contains('SocketException') ||
+      message.contains('Failed host lookup') ||
+      message.contains('No address associated with hostname') ||
+      message.contains('ClientException')) {
+    return 'Unable to reach CaterPro live backend. Check internet connection and try again.';
+  }
+  return message;
 }

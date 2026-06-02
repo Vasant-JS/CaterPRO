@@ -51,18 +51,33 @@ class _CaterProAppState extends State<CaterProApp> {
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
-            brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xff111417),
+            brightness: Brightness.light,
+            scaffoldBackgroundColor: Cp.background,
             colorScheme: ColorScheme.fromSeed(
-              seedColor: Cp.primaryFixed,
-              brightness: Brightness.dark,
-              primary: Cp.primaryFixed,
+              seedColor: Cp.primary,
+              brightness: Brightness.light,
+              primary: Cp.primary,
               secondary: Cp.secondaryContainer,
-              error: Cp.errorContainer,
+              surface: Cp.surface,
+              error: Cp.error,
+            ),
+            inputDecorationTheme: InputDecorationTheme(
+              labelStyle: const TextStyle(color: Cp.onVariant),
+              floatingLabelStyle: const TextStyle(color: Cp.primary),
+              prefixIconColor: Cp.onVariant,
+              suffixIconColor: Cp.onVariant,
+              filled: true,
+              fillColor: Cp.card,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            checkboxTheme: CheckboxThemeData(
+              fillColor: WidgetStateProperty.resolveWith((states) =>
+                  states.contains(WidgetState.selected) ? Cp.primary : Cp.card),
+              checkColor: WidgetStateProperty.all(Colors.white),
             ),
             textTheme: textTheme.apply(
-                bodyColor: const Color(0xfff4f6f8),
-                displayColor: const Color(0xfff4f6f8)),
+                bodyColor: Cp.onSurface, displayColor: Cp.onSurface),
           ),
           home: const AuthGate(),
         );
