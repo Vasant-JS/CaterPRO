@@ -98,6 +98,15 @@ class _LoginScreenState extends State<LoginScreen> {
       loading = true;
       error = null;
     });
+    if (!biometricEnabled) {
+      if (!mounted) return;
+      setState(() {
+        loading = false;
+        error =
+            'Login with password once, then confirm fingerprint to enable fingerprint login.';
+      });
+      return;
+    }
     final session = await authService.savedSession();
     if (session == null) {
       await biometricService.setEnabled(false);
@@ -256,10 +265,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               label: Text(loading ? 'Logging in...' : 'Login',
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w900)))),
-                      if (!checkingBiometric &&
-                          biometricSupported &&
-                          biometricEnabled &&
-                          hasSavedSession) ...[
+                      if (!checkingBiometric && biometricSupported) ...[
                         const SizedBox(height: 14),
                         SizedBox(
                           width: double.infinity,
@@ -267,7 +273,10 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: OutlinedButton.icon(
                             onPressed: loading ? null : fingerprintLogin,
                             icon: const Icon(Icons.fingerprint, size: 28),
-                            label: const Text('Login with Fingerprint',
+                            label: Text(
+                                biometricEnabled && hasSavedSession
+                                    ? 'Login with Fingerprint'
+                                    : 'Set up Fingerprint Login',
                                 style: TextStyle(fontWeight: FontWeight.w900)),
                           ),
                         ),

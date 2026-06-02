@@ -1625,8 +1625,8 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   function drawMaterialCell(item, serial, x, y, width) {
     const qtyText = [item.quantity, item.unit].filter(Boolean).join(' ');
     const serialText = `(${serial})`;
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8.4).text(serialText, x + 8, y + 7, { width: 26, lineBreak: false });
-    drawSingleLineText(doc, item.name || item.itemId, x + 36, y + 6, width - 84, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8.4).text(serialText, x + 7, y + 7, { width: 22, lineBreak: false });
+    drawSingleLineText(doc, item.name || item.itemId, x + 29, y + 6, width - 77, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
     drawSingleLineText(doc, qtyText, x + width - 44, y + 6, 34, fonts, { fontSize: 8.4, height: 14, color: '#111827', align: 'right' });
   }
 
@@ -1763,6 +1763,23 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/forgot-password', (req, res) => {
   res.json({ message: `Password reset requested for ${req.body.email || 'unknown email'}` });
+});
+
+app.post('/api/auth/change-password', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const oldPassword = String(req.body.oldPassword || '');
+  const newPassword = String(req.body.newPassword || '');
+  if (user.password !== oldPassword) {
+    return res.status(400).json({ message: 'Old password is incorrect' });
+  }
+  if (newPassword.length < 4) {
+    return res.status(400).json({ message: 'New password must be at least 4 characters' });
+  }
+  user.password = newPassword;
+  writeDb(db);
+  res.json({ message: 'Password updated' });
 });
 
 app.post('/api/dev/reset-user-data', (req, res) => {

@@ -98,6 +98,111 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  Future<void> showResetPasswordDialog(BuildContext context) async {
+    final oldPassword = TextEditingController();
+    final newPassword = TextEditingController();
+    final confirmPassword = TextEditingController();
+    var saving = false;
+    String? error;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Reset Password'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: oldPassword,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Old Password',
+                      prefixIcon: Icon(Icons.lock_outline)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: newPassword,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText: 'New Password',
+                      prefixIcon: Icon(Icons.password)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmPassword,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                      labelText: 'Confirm New Password',
+                      prefixIcon: Icon(Icons.verified_user_outlined)),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(error!,
+                      style: TextStyle(
+                          color: cpAdaptTextColor(dialogContext, Cp.error),
+                          fontWeight: FontWeight.w800)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel')),
+              FilledButton(
+                onPressed: saving
+                    ? null
+                    : () async {
+                        final next = newPassword.text;
+                        if (oldPassword.text.isEmpty) {
+                          setDialogState(
+                              () => error = 'Enter your old password.');
+                          return;
+                        }
+                        if (next.length < 4) {
+                          setDialogState(() => error =
+                              'New password must be at least 4 characters.');
+                          return;
+                        }
+                        if (next != confirmPassword.text) {
+                          setDialogState(
+                              () => error = 'New passwords do not match.');
+                          return;
+                        }
+                        setDialogState(() {
+                          saving = true;
+                          error = null;
+                        });
+                        try {
+                          await AuthService().changePassword(
+                              oldPassword: oldPassword.text, newPassword: next);
+                          if (dialogContext.mounted) {
+                            Navigator.pop(dialogContext);
+                          }
+                          if (context.mounted) {
+                            showCpSnack(context, 'Password updated');
+                          }
+                        } catch (e) {
+                          setDialogState(() {
+                            saving = false;
+                            error =
+                                e.toString().replaceFirst('Exception: ', '');
+                          });
+                        }
+                      },
+                child: Text(saving ? 'Saving...' : 'Save'),
+              )
+            ],
+          ),
+        ),
+      );
+    } finally {
+      oldPassword.dispose();
+      newPassword.dispose();
+      confirmPassword.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenFrame(
@@ -160,11 +265,13 @@ class SettingsScreen extends StatelessWidget {
         SettingsGroup(title: t('Preferences'), items: [
           (Icons.description, 'Invoice Settings'),
           (Icons.notifications_active, 'Notifications'),
-          (Icons.light_mode, 'App Appearance')
+          (Icons.light_mode, 'App Appearance'),
+          (Icons.lock_reset, 'Reset Password')
         ], onItemTap: {
           'Invoice Settings': openInvoiceSettings,
           'Notifications': openNotifications,
           'App Appearance': openAppAppearance,
+          'Reset Password': () => unawaited(showResetPasswordDialog(context)),
         }),
         SettingsGroup(title: t('Data'), items: [
           (Icons.file_download, 'Export Data'),

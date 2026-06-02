@@ -713,6 +713,33 @@ class AuthService {
     );
   }
 
+  Future<void> changePassword(
+      {required String oldPassword, required String newPassword}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/auth/change-password'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
+      body:
+          jsonEncode({'oldPassword': oldPassword, 'newPassword': newPassword}),
+    );
+    if (response.statusCode != 200) {
+      var message = 'Unable to reset password';
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic> && decoded['message'] != null) {
+          message = decoded['message'].toString();
+        }
+      } catch (_) {
+        if (response.body.trim().isNotEmpty) message = response.body.trim();
+      }
+      throw Exception(message);
+    }
+  }
+
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('auth.token');
@@ -730,9 +757,10 @@ class BiometricAuthService {
     try {
       final deviceSupported = await _auth.isDeviceSupported();
       final canCheck = await _auth.canCheckBiometrics;
-      if (!deviceSupported || !canCheck) return false;
+      if (!deviceSupported && !canCheck) return false;
       final biometrics = await _auth.getAvailableBiometrics();
-      return biometrics.contains(BiometricType.fingerprint) ||
+      return canCheck ||
+          biometrics.contains(BiometricType.fingerprint) ||
           biometrics.contains(BiometricType.strong) ||
           biometrics.contains(BiometricType.weak);
     } catch (_) {
