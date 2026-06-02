@@ -1698,7 +1698,11 @@ class ApiService {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
     return Uri.parse('${ApiConfig.baseUrl}/attendance/monthly.pdf')
-        .replace(queryParameters: {'token': token, 'month': month});
+        .replace(queryParameters: {
+      'token': token,
+      'month': month,
+      'ts': DateTime.now().millisecondsSinceEpoch.toString()
+    });
   }
 
   Future<List<CustomMenu>> getCustomMenus() async {

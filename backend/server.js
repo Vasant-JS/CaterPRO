@@ -1587,33 +1587,36 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   const title = materialDocument.type === 'produce' ? 'VEGETABLES & FRUITS' : 'RAW MATERIALS';
   const filePrefix = materialDocument.type === 'produce' ? 'PRODUCE' : 'RAW';
   const number = `${filePrefix}_${event.id}_${materialDocument.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
-  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: `${title} - ${event.name}` }, autoFirstPage: false });
+  const doc = new PDFDocument({ size: 'A4', margin: 18, info: { Title: `${title} - ${event.name}` }, autoFirstPage: false });
   const fonts = configurePdfFonts(doc);
+  const pageX = 30;
+  const pageW = 535;
+  const cellGap = 8;
+  const cellWidth = (pageW - cellGap * 2) / 3;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
   doc.pipe(res);
 
   function drawHeader(pageNo = 1) {
     doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
-    doc.fillColor('#111827').font(fonts.bold).fontSize(16).text(title, 42, 36, { width: 220 });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(16).text(title, pageX, 36, { width: 240 });
     doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
-      .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
-    doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
+      .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 350, 39, { width: 215, align: 'right' });
+    doc.moveTo(pageX, 62).lineTo(pageX + pageW, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', pageX, 78, { width: 230 });
     doc.fillColor('#374151').font(fonts.regular).fontSize(8)
-      .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
-      .text(`Venue: ${event.venue || '-'}`, 42, 108, { width: 240 })
-      .text(`Document: ${materialDocument.title || title}`, 330, 78, { width: 220, align: 'right' })
-      .text(`Generated: ${prettyDate(new Date().toISOString().slice(0, 10))}`, 330, 94, { width: 220, align: 'right' })
-      .text(`${materialDocument.items.length} items`, 330, 108, { width: 220, align: 'right' });
-    doc.moveTo(42, 128).lineTo(553, 128).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+      .text(`Event: ${event.name || '-'}`, pageX, 94, { width: 250 })
+      .text(`Venue: ${event.venue || '-'}`, pageX, 108, { width: 250 })
+      .text(`Document: ${materialDocument.title || title}`, 350, 78, { width: 215, align: 'right' })
+      .text(`Generated: ${prettyDate(new Date().toISOString().slice(0, 10))}`, 350, 94, { width: 215, align: 'right' })
+      .text(`${materialDocument.items.length} items`, 350, 108, { width: 215, align: 'right' });
+    doc.moveTo(pageX, 128).lineTo(pageX + pageW, 128).strokeColor('#d1d5db').lineWidth(0.6).stroke();
   }
 
   function drawTableHeader(y) {
-    const cellWidth = (511 - 16) / 3;
-    doc.rect(42, y, 511, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    [42, 42 + cellWidth + 8, 42 + (cellWidth + 8) * 2].forEach((x) => {
-      doc.fillColor('#111827').font(fonts.bold).fontSize(8)
+    doc.rect(pageX, y, pageW, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    [pageX, pageX + cellWidth + cellGap, pageX + (cellWidth + cellGap) * 2].forEach((x) => {
+      doc.fillColor('#111827').font(fonts.bold).fontSize(9)
         .text('Item', x + 10, y + 6, { width: cellWidth - 54 })
         .text('Qty', x + cellWidth - 44, y + 6, { width: 34, align: 'right' });
     });
@@ -1622,15 +1625,15 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   function drawMaterialCell(item, serial, x, y, width) {
     const qtyText = [item.quantity, item.unit].filter(Boolean).join(' ');
     const serialText = `(${serial})`;
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(7.6).text(serialText, x + 8, y + 7, { width: 24, lineBreak: false });
-    drawSingleLineText(doc, item.name || item.itemId, x + 34, y + 6, width - 82, fonts, { fontSize: 8.1, height: 13, color: '#111827' });
-    drawSingleLineText(doc, qtyText, x + width - 44, y + 6, 34, fonts, { fontSize: 7.6, height: 13, color: '#111827', align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8.4).text(serialText, x + 8, y + 7, { width: 26, lineBreak: false });
+    drawSingleLineText(doc, item.name || item.itemId, x + 36, y + 6, width - 84, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
+    drawSingleLineText(doc, qtyText, x + width - 44, y + 6, 34, fonts, { fontSize: 8.4, height: 14, color: '#111827', align: 'right' });
   }
 
   function drawFooter(pageNo = 1) {
-    doc.moveTo(42, 780).lineTo(553, 780).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
-    doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
+    doc.moveTo(pageX, 780).lineTo(pageX + pageW, 780).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', pageX, 788, { width: 220, lineBreak: false });
+    doc.text(`Page ${pageNo}`, 483, 788, { width: 82, align: 'right', lineBreak: false });
   }
 
   doc.addPage();
@@ -1639,9 +1642,7 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
   let y = 144;
   drawTableHeader(y);
   y += 20;
-  const rowHeight = 25;
-  const cellGap = 8;
-  const cellWidth = (511 - cellGap * 2) / 3;
+  const rowHeight = 27;
   for (let rowStart = 0; rowStart < materialDocument.items.length; rowStart += 3) {
     if (y + rowHeight > 772) {
       drawFooter(pageNo);
@@ -1653,20 +1654,20 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
       y += 20;
     }
     const rowIndex = Math.floor(rowStart / 3);
-    doc.rect(42, y, 511, rowHeight).fill(rowIndex % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
+    doc.rect(pageX, y, pageW, rowHeight).fill(rowIndex % 2 === 0 ? '#ffffff' : '#fbfbfb').strokeColor('#d1d5db').lineWidth(0.45).stroke();
     for (let col = 1; col <= 2; col += 1) {
-      const lineX = 42 + col * cellWidth + (col - 0.5) * cellGap;
+      const lineX = pageX + col * cellWidth + (col - 0.5) * cellGap;
       doc.moveTo(lineX, y).lineTo(lineX, y + rowHeight).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
     }
     for (let col = 0; col < 3; col += 1) {
       const item = materialDocument.items[rowStart + col];
       if (!item) continue;
-      drawMaterialCell(item, rowStart + col + 1, 42 + col * (cellWidth + cellGap), y, cellWidth);
+      drawMaterialCell(item, rowStart + col + 1, pageX + col * (cellWidth + cellGap), y, cellWidth);
     }
     y += rowHeight;
   }
   if (materialDocument.items.length === 0) {
-    doc.fillColor('#6b7280').font(fonts.regular).fontSize(10).text('No items added.', 42, y + 14);
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(10).text('No items added.', pageX, y + 14);
   }
   drawFooter(pageNo);
   doc.end();

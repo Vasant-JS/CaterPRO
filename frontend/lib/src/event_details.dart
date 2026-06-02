@@ -525,16 +525,78 @@ class EventTeamSection extends StatefulWidget {
 
 class _EventTeamSectionState extends State<EventTeamSection> {
   late Future<List<AttendanceRecord>> attendanceFuture;
+  List<AttendanceRecord> attendanceRecords = [];
 
   @override
   void initState() {
     super.initState();
-    attendanceFuture = widget.api.getAttendance(eventId: widget.event.id);
+    attendanceFuture = loadAttendance();
+  }
+
+  @override
+  void didUpdateWidget(covariant EventTeamSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.event.id != widget.event.id) {
+      attendanceRecords = [];
+      attendanceFuture = loadAttendance();
+    }
   }
 
   void reloadAttendance() {
     setState(() {
-      attendanceFuture = widget.api.getAttendance(eventId: widget.event.id);
+      attendanceFuture = loadAttendance();
+    });
+  }
+
+  Future<List<AttendanceRecord>> loadAttendance() async {
+    final records = await widget.api.getAttendance(eventId: widget.event.id);
+    if (mounted) attendanceRecords = records;
+    return records;
+  }
+
+  void upsertLocalAttendance(AttendanceRecord record) {
+    final next = [...attendanceRecords];
+    final index = next.indexWhere((item) =>
+        item.employeeId == record.employeeId &&
+        item.eventId == record.eventId &&
+        item.date == record.date);
+    if (index == -1) {
+      next.add(record);
+    } else {
+      next[index] = record;
+    }
+    setState(() {
+      attendanceRecords = next;
+      attendanceFuture = Future.value(next);
+    });
+  }
+
+  void markAssignedEmployeesPresentLocally(AppEvent event) {
+    final next = [...attendanceRecords];
+    for (final assignment in event.employeeAssignments) {
+      for (final date in event.dates) {
+        if (date.date.isEmpty) continue;
+        final exists = next.any((record) =>
+            record.employeeId == assignment.employeeId &&
+            record.eventId == event.id &&
+            record.date == date.date);
+        if (exists) continue;
+        next.add(AttendanceRecord(
+            id: 'local-${event.id}-${assignment.employeeId}-${date.date}',
+            employeeId: assignment.employeeId,
+            employeeName: assignment.employeeName,
+            eventId: event.id,
+            eventName: event.name,
+            date: date.date,
+            status: 'present',
+            hours: 8,
+            payPerDay: assignment.payPerDay,
+            payPerHour: assignment.payPerHour));
+      }
+    }
+    setState(() {
+      attendanceRecords = next;
+      attendanceFuture = Future.value(next);
     });
   }
 
@@ -597,7 +659,13 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                                   widget.event.id, assignments);
                           if (mounted) {
                             widget.onEventUpdated(saved);
-                            reloadAttendance();
+                            markAssignedEmployeesPresentLocally(saved);
+                            unawaited(loadAttendance().then((records) {
+                              if (mounted) {
+                                setState(() =>
+                                    attendanceFuture = Future.value(records));
+                              }
+                            }));
                             Navigator.of(this.context).pop();
                             showCpSnack(this.context,
                                 'Employees assigned and marked present');
@@ -633,8 +701,8 @@ class _EventTeamSectionState extends State<EventTeamSection> {
         existing: existing,
         onSave: (record) async {
           try {
-            await widget.api.saveAttendance(record);
-            reloadAttendance();
+            final saved = await widget.api.saveAttendance(record);
+            upsertLocalAttendance(saved);
           } catch (error) {
             if (mounted) {
               showCpSnack(this.context,
@@ -677,7 +745,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
         FutureBuilder<List<AttendanceRecord>>(
           future: attendanceFuture,
           builder: (context, snapshot) {
-            final records = snapshot.data ?? const <AttendanceRecord>[];
+            final records = snapshot.data ?? attendanceRecords;
             AttendanceRecord? findRecord(Employee employee, String date) =>
                 records
                     .where((record) =>

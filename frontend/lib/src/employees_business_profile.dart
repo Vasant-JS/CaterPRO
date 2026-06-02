@@ -451,6 +451,10 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
   }
 
   Future<void> download() async {
+    final freshRecords = await widget.api.getAttendance(month: month);
+    if (mounted) {
+      setState(() => recordsFuture = Future.value(freshRecords));
+    }
     final uri = await widget.api.attendancePdfUri(month);
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
