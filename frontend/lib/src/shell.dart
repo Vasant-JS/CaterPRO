@@ -787,10 +787,10 @@ class CpCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final actualColor = color == Cp.card ? scheme.surface : color;
-    final actualBorder =
-        borderColor ?? scheme.outlineVariant.withValues(alpha: .45);
+    final actualColor = cpAdaptSurfaceColor(context, color);
+    final actualBorder = borderColor == null
+        ? cpOutlineVariant(context)
+        : cpAdaptTextColor(context, borderColor!);
     final shadowAlpha =
         Theme.of(context).brightness == Brightness.dark ? .18 : .04;
     final card = Container(
@@ -828,11 +828,8 @@ class Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final actualColor =
-        color == Cp.surfaceHigh ? scheme.surfaceContainerHighest : color;
-    final actualTextColor =
-        textColor == Cp.onVariant ? scheme.onSurfaceVariant : textColor;
+    final actualColor = cpAdaptSurfaceColor(context, color);
+    final actualTextColor = cpAdaptTextColor(context, textColor);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -948,16 +945,19 @@ class ScreenFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        topBar,
-        Expanded(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
-            children: children,
+    return ColoredBox(
+      color: cpSurface(context),
+      child: Column(
+        children: [
+          topBar,
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+              children: children,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

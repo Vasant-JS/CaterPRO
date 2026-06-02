@@ -71,11 +71,15 @@ class _BillingScreenState extends State<BillingScreen> {
 
   Widget tabChip(int index, String label, int count) {
     final selected = selectedTab == index;
+    final selectedColor =
+        cpDark(context) ? cpPrimary(context) : Cp.primaryContainer;
     return ChoiceChip(
       selected: selected,
-      selectedColor: Cp.primaryContainer,
+      selectedColor: selectedColor,
       labelStyle: TextStyle(
-          color: selected ? Colors.white : Cp.onVariant,
+          color: selected
+              ? (cpDark(context) ? const Color(0xff00263d) : Colors.white)
+              : cpOnVariant(context),
           fontWeight: FontWeight.w900),
       label: Text('$label ($count)'),
       onSelected: (_) => setState(() => selectedTab = index),
@@ -890,28 +894,31 @@ class BillingSummaryCell extends StatelessWidget {
   Widget build(BuildContext context) => CpCard(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: Row(children: [
-          Container(
-              width: 34,
-              height: 34,
-              decoration: BoxDecoration(
-                  color: color.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(10)),
-              child: Icon(icon, color: color, size: 19)),
+          Builder(builder: (context) {
+            final accent = cpAdaptTextColor(context, color);
+            return Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .14),
+                    borderRadius: BorderRadius.circular(10)),
+                child: Icon(icon, color: accent, size: 19));
+          }),
           const SizedBox(width: 10),
           Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(label,
-                    style: const TextStyle(
-                        color: Cp.onVariant,
+                    style: TextStyle(
+                        color: cpOnVariant(context),
                         fontSize: 11,
                         fontWeight: FontWeight.w800)),
                 Text(value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        color: color,
+                        color: cpAdaptTextColor(context, color),
                         fontSize: 16,
                         fontWeight: FontWeight.w900))
               ])),
@@ -940,77 +947,82 @@ class BillingDocumentCard extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: CpCard(
-          onTap: onTap,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Icon(icon, color: Cp.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(title,
-                        style: const TextStyle(
-                            color: Cp.primary,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900)),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            color: Cp.onVariant, fontWeight: FontWeight.w700)),
-                    Text(code,
-                        style: const TextStyle(
-                            color: Cp.outline,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800))
-                  ])),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                Pill(status,
-                    color: statusColor.withValues(alpha: .14),
-                    textColor: statusColor),
-                IconButton(
-                    onPressed: onDownload,
-                    icon: const Icon(Icons.download, color: Cp.primary),
-                    tooltip: 'Download'),
-              ]),
-            ]),
-            const Divider(height: 22),
-            Row(children: [
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(amountLabel,
-                        style: const TextStyle(
-                            color: Cp.outline,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800)),
-                    Text(amount,
-                        style: const TextStyle(
-                            color: Cp.primary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900))
-                  ])),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                    const Text('Date',
-                        style: TextStyle(
-                            color: Cp.outline,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800)),
-                    Text(dateLabel,
-                        textAlign: TextAlign.right,
-                        style: const TextStyle(fontWeight: FontWeight.w800))
-                  ])),
+  Widget build(BuildContext context) {
+    final accent = cpPrimary(context);
+    final muted = cpOnVariant(context);
+    final outline = cpOutline(context);
+    final statusAccent = cpAdaptTextColor(context, statusColor);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        onTap: onTap,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(icon, color: accent),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900)),
+                  Text(subtitle,
+                      style:
+                          TextStyle(color: muted, fontWeight: FontWeight.w700)),
+                  Text(code,
+                      style: TextStyle(
+                          color: outline,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800))
+                ])),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              Pill(status,
+                  color: statusAccent.withValues(alpha: .14),
+                  textColor: statusAccent),
+              IconButton(
+                  onPressed: onDownload,
+                  icon: Icon(Icons.download, color: accent),
+                  tooltip: 'Download'),
             ]),
           ]),
-        ),
-      );
+          const Divider(height: 22),
+          Row(children: [
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(amountLabel,
+                      style: TextStyle(
+                          color: outline,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                  Text(amount,
+                      style: TextStyle(
+                          color: accent,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900))
+                ])),
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                  Text('Date',
+                      style: TextStyle(
+                          color: outline,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800)),
+                  Text(dateLabel,
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontWeight: FontWeight.w800))
+                ])),
+          ]),
+        ]),
+      ),
+    );
+  }
 }
 
 class BillingDocumentDetailsScreen extends StatelessWidget {

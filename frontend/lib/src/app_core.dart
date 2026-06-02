@@ -416,6 +416,65 @@ class Cp {
   static const errorContainer = Color(0xffffdad6);
 }
 
+bool cpDark(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark;
+
+Color cpSurface(BuildContext context) =>
+    cpDark(context) ? const Color(0xff101826) : Cp.surface;
+
+Color cpCard(BuildContext context) =>
+    cpDark(context) ? const Color(0xff172231) : Cp.card;
+
+Color cpSurfaceLow(BuildContext context) =>
+    cpDark(context) ? const Color(0xff1b2838) : Cp.surfaceLow;
+
+Color cpSurfaceHigh(BuildContext context) =>
+    cpDark(context) ? const Color(0xff243244) : Cp.surfaceHigh;
+
+Color cpPrimary(BuildContext context) =>
+    cpDark(context) ? const Color(0xff8bd3ff) : Cp.primary;
+
+Color cpOnSurface(BuildContext context) =>
+    cpDark(context) ? const Color(0xfff4f7fb) : Cp.onSurface;
+
+Color cpOnVariant(BuildContext context) =>
+    cpDark(context) ? const Color(0xffb8c4d2) : Cp.onVariant;
+
+Color cpOutline(BuildContext context) =>
+    cpDark(context) ? const Color(0xff718096) : Cp.outline;
+
+Color cpOutlineVariant(BuildContext context) =>
+    cpDark(context) ? const Color(0xff344155) : Cp.outlineVariant;
+
+Color cpAdaptSurfaceColor(BuildContext context, Color color) {
+  if (!cpDark(context)) return color;
+  if (color == Cp.card || color == Cp.surface) return cpCard(context);
+  if (color == Cp.surfaceLow) return cpSurfaceLow(context);
+  if (color == Cp.surfaceHigh) return cpSurfaceHigh(context);
+  if (color == Cp.primaryFixed) return const Color(0xff173a52);
+  if (color == Cp.secondaryFixed) return const Color(0xff4b3419);
+  if (color == Cp.tertiaryFixed) return const Color(0xff173d2a);
+  if (color == Cp.errorContainer || color == const Color(0xffffebeb)) {
+    return const Color(0xff3b1f24);
+  }
+  return color;
+}
+
+Color cpAdaptTextColor(BuildContext context, Color color) {
+  if (!cpDark(context)) return color;
+  if (color == Cp.primary || color == Cp.primaryContainer) {
+    return cpPrimary(context);
+  }
+  if (color == Cp.onSurface) return cpOnSurface(context);
+  if (color == Cp.onVariant || color == Cp.outline) return cpOnVariant(context);
+  if (color == Cp.secondary) return const Color(0xffffc56f);
+  if (color == Cp.tertiary || color == Cp.tertiaryContainer) {
+    return const Color(0xff70e6a0);
+  }
+  if (color == Cp.error) return const Color(0xffffb4ab);
+  return color;
+}
+
 class AdditionalServiceItem {
   const AdditionalServiceItem(
       {required this.id,

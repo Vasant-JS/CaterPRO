@@ -128,7 +128,7 @@ class SettingsScreen extends StatelessWidget {
                 businessProfile.serviceType.isEmpty
                     ? 'Add your business details'
                     : businessProfile.serviceType,
-                style: const TextStyle(color: Cp.onVariant)),
+                style: TextStyle(color: cpOnVariant(context))),
           ]),
         ),
         const SizedBox(height: 20),
@@ -185,8 +185,9 @@ class SettingsScreen extends StatelessWidget {
               Expanded(
                   child: Text(
                       'Auto sync runs every 1 minute. Last sync: ${lastSyncedAt == null ? 'not yet' : '${lastSyncedAt!.hour.toString().padLeft(2, '0')}:${lastSyncedAt!.minute.toString().padLeft(2, '0')}'}',
-                      style: const TextStyle(
-                          color: Cp.primary, fontWeight: FontWeight.w800))),
+                      style: TextStyle(
+                          color: cpPrimary(context),
+                          fontWeight: FontWeight.w800))),
             ])),
         const SizedBox(height: 16),
         Center(
@@ -231,20 +232,22 @@ class SettingsGroup extends StatelessWidget {
         Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 8),
             child: Text(title,
-                style: const TextStyle(
-                    color: Cp.primary, fontWeight: FontWeight.w800))),
+                style: TextStyle(
+                    color: cpPrimary(context), fontWeight: FontWeight.w800))),
         Material(
-          color: Cp.surfaceLow,
+          color: cpSurfaceLow(context),
           borderRadius: BorderRadius.circular(12),
           child: Column(
               children: List.generate(items.length, (i) {
             final label = items[i].$2;
             return ListTile(
               onTap: onItemTap[label] ?? () => fallback(label),
-              leading: Icon(items[i].$1, color: Cp.onVariant),
+              leading: Icon(items[i].$1, color: cpOnVariant(context)),
               title: Text(t(label),
-                  style: const TextStyle(fontWeight: FontWeight.w700)),
-              trailing: const Icon(Icons.chevron_right, color: Cp.outline),
+                  style: TextStyle(
+                      color: cpOnSurface(context),
+                      fontWeight: FontWeight.w700)),
+              trailing: Icon(Icons.chevron_right, color: cpOutline(context)),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12)),
             );

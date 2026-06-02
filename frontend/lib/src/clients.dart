@@ -207,6 +207,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = summaries;
+    final fieldBorder = OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: cpOutlineVariant(context)));
     return ScreenFrame(
       topBar: TopBar(title: 'CaterPro', actions: [
         IconButton(
@@ -223,7 +226,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
           onChanged: (value) => setState(() => query = value.trim()),
           decoration: InputDecoration(
             hintText: 'Search clients by name, city, or phone...',
-            prefixIcon: const Icon(Icons.search, color: Cp.outline),
+            prefixIcon: Icon(Icons.search, color: cpOutline(context)),
             suffixIcon: query.isEmpty
                 ? null
                 : IconButton(
@@ -233,23 +236,22 @@ class _ClientsScreenState extends State<ClientsScreen> {
                         }),
                     icon: const Icon(Icons.close)),
             filled: true,
-            fillColor: Cp.card,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Cp.outlineVariant)),
+            fillColor: cpCard(context),
+            border: fieldBorder,
+            enabledBorder: fieldBorder,
           ),
         ),
         const SizedBox(height: 22),
         Row(children: [
-          const Expanded(
+          Expanded(
               child: Text('Clients',
                   style: TextStyle(
                       fontSize: 22,
-                      color: Cp.primary,
+                      color: cpPrimary(context),
                       fontWeight: FontWeight.w700))),
           Text('${visible.length} Total',
-              style: const TextStyle(
-                  color: Cp.outline, fontWeight: FontWeight.w600))
+              style: TextStyle(
+                  color: cpOutline(context), fontWeight: FontWeight.w600))
         ]),
         const SizedBox(height: 12),
         if (visible.isEmpty)
@@ -275,19 +277,20 @@ class SearchBox extends StatelessWidget {
   final String hint;
   @override
   Widget build(BuildContext context) {
+    final borderColor = cpOutlineVariant(context);
+    final textColor = cpOutline(context);
     return Container(
       height: 56,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
           color: Cp.card,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Cp.outlineVariant)),
+          border: Border.all(color: borderColor)),
       child: Row(children: [
-        const Icon(Icons.search, color: Cp.outline),
+        Icon(Icons.search, color: textColor),
         const SizedBox(width: 12),
         Expanded(
-            child: Text(hint,
-                style: const TextStyle(color: Cp.outline, fontSize: 15)))
+            child: Text(hint, style: TextStyle(color: textColor, fontSize: 15)))
       ]),
     );
   }
@@ -326,6 +329,8 @@ class _ClientCardState extends State<ClientCard> {
             .take(2)
             .map((part) => part[0].toUpperCase())
             .join();
+    final mutedColor = cpOutline(context);
+    final revenueColor = cpAdaptTextColor(context, Cp.secondary);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
@@ -346,26 +351,26 @@ class _ClientCardState extends State<ClientCard> {
                       style: const TextStyle(
                           fontSize: 16, fontWeight: FontWeight.w800)),
                   Text(client.mobile,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
-                          color: Cp.outline,
+                          color: mutedColor,
                           fontWeight: FontWeight.w600)),
                   if (client.city.isNotEmpty)
                     Text(client.city,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
-                            color: Cp.outline,
+                            color: mutedColor,
                             fontWeight: FontWeight.w600))
                 ])),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(money(summary.revenue),
-                  style: const TextStyle(
-                      color: Cp.secondary,
+                  style: TextStyle(
+                      color: revenueColor,
                       fontSize: 16,
                       fontWeight: FontWeight.w900)),
               Text(
                   '${summary.events.length} events • ${summary.invoices.length} bills',
-                  style: const TextStyle(color: Cp.outline, fontSize: 12)),
+                  style: TextStyle(color: mutedColor, fontSize: 12)),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 tooltip:
@@ -375,7 +380,7 @@ class _ClientCardState extends State<ClientCard> {
                     expanded
                         ? Icons.keyboard_arrow_up_rounded
                         : Icons.more_horiz_rounded,
-                    color: Cp.primary),
+                    color: cpPrimary(context)),
               ),
             ]),
           ]),

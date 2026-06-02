@@ -91,12 +91,13 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       children: [
-        if (loadError != null) ...[
+        if (loadError != null && loadError!.trim().isNotEmpty) ...[
           CpCard(
               color: Cp.errorContainer,
               child: Text(loadError!,
-                  style: const TextStyle(
-                      color: Cp.error, fontWeight: FontWeight.w800))),
+                  style: TextStyle(
+                      color: cpAdaptTextColor(context, Cp.error),
+                      fontWeight: FontWeight.w800))),
           const SizedBox(height: 12),
         ],
         LayoutBuilder(
@@ -146,14 +147,16 @@ class DashboardScreen extends StatelessWidget {
                 child: Text(t('Upcoming Events'),
                     style: TextStyle(
                         fontSize: 22,
-                        color: Cp.primary,
+                        color: cpPrimary(context),
                         fontWeight: FontWeight.w700))),
             IconButton(
               onPressed: upcomingMenuEvents.isEmpty
                   ? null
                   : () => downloadUpcomingMenus(context),
               icon: Icon(Icons.restaurant_menu,
-                  color: upcomingMenuEvents.isEmpty ? Cp.outline : Cp.primary),
+                  color: upcomingMenuEvents.isEmpty
+                      ? cpOutline(context)
+                      : cpPrimary(context)),
               tooltip: upcomingMenuEvents.isEmpty
                   ? 'No upcoming menus to download'
                   : 'Download upcoming menus',
@@ -215,17 +218,17 @@ class EmptyStateCard extends StatelessWidget {
   Widget build(BuildContext context) => CpCard(
         color: Cp.surfaceLow,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Icon(Icons.inbox_outlined, color: Cp.outline, size: 36),
+          Icon(Icons.inbox_outlined, color: cpOutline(context), size: 36),
           const SizedBox(height: 12),
           Text(title,
-              style: const TextStyle(
-                  color: Cp.primary,
+              style: TextStyle(
+                  color: cpPrimary(context),
                   fontSize: 20,
                   fontWeight: FontWeight.w900)),
           const SizedBox(height: 4),
           Text(message,
-              style: const TextStyle(
-                  color: Cp.onVariant, fontWeight: FontWeight.w700)),
+              style: TextStyle(
+                  color: cpOnVariant(context), fontWeight: FontWeight.w700)),
           if (actionLabel != null && onAction != null) ...[
             const SizedBox(height: 14),
             FilledButton.icon(
@@ -258,6 +261,8 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final labelColor = cpOnVariant(context);
+    final accent = cpAdaptTextColor(context, valueColor);
     return CpCard(
       color: color,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -279,8 +284,8 @@ class MetricCard extends StatelessWidget {
                   Text(label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Cp.onVariant,
+                      style: TextStyle(
+                          color: labelColor,
                           fontSize: 11,
                           fontWeight: FontWeight.w800)),
                   Text(value,
@@ -288,14 +293,14 @@ class MetricCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 17,
-                          color: valueColor,
+                          color: accent,
                           fontWeight: FontWeight.w900)),
                   Text(note,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 9,
-                          color: valueColor,
+                          color: accent,
                           fontWeight: FontWeight.w800)),
                 ]),
           ),
@@ -344,9 +349,9 @@ class RevenueChart extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun']
                     .map((m) => Text(m,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 10,
-                            color: Cp.onVariant,
+                            color: cpOnVariant(context),
                             fontWeight: FontWeight.w600)))
                     .toList()),
           ],
@@ -367,16 +372,16 @@ class SectionHeader extends StatelessWidget {
       children: [
         Expanded(
             child: Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 22,
-                    color: Cp.primary,
+                    color: cpPrimary(context),
                     fontWeight: FontWeight.w700))),
         if (trailing != null)
           Text(trailing!,
-              style: const TextStyle(
-                  color: Cp.primary, fontWeight: FontWeight.w800)),
+              style: TextStyle(
+                  color: cpPrimary(context), fontWeight: FontWeight.w800)),
         if (trailing != null)
-          const Icon(Icons.chevron_right, color: Cp.primary, size: 18),
+          Icon(Icons.chevron_right, color: cpPrimary(context), size: 18),
       ],
     );
   }
@@ -415,7 +420,7 @@ class EventMiniCard extends StatelessWidget {
                     Text(title,
                         style: const TextStyle(
                             fontSize: 16, fontWeight: FontWeight.w800)),
-                    Text(client, style: const TextStyle(color: Cp.onVariant))
+                    Text(client, style: TextStyle(color: cpOnVariant(context)))
                   ])),
               if (showDraft)
                 const Pill('DRAFT',
@@ -423,14 +428,15 @@ class EventMiniCard extends StatelessWidget {
             ]),
             const SizedBox(height: 12),
             Row(children: [
-              const Icon(Icons.schedule, size: 18, color: Cp.onVariant),
+              Icon(Icons.schedule, size: 18, color: cpOnVariant(context)),
               Text(' $time   ',
-                  style: const TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w600)),
-              const Icon(Icons.group, size: 18, color: Cp.onVariant),
+                  style: TextStyle(
+                      color: cpOnVariant(context),
+                      fontWeight: FontWeight.w600)),
+              Icon(Icons.group, size: 18, color: cpOnVariant(context)),
               Text(' $pax',
-                  style: const TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w600))
+                  style: TextStyle(
+                      color: cpOnVariant(context), fontWeight: FontWeight.w600))
             ]),
           ],
         ),

@@ -177,6 +177,9 @@ class _EventsScreenState extends State<EventsScreen> {
   @override
   Widget build(BuildContext context) {
     final visible = filteredEvents;
+    final fieldBorder = OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: cpOutlineVariant(context)));
     return ScreenFrame(
       topBar: TopBar(title: 'Events', actions: [
         IconButton(onPressed: widget.refresh, icon: const Icon(Icons.refresh)),
@@ -244,7 +247,7 @@ class _EventsScreenState extends State<EventsScreen> {
           onChanged: (value) => setState(() => query = value.trim()),
           decoration: InputDecoration(
             hintText: 'Search by event or client name',
-            prefixIcon: const Icon(Icons.search, color: Cp.outline),
+            prefixIcon: Icon(Icons.search, color: cpOutline(context)),
             suffixIcon: query.isEmpty
                 ? null
                 : IconButton(
@@ -254,10 +257,9 @@ class _EventsScreenState extends State<EventsScreen> {
                         }),
                     icon: const Icon(Icons.close)),
             filled: true,
-            fillColor: Cp.card,
-            border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Cp.outlineVariant)),
+            fillColor: cpCard(context),
+            border: fieldBorder,
+            enabledBorder: fieldBorder,
           ),
         ),
         const SizedBox(height: 16),
@@ -297,8 +299,9 @@ class _EventsScreenState extends State<EventsScreen> {
           CpCard(
               color: Cp.errorContainer,
               child: Text(widget.loadError!,
-                  style: const TextStyle(
-                      color: Cp.error, fontWeight: FontWeight.w800))),
+                  style: TextStyle(
+                      color: cpAdaptTextColor(context, Cp.error),
+                      fontWeight: FontWeight.w800))),
         if (widget.loading)
           const Center(
               child: Padding(
@@ -398,6 +401,9 @@ class EventListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pending = status != 'PAID';
+    final titleColor =
+        pending && !cpDark(context) ? Cp.primary : cpPrimary(context);
+    final mutedColor = cpOnVariant(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
@@ -412,17 +418,17 @@ class EventListCard extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                     Text(title,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 18,
-                            color: Cp.primary,
+                            color: titleColor,
                             fontWeight: FontWeight.w800)),
                     Row(children: [
-                      const Icon(Icons.person, size: 16, color: Cp.onVariant),
+                      Icon(Icons.person, size: 16, color: mutedColor),
                       Flexible(
                           child: Text(' $client • $phone',
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  color: Cp.onVariant,
+                              style: TextStyle(
+                                  color: mutedColor,
                                   fontWeight: FontWeight.w600)))
                     ])
                   ])),
@@ -432,8 +438,8 @@ class EventListCard extends StatelessWidget {
                     textColor: pending ? Color(0xff694000) : Color(0xff00210c)),
                 const SizedBox(height: 6),
                 Text(amount,
-                    style: const TextStyle(
-                        color: Cp.primaryContainer,
+                    style: TextStyle(
+                        color: cpAdaptTextColor(context, Cp.primaryContainer),
                         fontWeight: FontWeight.w900)),
                 Text(balance,
                     style: TextStyle(
@@ -445,10 +451,10 @@ class EventListCard extends StatelessWidget {
             ]),
             const SizedBox(height: 14),
             Row(children: [
-              const Icon(Icons.calendar_today, size: 18, color: Cp.onVariant),
+              Icon(Icons.calendar_today, size: 18, color: mutedColor),
               Text(' $dates',
-                  style: const TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w700))
+                  style:
+                      TextStyle(color: mutedColor, fontWeight: FontWeight.w700))
             ]),
             const SizedBox(height: 12),
             Wrap(
