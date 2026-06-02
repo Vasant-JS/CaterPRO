@@ -1201,7 +1201,7 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
                         Text(item.title,
                             style:
                                 const TextStyle(fontWeight: FontWeight.w900)),
-                        Text('${item.id} • ${item.category} • ${item.meals}',
+                        Text('${item.id} | ${item.category} | ${item.meals}',
                             style: const TextStyle(color: Cp.onVariant))
                       ])),
                 ]),
@@ -1333,8 +1333,8 @@ class MealSlotCard extends StatelessWidget {
                             fontSize: 18, fontWeight: FontWeight.w900)),
                     Text(
                         enabled
-                            ? '${slot.time} • ${slot.pax.isEmpty ? 0 : slot.pax} Members'
-                            : 'Not Scheduled • 0 Members',
+                            ? '${slot.time} | ${slot.pax.isEmpty ? 0 : slot.pax} Members'
+                            : 'Not Scheduled | 0 Members',
                         style: const TextStyle(color: Cp.onVariant))
                   ])),
               IconButton(
@@ -1385,7 +1385,7 @@ class MealSlotCard extends StatelessWidget {
                         .toList()),
               const Divider(height: 24),
               Row(children: [
-                Text('₹${slot.pricePerPax}/member',
+                Text('Rs. ${slot.pricePerPax}/member',
                     style: const TextStyle(
                         color: Cp.primary, fontWeight: FontWeight.w900)),
                 const Spacer(),
@@ -1443,28 +1443,71 @@ class CreateReviewStep extends StatelessWidget {
         CpCard(
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(draft.name.isEmpty ? 'Untitled Event' : draft.name,
-              style: const TextStyle(
-                  color: Cp.primary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900)),
-          Text('${draft.client} • ${draft.mobile}',
-              style: const TextStyle(color: Cp.onVariant)),
-          const Divider(),
-          Wrap(spacing: 18, runSpacing: 12, children: [
-            InfoTile(Icons.currency_rupee, 'Total Amount', money(grandTotal)),
-            InfoTile(Icons.restaurant_menu, 'Menu',
-                menuTotal > 0 ? money(menuTotal) : 'Not priced'),
-            InfoTile(Icons.room_service, 'Services',
-                serviceTotal > 0 ? money(serviceTotal) : 'None'),
-            InfoTile(Icons.add_card, 'Add-ons',
-                addOnTotal > 0 ? money(addOnTotal) : 'None'),
-            InfoTile(Icons.calendar_today, 'Dates', '${draft.dates.length}'),
-            InfoTile(Icons.restaurant_menu, 'Menu Slots',
-                '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'),
-            InfoTile(Icons.location_on, 'Venue',
-                draft.venue.isEmpty ? 'Not set' : draft.venue)
-          ])
+          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(draft.name.isEmpty ? 'Untitled Event' : draft.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Cp.primary,
+                          fontSize: 21,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text(
+                      [
+                        if (draft.client.trim().isNotEmpty) draft.client,
+                        if (draft.mobile.trim().isNotEmpty) draft.mobile
+                      ].join(' | '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                ])),
+            const SizedBox(width: 10),
+            Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              const Text('Total',
+                  style: TextStyle(
+                      color: Cp.outline,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800)),
+              Text(money(grandTotal),
+                  style: const TextStyle(
+                      color: Cp.primary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900)),
+            ]),
+          ]),
+          const Divider(height: 18),
+          Wrap(spacing: 10, runSpacing: 10, children: [
+            ReviewSummaryChip(
+                icon: Icons.restaurant_menu,
+                label: 'Menu',
+                value: menuTotal > 0 ? money(menuTotal) : 'Not priced'),
+            ReviewSummaryChip(
+                icon: Icons.room_service,
+                label: 'Services',
+                value: serviceTotal > 0 ? money(serviceTotal) : 'None'),
+            ReviewSummaryChip(
+                icon: Icons.add_card,
+                label: 'Add-ons',
+                value: addOnTotal > 0 ? money(addOnTotal) : 'None'),
+            ReviewSummaryChip(
+                icon: Icons.calendar_today,
+                label: 'Dates',
+                value: '${draft.dates.length}'),
+            ReviewSummaryChip(
+                icon: Icons.restaurant,
+                label: 'Slots',
+                value:
+                    '${draft.dates.fold<int>(0, (sum, date) => sum + date.slots.length)}'),
+            ReviewSummaryChip(
+                icon: Icons.location_on,
+                label: 'Venue',
+                value: draft.venue.isEmpty ? 'Not set' : draft.venue),
+          ]),
         ])),
         const SizedBox(height: 12),
         CpCard(
@@ -1482,10 +1525,7 @@ class CreateReviewStep extends StatelessWidget {
                   icon: const Icon(Icons.add_circle),
                   label: const Text('Add Add-on')),
             ]),
-            const Text(
-                'Optional custom costs like service, decorations, printing, transport, etc.',
-                style: TextStyle(color: Cp.onVariant)),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
             if (draft.addOns.isEmpty)
               const Text('No add-ons added.',
                   style: TextStyle(
@@ -1530,14 +1570,6 @@ class CreateReviewStep extends StatelessWidget {
                           color: Cp.onVariant, fontWeight: FontWeight.w800))),
           ]),
         ),
-        const SizedBox(height: 12),
-        CpCard(
-            color: Cp.primaryContainer,
-            child: const Text('Event will be saved to your account via API.',
-                style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900))),
       ]);
 
   Future<void> openAddOnSheet(BuildContext context,
@@ -1553,6 +1585,50 @@ class CreateReviewStep extends StatelessWidget {
     }
     onChanged();
   }
+}
+
+class ReviewSummaryChip extends StatelessWidget {
+  const ReviewSummaryChip(
+      {super.key,
+      required this.icon,
+      required this.label,
+      required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 138,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+            color: Cp.surfaceLow,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Cp.outlineVariant)),
+        child: Row(children: [
+          Icon(icon, color: Cp.primary, size: 19),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Cp.outline,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800)),
+                Text(value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Cp.onSurface,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900)),
+              ])),
+        ]),
+      );
 }
 
 Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context,

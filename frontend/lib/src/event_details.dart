@@ -1123,6 +1123,28 @@ class MaterialDocumentsSection extends StatelessWidget {
                     fontSize: 20,
                     fontWeight: FontWeight.w900))),
         Pill('${event.materialDocuments.length} lists'),
+        const SizedBox(width: 8),
+        PopupMenuButton<String>(
+          tooltip: 'Create material document',
+          icon: const Icon(Icons.add_circle, color: Cp.primary),
+          onSelected: (type) => openEditor(context, type),
+          itemBuilder: (context) => const [
+            PopupMenuItem(
+                value: 'raw',
+                child: Row(children: [
+                  Icon(Icons.inventory_2, color: Cp.primary),
+                  SizedBox(width: 10),
+                  Text('Raw Material List')
+                ])),
+            PopupMenuItem(
+                value: 'produce',
+                child: Row(children: [
+                  Icon(Icons.eco, color: Cp.primary),
+                  SizedBox(width: 10),
+                  Text('Vegetables & Fruits List')
+                ])),
+          ],
+        ),
       ]),
       const SizedBox(height: 10),
       if (event.materialDocuments.isEmpty)
@@ -1167,17 +1189,6 @@ class MaterialDocumentsSection extends StatelessWidget {
                 ]),
               ),
             )),
-      const SizedBox(height: 6),
-      Wrap(spacing: 10, runSpacing: 10, children: [
-        OutlinedButton.icon(
-            onPressed: () => openEditor(context, 'raw'),
-            icon: const Icon(Icons.inventory_2),
-            label: const Text('Create Raw Material List')),
-        OutlinedButton.icon(
-            onPressed: () => openEditor(context, 'produce'),
-            icon: const Icon(Icons.eco),
-            label: const Text('Create Vegetables & Fruits List')),
-      ]),
     ]);
   }
 }
