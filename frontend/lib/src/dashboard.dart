@@ -182,7 +182,7 @@ class DashboardScreen extends StatelessWidget {
         else
           ...upcomingEvents.map((event) {
             final dates = upcomingDatesFor(event);
-            final pax = dates.fold<int>(
+            final members = dates.fold<int>(
                 0,
                 (sum, date) =>
                     sum +
@@ -194,7 +194,7 @@ class DashboardScreen extends StatelessWidget {
                 time: dates
                     .map((date) => readableDateLabel(date.date))
                     .join(', '),
-                pax: '$pax pax',
+                pax: '$members Members',
                 showDraft: eventIsIncomplete(event),
                 onTap: () => openDetails(event));
           }),

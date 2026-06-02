@@ -889,6 +889,7 @@ enum EventScreenAction {
   downloadInvoice,
   currentDayMenu,
   allDaysMenu,
+  shareEventInfo,
   shareMenu,
   deleteEvent,
   deleteDate,
@@ -915,6 +916,8 @@ const eventScreenActions = [
       EventScreenAction.currentDayMenu, 'Current Day Menu', Icons.today),
   EventActionMenuItem(
       EventScreenAction.allDaysMenu, 'All Days Menu', Icons.date_range),
+  EventActionMenuItem(
+      EventScreenAction.shareEventInfo, 'Share Event Info', Icons.chat),
   EventActionMenuItem(EventScreenAction.shareMenu, 'Share Menu', Icons.share),
   EventActionMenuItem(
       EventScreenAction.deleteEvent, 'Delete Event', Icons.delete_forever,

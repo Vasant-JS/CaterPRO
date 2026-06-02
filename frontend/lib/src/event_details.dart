@@ -41,6 +41,9 @@ class EventDetailsScreen extends StatelessWidget {
       case EventScreenAction.allDaysMenu:
         await downloadDocument(context, selectedEvent, 'all-menus');
         break;
+      case EventScreenAction.shareEventInfo:
+        await shareEventInfoOnWhatsApp(context, selectedEvent);
+        break;
       case EventScreenAction.shareMenu:
         await showMenuShareSheet(context, selectedEvent);
         break;
@@ -198,6 +201,117 @@ class EventDetailsScreen extends StatelessWidget {
     }
   }
 
+  Future<void> shareEventInfoOnWhatsApp(
+      BuildContext context, AppEvent event) async {
+    final mobile = normalizeMobileText(event.mobile);
+    final target = mobile.length == 10 ? '91$mobile' : mobile;
+    final message = buildEventWhatsAppMessage(event);
+    final uri = Uri.parse(target.isEmpty
+        ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
+        : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
+    showCpSnack(context, 'Opening WhatsApp...');
+    final launched = await launchUrl(uri,
+        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    showCpSnack(context,
+        launched ? 'Event info ready to share' : 'Unable to open WhatsApp');
+  }
+
+  String buildEventWhatsAppMessage(AppEvent event) {
+    final lines = <String>[
+      '*CaterPro Event Details*',
+      '------------------------------',
+      '*Event:* ${event.name.isEmpty ? 'Event' : event.name}',
+      '*Client:* ${event.primaryClient.isEmpty ? 'Not set' : event.primaryClient}',
+      if (event.mobile.isNotEmpty) '*Phone:* ${event.mobile}',
+      if (event.venue.isNotEmpty) '*Venue:* ${event.venue}',
+      if (event.notes.trim().isNotEmpty) '*Notes:* ${event.notes.trim()}',
+      '',
+      '*Dates & Menu*',
+    ];
+
+    if (event.dates.isEmpty) {
+      lines.add('- No dates configured');
+    } else {
+      for (final date in event.dates) {
+        lines.add('*${readableDateLabel(date.date)}*');
+        if (date.menuSlots.isEmpty) {
+          lines.add('- No menu configured');
+        } else {
+          for (final slot in date.menuSlots.where((slot) => slot.enabled)) {
+            final names = slot.menuItemIds
+                .map((id) => menuItemById(id))
+                .whereType<MenuMasterItem>()
+                .map((item) => item.title)
+                .toList();
+            lines.add(
+                '- ${slot.type}${slot.time.isEmpty ? '' : ' at ${slot.time}'}');
+            lines.add(
+                '  Members: ${slot.pax} | Rate: ${whatsAppMoney(slot.pricePerPax)}/member');
+            lines.add(names.isEmpty
+                ? '  Menu: Not selected'
+                : '  Menu: ${names.join(', ')}');
+          }
+        }
+        if (date.additionalServices.isNotEmpty) {
+          lines.add('  Services:');
+          for (final service in date.additionalServices) {
+            lines.add('  - ${oneLineService(service)}');
+          }
+        }
+      }
+    }
+
+    if (event.addOns.isNotEmpty) {
+      lines
+        ..add('')
+        ..add('*Add-ons*');
+      for (final addOn in event.addOns) {
+        final title = addOn['title']?.toString() ?? 'Add-on';
+        final cost = (addOn['cost'] as num?)?.toInt() ?? 0;
+        lines.add('- $title${cost > 0 ? ' - ${whatsAppMoney(cost)}' : ''}');
+      }
+    }
+
+    if (event.employeeAssignments.isNotEmpty) {
+      lines
+        ..add('')
+        ..add('*Team*');
+      for (final employee in event.employeeAssignments) {
+        lines.add(
+            '- ${employee.employeeName}${employee.designation.isEmpty ? '' : ' (${employee.designation})'}');
+      }
+    }
+
+    final total = eventTotal(event);
+    final paid = eventPaid(event);
+    final balance = eventBalance(event);
+    lines
+      ..add('')
+      ..add('*Payment Summary*')
+      ..add('Total: ${whatsAppMoney(total)}')
+      ..add('Paid: ${whatsAppMoney(paid)}')
+      ..add('Balance: ${whatsAppMoney(balance)}');
+
+    return lines.join('\n');
+  }
+
+  String oneLineService(Map<String, dynamic> service) {
+    final name = service['name']?.toString() ?? 'Service';
+    final quantity = service['quantity']?.toString() ?? '';
+    final unit = service['unit']?.toString() ?? '';
+    final price = (service['price'] as num?)?.toInt() ?? 0;
+    final parts = <String>[];
+    if (quantity.trim().isNotEmpty && quantity != '0') {
+      parts.add('$quantity $unit'.trim());
+    }
+    if (price > 0) parts.add(whatsAppMoney(price));
+    return parts.isEmpty ? name : '$name (${parts.join(', ')})';
+  }
+
+  String whatsAppMoney(int amount) =>
+      money(amount).replaceFirst(RegExp(r'^\s*₹'), 'Rs. ');
+
   @override
   Widget build(BuildContext context) => ScreenFrame(
         topBar: TopBar(
@@ -332,7 +446,7 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
               event.dates.map((date) => date.date).join(', ')),
           InfoTile(Icons.location_on, 'Venue',
               event.venue.isEmpty ? 'Not set' : event.venue),
-          const InfoTile(Icons.restaurant_menu, 'Menu Pax', 'Meal-wise'),
+          const InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise'),
           InfoTile(Icons.pending_actions, 'Balance Due', money(balance),
               color: Cp.error)
         ]),
@@ -1367,7 +1481,7 @@ class EventDateMenuCard extends StatelessWidget {
                             ? 'No menu slots'
                             : date.menuSlots
                                 .map((slot) =>
-                                    '${slot.type} • ${slot.pax} pax • ${money(slot.pricePerPax)}/pax')
+                                    '${slot.type} • ${slot.pax} Members • ${money(slot.pricePerPax)}/member')
                                 .join('\n'),
                         style: const TextStyle(
                             color: Cp.onVariant, fontWeight: FontWeight.w700)),

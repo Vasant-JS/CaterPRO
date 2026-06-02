@@ -1188,7 +1188,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       color: Cp.onVariant, fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               ...event.dates.take(4).map((date) => Text(
-                  '${date.date}: ${date.menuSlots.map((slot) => '${slot.type} ${slot.pax} pax').join(', ')}',
+                  '${date.date}: ${date.menuSlots.map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
                   style: const TextStyle(fontWeight: FontWeight.w700))),
             ]),
           ),

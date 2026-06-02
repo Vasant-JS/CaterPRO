@@ -99,9 +99,9 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       if (dateError != null) return dateError;
       for (final slot in date.slots.where((item) => item.enabled)) {
         final pax = int.tryParse(slot.pax.trim()) ?? 0;
-        if (pax <= 0) return '${slot.type} pax must be more than zero.';
+        if (pax <= 0) return '${slot.type} members must be more than zero.';
         if (slot.pricePerPax <= 0) {
-          return '${slot.type} price per pax must be more than zero.';
+          return '${slot.type} price per member must be more than zero.';
         }
       }
     }
@@ -397,14 +397,14 @@ class CreateDatesStep extends StatelessWidget {
           style: TextStyle(
               color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
       const Text(
-          'Add every date in the event schedule. Pax is configured later for each date and menu type.',
+          'Add every date in the event schedule. Members are configured later for each date and menu type.',
           style: TextStyle(color: Cp.onVariant)),
       const SizedBox(height: 16),
       if (dates.isEmpty)
         const EmptyStateCard(
             title: 'No dates added',
             message:
-                'Add each event date. Pax is configured per menu type later.'),
+                'Add each event date. Members are configured per menu type later.'),
       ...dates.map((date) => DateScheduleCard(
           month: shortMonthLabel(date.date),
           day: dayLabel(date.date),
@@ -1333,8 +1333,8 @@ class MealSlotCard extends StatelessWidget {
                             fontSize: 18, fontWeight: FontWeight.w900)),
                     Text(
                         enabled
-                            ? '${slot.time} • ${slot.pax.isEmpty ? 0 : slot.pax} pax'
-                            : 'Not Scheduled • 0 pax',
+                            ? '${slot.time} • ${slot.pax.isEmpty ? 0 : slot.pax} Members'
+                            : 'Not Scheduled • 0 Members',
                         style: const TextStyle(color: Cp.onVariant))
                   ])),
               IconButton(
@@ -1350,7 +1350,7 @@ class MealSlotCard extends StatelessWidget {
               Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Expanded(
                     child: FormFieldBox(
-                        label: '${slot.type} Pax',
+                        label: '${slot.type} Members',
                         value: slot.pax,
                         icon: Icons.person,
                         inputFormatters: [
@@ -1360,7 +1360,7 @@ class MealSlotCard extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                     child: FormFieldBox(
-                        label: 'Price / Pax',
+                        label: 'Price / Member',
                         value:
                             slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}',
                         icon: Icons.currency_rupee,
@@ -1385,7 +1385,7 @@ class MealSlotCard extends StatelessWidget {
                         .toList()),
               const Divider(height: 24),
               Row(children: [
-                Text('₹${slot.pricePerPax}/pax',
+                Text('₹${slot.pricePerPax}/member',
                     style: const TextStyle(
                         color: Cp.primary, fontWeight: FontWeight.w900)),
                 const Spacer(),
@@ -1746,7 +1746,7 @@ class _FormFieldBoxState extends State<FormFieldBox> {
     final label = widget.label.toLowerCase();
     if (label.contains('phone') ||
         label.contains('mobile') ||
-        label.contains('pax') ||
+        label.contains('member') ||
         label.contains('price') ||
         label.contains('amount') ||
         label.contains('number')) {
