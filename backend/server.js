@@ -1450,7 +1450,7 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.6, height: 11 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.8, height: 11 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -1484,7 +1484,7 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
 
   for (const slot of date.menuSlots) {
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
-    const rowHeight = Math.max(52, 34 + Math.ceil(Math.max(items.length, 1) / 3) * 13);
+    const rowHeight = Math.max(46, 30 + Math.ceil(Math.max(items.length, 1) / 3) * 14);
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
@@ -1495,12 +1495,12 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
     const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
     doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 52, y + 22, { width: 220 });
-    doc.moveTo(52, y + 32).lineTo(543, y + 32).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 364, y + 9, { width: 178, align: 'right' });
+    doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
     items.forEach((item, index) => {
       const col = index % 3;
       const row = Math.floor(index / 3);
-      drawChefMenuItem(doc, item, 56 + col * 166, y + 40 + row * 13, 152, fonts, false);
+      drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
     });
     y += rowHeight + 7;
   }
