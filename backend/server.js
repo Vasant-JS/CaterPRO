@@ -666,8 +666,12 @@ function dateFromBody(body, existing = {}) {
     id: existing.id || body.id || makeId('date'),
     date: body.date || existing.date || '',
     label: body.label || existing.label || '',
-    menuSlots: existing.menuSlots || body.menuSlots || [],
-    additionalServices: existing.additionalServices || body.additionalServices || [],
+    menuSlots: Array.isArray(body.menuSlots)
+      ? body.menuSlots.map((slot) => menuSlotFromBody(slot))
+      : existing.menuSlots || [],
+    additionalServices: Array.isArray(body.additionalServices)
+      ? body.additionalServices.map(serviceFromBody)
+      : existing.additionalServices || [],
   };
 }
 
@@ -681,6 +685,9 @@ function menuSlotFromBody(body, existing = {}) {
     pricePerPax: Number(body.pricePerPax ?? existing.pricePerPax ?? 0),
     enabled: Boolean(body.enabled ?? existing.enabled ?? true),
     menuItemIds: body.menuItemIds || existing.menuItemIds || [],
+    additionalServices: Array.isArray(body.additionalServices)
+      ? body.additionalServices.map(serviceFromBody)
+      : existing.additionalServices || [],
   };
 }
 
@@ -806,11 +813,16 @@ function serviceQuantityText(service) {
 
 function eventTotals(event) {
   const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
+  const serviceTotal = event.dates.reduce((dateSum, date) => {
+    const dateServices = (date.additionalServices || []).reduce((sum, service) => sum + Number(service.price || 0), 0);
+    const slotServices = (date.menuSlots || []).reduce((slotSum, slot) => slotSum + (slot.additionalServices || []).reduce((sum, service) => sum + Number(service.price || 0), 0), 0);
+    return dateSum + dateServices + slotServices;
+  }, 0);
   const addOnTotal = (event.addOns || []).reduce((sum, addOn) => sum + Number(addOn.cost || 0), 0);
   const paid = event.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const discount = event.payments.reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
-  const total = menuTotal + addOnTotal;
-  return { menuTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
+  const total = menuTotal + serviceTotal + addOnTotal;
+  return { menuTotal, serviceTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
 }
 
 function gstBreakdown(baseAmount, businessProfile = emptyBusinessProfile()) {
@@ -1347,6 +1359,30 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
       }, shaded, theme);
       shaded = !shaded;
       y += 28;
+      for (const service of slot.additionalServices || []) {
+        y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+        const quantity = serviceQuantityText(service);
+        drawInvoiceRow(doc, y, fonts, {
+          description: `${slot.type || 'Meal'} service - ${service.name || 'Service'}${quantity ? ` (${quantity})` : ''}`,
+          qty: '',
+          rate: '',
+          amount: money(service.price || 0),
+        }, shaded, theme);
+        shaded = !shaded;
+        y += 28;
+      }
+    }
+    for (const service of date.additionalServices || []) {
+      y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+      const quantity = serviceQuantityText(service);
+      drawInvoiceRow(doc, y, fonts, {
+        description: `Date service - ${service.name || 'Service'}${quantity ? ` (${quantity})` : ''}`,
+        qty: '',
+        rate: '',
+        amount: money(service.price || 0),
+      }, shaded, theme);
+      shaded = !shaded;
+      y += 28;
     }
   }
   if ((event.addOns || []).length > 0) {
@@ -1369,6 +1405,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const totalRows = [
     ['Menu Total', money(totals.menuTotal), '#202124', fonts.regular],
   ];
+  if (totals.serviceTotal > 0) totalRows.push(['Services Total', money(totals.serviceTotal), '#202124', fonts.regular]);
   if (totals.addOnTotal > 0) totalRows.push(['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
   if (gst.enabled) gst.rows.forEach((row) => totalRows.push([row[0], money(row[1]), '#202124', fonts.regular]));
   totalRows.push(['Grand Total', money(grandTotal), theme.primary, fonts.bold]);
@@ -1658,16 +1695,21 @@ function drawServiceSection(doc, date, y, fonts) {
 
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile, pageNo }) {
   menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
-  let y = drawServiceSection(doc, date, 132, fonts);
+  let y = 132;
   if (date.menuSlots.length === 0) {
+    y = drawServiceSection(doc, date, y, fonts);
     doc.fillColor('#5f6368').font(fonts.regular).fontSize(11).text('No menu configured for this date.', 42, y + 12);
     menuFooter(doc, fonts, businessProfile, pageNo);
     return pageNo;
   }
 
-  for (const slot of date.menuSlots) {
+  for (const [slotIndex, slot] of date.menuSlots.entries()) {
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
-    const rowHeight = Math.max(46, 30 + Math.ceil(Math.max(items.length, 1) / 3) * 14);
+    const legacyServices = slotIndex === 0 ? date.additionalServices || [] : [];
+    const services = [...(slot.additionalServices || []), ...legacyServices];
+    const itemRows = Math.ceil(Math.max(items.length, 1) / 3);
+    const serviceRows = Math.ceil(services.length / 2);
+    const rowHeight = Math.max(46, 30 + itemRows * 14 + serviceRows * 14 + (services.length ? 12 : 0));
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
@@ -1685,6 +1727,19 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       const row = Math.floor(index / 3);
       drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
     });
+    if (services.length) {
+      const serviceY = y + 30 + itemRows * 14 + 7;
+      doc.fillColor('#4b5563').font(fonts.bold).fontSize(7.8).text('Services', 56, serviceY, { width: 70 });
+      services.forEach((service, index) => {
+        const col = index % 2;
+        const row = Math.floor(index / 2);
+        const x = 112 + col * 238;
+        const quantity = serviceQuantityText(service);
+        doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
+        doc.fillColor('#202124').font(fonts.regular).fontSize(7.8)
+          .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
+      });
+    }
     y += rowHeight + 7;
   }
   menuFooter(doc, fonts, businessProfile, pageNo);
@@ -1692,7 +1747,7 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
 }
 
 function generateMenuPdf({ res, db, event, dateId, allDates = false, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0;
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0);
   const dates = allDates ? event.dates.filter(hasMenuContent) : event.dates.filter((date) => date.id === dateId || date.date === dateId);
   if (!dates.length) {
     res.status(404).json({ message: 'Event date not found' });
@@ -1727,7 +1782,7 @@ function todayIso() {
 }
 
 function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0;
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0);
   const start = addDaysIso(todayIso(), 1);
   const end = addDaysIso(start, Math.max(1, days) - 1);
   const pages = [];
@@ -2438,6 +2493,19 @@ app.put('/api/events/:eventId', (req, res) => {
   res.json(event);
 });
 
+app.delete('/api/events/:eventId', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const events = db.userData[user.id].events;
+  const before = events.length;
+  db.userData[user.id].events = events.filter((event) => event.id !== req.params.eventId);
+  if (db.userData[user.id].events.length === before) return res.status(404).json({ message: 'Event not found' });
+  db.userData[user.id].attendance = (db.userData[user.id].attendance || []).filter((item) => item.eventId !== req.params.eventId);
+  writeDb(db);
+  res.json({ ok: true });
+});
+
 app.put('/api/events/:eventId/employee-assignments', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
@@ -2499,6 +2567,20 @@ app.put('/api/events/:eventId/dates/:dateId', (req, res) => {
   res.json(date);
 });
 
+app.delete('/api/events/:eventId/dates/:dateId', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  const before = event.dates.length;
+  event.dates = event.dates.filter((date) => date.id !== req.params.dateId);
+  if (event.dates.length === before) return res.status(404).json({ message: 'Date not found' });
+  event.updatedAt = new Date().toISOString();
+  writeDb(db);
+  res.json(event);
+});
+
 app.post('/api/events/:eventId/dates/:dateId/menu-slots', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
@@ -2525,6 +2607,21 @@ app.put('/api/events/:eventId/dates/:dateId/menu-slots/:slotId', (req, res) => {
   event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.json(slot);
+});
+
+app.delete('/api/events/:eventId/dates/:dateId/menu-slots/:slotId', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const event = findUserEvent(db, user.id, req.params.eventId);
+  const date = event?.dates.find((item) => item.id === req.params.dateId);
+  if (!date) return res.status(404).json({ message: 'Event date not found' });
+  const before = date.menuSlots.length;
+  date.menuSlots = date.menuSlots.filter((slot) => slot.id !== req.params.slotId);
+  if (date.menuSlots.length === before) return res.status(404).json({ message: 'Menu slot not found' });
+  event.updatedAt = new Date().toISOString();
+  writeDb(db);
+  res.json(event);
 });
 
 app.post('/api/events/:eventId/dates/:dateId/additional-services', (req, res) => {
