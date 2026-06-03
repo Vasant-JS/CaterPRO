@@ -12,6 +12,7 @@ const universalCatalogBackupPath = path.join(__dirname, 'universal-catalog.backu
 const port = Number(process.env.PORT || 8787);
 const databaseUrl = process.env.DATABASE_URL || '';
 const pgStateId = process.env.PG_STATE_ID || 'default';
+const allowJsonStorage = process.env.ALLOW_DB_JSON_STORAGE === 'true';
 const pgPool = databaseUrl ? new Pool({
   connectionString: databaseUrl,
   ssl: process.env.PGSSL === 'false' ? false : { rejectUnauthorized: false },
@@ -43,8 +44,10 @@ function readDb() {
 function writeDb(db) {
   ensureUniversal(db);
   runtimeDb = db;
-  fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
   persistUniversalCatalogBackup(db.universal);
+  if (allowJsonStorage) {
+    fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
+  }
   schedulePostgresSave(db);
 }
 
@@ -95,26 +98,25 @@ async function flushPostgresWrites() {
 
 async function initializeStorage() {
   const localDb = readLocalDb();
-  runtimeDb = localDb;
   if (!pgPool) {
-    console.log('CaterPro storage: local db.json');
-    return;
-  }
-  try {
-    const postgresDb = await loadPostgresDb();
-    if (postgresDb) {
-      postgresDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, postgresDb.universal || {});
-      runtimeDb = postgresDb;
-      writeDb(runtimeDb);
-      await flushPostgresWrites();
-      console.log(`CaterPro storage: loaded PostgreSQL state "${pgStateId}"`);
+    if (allowJsonStorage) {
+      runtimeDb = localDb;
+      console.log('CaterPro storage: local db.json');
       return;
     }
-    await savePostgresDb(localDb);
-    console.log(`CaterPro storage: seeded PostgreSQL state "${pgStateId}" from db.json`);
-  } catch (error) {
-    console.error('PostgreSQL unavailable, using local db.json:', error.message);
+    throw new Error('DATABASE_URL is required. PostgreSQL storage is mandatory.');
   }
+  const postgresDb = await loadPostgresDb();
+  if (postgresDb) {
+    postgresDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, postgresDb.universal || {});
+    runtimeDb = postgresDb;
+    await savePostgresDb(runtimeDb);
+    console.log(`CaterPro storage: loaded PostgreSQL state "${pgStateId}"`);
+    return;
+  }
+  runtimeDb = localDb;
+  await savePostgresDb(runtimeDb);
+  console.log(`CaterPro storage: seeded PostgreSQL state "${pgStateId}" from db.json`);
 }
 
 function makeId(prefix) {
@@ -2744,7 +2746,7 @@ app.get('/api/storage/status', async (req, res) => {
     }
   }
   res.json({
-    storage: pgPool ? 'postgresql+db.json' : 'db.json',
+    storage: pgPool ? 'postgresql' : 'db.json',
     postgres,
     counts: {
       users: db.users.length,
@@ -2782,6 +2784,11 @@ app.post('/api/storage/pull-postgres-to-local', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  if (!allowJsonStorage) {
+    return res.status(410).json({
+      message: 'Local db.json pull is disabled. CaterPro is configured for PostgreSQL-only storage.',
+    });
+  }
   if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
   try {
     const postgresDb = await loadPostgresDb();

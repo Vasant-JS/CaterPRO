@@ -1,3 +1,9 @@
+databases:
+  - name: caterpro-postgres
+    databaseName: caterpro
+    user: caterpro
+    plan: free
+
 services:
   - type: web
     name: caterpro-api
@@ -10,3 +16,11 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 20
+      - key: DATABASE_URL
+        fromDatabase:
+          name: caterpro-postgres
+          property: connectionString
+      - key: PG_STATE_ID
+        value: default
+      - key: ALLOW_DB_JSON_STORAGE
+        value: false
