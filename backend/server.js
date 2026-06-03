@@ -425,7 +425,14 @@ async function syncRelationalTables(db) {
           await client.query(
             `insert into cp_event_assignments
              (state_id, user_id, event_id, employee_id, name, designation, pay_per_day, pay_per_hour, raw)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+             on conflict (state_id, user_id, event_id, employee_id)
+             do update set
+               name = excluded.name,
+               designation = excluded.designation,
+               pay_per_day = excluded.pay_per_day,
+               pay_per_hour = excluded.pay_per_hour,
+               raw = excluded.raw`,
             [pgStateId, user.id, event.id || '', assignment.employeeId || assignment.id || '', assignment.name || '', assignment.designation || '', Number(assignment.payPerDay || 0), Number(assignment.payPerHour || 0), asJson(assignment)],
           );
         }
@@ -435,7 +442,14 @@ async function syncRelationalTables(db) {
         await client.query(
           `insert into cp_attendance
            (state_id, user_id, event_id, employee_id, attendance_date, status, hours, pay_per_day, pay_per_hour, raw)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
+           on conflict (state_id, user_id, event_id, employee_id, attendance_date)
+           do update set
+             status = excluded.status,
+             hours = excluded.hours,
+             pay_per_day = excluded.pay_per_day,
+             pay_per_hour = excluded.pay_per_hour,
+             raw = excluded.raw`,
           [pgStateId, user.id, attendance.eventId || '', attendance.employeeId || '', attendance.date || '', attendance.status || '', Number(attendance.hours || 0), Number(attendance.payPerDay || 0), Number(attendance.payPerHour || 0), asJson(attendance)],
         );
       }
@@ -449,9 +463,16 @@ async function syncRelationalTables(db) {
         );
         for (const item of asArray(invoice.items)) {
           await client.query(
-            `insert into cp_manual_invoice_items
+          `insert into cp_manual_invoice_items
              (state_id, user_id, invoice_id, id, title, quantity, rate, amount, raw)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
+             on conflict (state_id, user_id, invoice_id, id)
+             do update set
+               title = excluded.title,
+               quantity = excluded.quantity,
+               rate = excluded.rate,
+               amount = excluded.amount,
+               raw = excluded.raw`,
             [pgStateId, user.id, invoice.id || '', item.id || item.title || '', item.title || '', Number(item.quantity || 0), Number(item.rate || 0), Number(item.amount || 0), asJson(item)],
           );
         }
