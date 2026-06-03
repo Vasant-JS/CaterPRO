@@ -81,6 +81,412 @@ async function savePostgresDb(db) {
      on conflict (id) do update set data = excluded.data, updated_at = now()`,
     [pgStateId, JSON.stringify(db)],
   );
+  await syncRelationalTables(db);
+}
+
+function asJson(value) {
+  return JSON.stringify(value ?? null);
+}
+
+function asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+async function ensureRelationalTables(client) {
+  await client.query(`
+    create table if not exists cp_users (
+      state_id text not null,
+      id text not null,
+      name text,
+      email text,
+      role text,
+      raw jsonb not null,
+      primary key (state_id, id)
+    );
+
+    create table if not exists cp_business_profiles (
+      state_id text not null,
+      user_id text not null,
+      business_name text,
+      service_type text,
+      gstin text,
+      gst_type text,
+      gst_rate numeric,
+      phone text,
+      email text,
+      raw jsonb not null,
+      primary key (state_id, user_id)
+    );
+
+    create table if not exists cp_clients (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      name text,
+      mobile text,
+      city text,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_employees (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      name text,
+      mobile text,
+      designation text,
+      pay_per_day numeric,
+      pay_per_hour numeric,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_events (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      name text,
+      primary_client text,
+      mobile text,
+      venue text,
+      status text,
+      notes text,
+      add_ons jsonb not null default '[]'::jsonb,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_event_dates (
+      state_id text not null,
+      user_id text not null,
+      event_id text not null,
+      id text not null,
+      event_date text,
+      label text,
+      additional_services jsonb not null default '[]'::jsonb,
+      raw jsonb not null,
+      primary key (state_id, user_id, event_id, id)
+    );
+
+    create table if not exists cp_menu_slots (
+      state_id text not null,
+      user_id text not null,
+      event_id text not null,
+      date_id text not null,
+      id text not null,
+      type text,
+      delivery_time text,
+      pax integer,
+      price_per_pax integer,
+      enabled boolean,
+      menu_item_ids jsonb not null default '[]'::jsonb,
+      additional_services jsonb not null default '[]'::jsonb,
+      raw jsonb not null,
+      primary key (state_id, user_id, event_id, date_id, id)
+    );
+
+    create table if not exists cp_event_payments (
+      state_id text not null,
+      user_id text not null,
+      event_id text not null,
+      id text not null,
+      amount integer,
+      payment_date text,
+      mode text,
+      reference text,
+      settled boolean,
+      raw jsonb not null,
+      primary key (state_id, user_id, event_id, id)
+    );
+
+    create table if not exists cp_event_assignments (
+      state_id text not null,
+      user_id text not null,
+      event_id text not null,
+      employee_id text not null,
+      name text,
+      designation text,
+      pay_per_day numeric,
+      pay_per_hour numeric,
+      raw jsonb not null,
+      primary key (state_id, user_id, event_id, employee_id)
+    );
+
+    create table if not exists cp_attendance (
+      state_id text not null,
+      user_id text not null,
+      event_id text not null,
+      employee_id text not null,
+      attendance_date text not null,
+      status text,
+      hours numeric,
+      pay_per_day numeric,
+      pay_per_hour numeric,
+      raw jsonb not null,
+      primary key (state_id, user_id, event_id, employee_id, attendance_date)
+    );
+
+    create table if not exists cp_additional_services (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      name text,
+      unit text,
+      price numeric,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_custom_menus (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      name text,
+      type text,
+      item_ids jsonb not null default '[]'::jsonb,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_manual_invoices (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      invoice_number text,
+      client_name text,
+      mobile text,
+      event_name text,
+      event_date text,
+      invoice_date text,
+      total integer,
+      pending integer,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
+    create table if not exists cp_manual_invoice_items (
+      state_id text not null,
+      user_id text not null,
+      invoice_id text not null,
+      id text not null,
+      title text,
+      quantity integer,
+      rate integer,
+      amount integer,
+      raw jsonb not null,
+      primary key (state_id, user_id, invoice_id, id)
+    );
+
+    create table if not exists cp_menu_items (
+      state_id text not null,
+      id text not null,
+      english text,
+      kannada text,
+      title text,
+      category text,
+      meals jsonb not null default '[]'::jsonb,
+      veg boolean,
+      raw jsonb not null,
+      primary key (state_id, id)
+    );
+
+    create table if not exists cp_raw_materials (
+      state_id text not null,
+      id text not null,
+      name text,
+      category text,
+      unit text,
+      raw jsonb not null,
+      primary key (state_id, id)
+    );
+
+    create table if not exists cp_produce_items (
+      state_id text not null,
+      id text not null,
+      name text,
+      category text,
+      unit text,
+      raw jsonb not null,
+      primary key (state_id, id)
+    );
+  `);
+}
+
+async function syncRelationalTables(db) {
+  if (!pgPool) return;
+  const client = await pgPool.connect();
+  try {
+    await ensureRelationalTables(client);
+    await client.query('begin');
+    const tables = [
+      'cp_manual_invoice_items',
+      'cp_manual_invoices',
+      'cp_event_assignments',
+      'cp_event_payments',
+      'cp_menu_slots',
+      'cp_event_dates',
+      'cp_attendance',
+      'cp_events',
+      'cp_custom_menus',
+      'cp_additional_services',
+      'cp_employees',
+      'cp_clients',
+      'cp_business_profiles',
+      'cp_users',
+      'cp_menu_items',
+      'cp_raw_materials',
+      'cp_produce_items',
+    ];
+    for (const table of tables) {
+      await client.query(`delete from ${table} where state_id = $1`, [pgStateId]);
+    }
+
+    for (const user of asArray(db.users)) {
+      await client.query(
+        `insert into cp_users (state_id, id, name, email, role, raw)
+         values ($1, $2, $3, $4, $5, $6::jsonb)`,
+        [pgStateId, user.id || '', user.name || '', user.email || '', user.role || '', asJson(user)],
+      );
+      const userData = ensureUserDataShape(db.userData?.[user.id] || emptyUserData());
+      const profile = userData.businessProfile || emptyBusinessProfile();
+      await client.query(
+        `insert into cp_business_profiles
+         (state_id, user_id, business_name, service_type, gstin, gst_type, gst_rate, phone, email, raw)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+        [pgStateId, user.id, profile.businessName || '', profile.serviceType || '', profile.gstin || '', profile.gstType || '', Number(profile.gstRate || 0), profile.phone || '', profile.email || '', asJson(profile)],
+      );
+
+      for (const clientItem of asArray(userData.clients)) {
+        await client.query(
+          `insert into cp_clients (state_id, user_id, id, name, mobile, city, raw)
+           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+          [pgStateId, user.id, clientItem.id || '', clientItem.name || '', clientItem.mobile || '', clientItem.city || clientItem.address || '', asJson(clientItem)],
+        );
+      }
+
+      for (const employee of asArray(userData.employees)) {
+        await client.query(
+          `insert into cp_employees
+           (state_id, user_id, id, name, mobile, designation, pay_per_day, pay_per_hour, raw)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+          [pgStateId, user.id, employee.id || '', employee.name || '', employee.mobile || '', employee.designation || '', Number(employee.payPerDay || 0), Number(employee.payPerHour || 0), asJson(employee)],
+        );
+      }
+
+      for (const service of asArray(userData.additionalServices)) {
+        await client.query(
+          `insert into cp_additional_services (state_id, user_id, id, name, unit, price, raw)
+           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+          [pgStateId, user.id, service.id || '', service.name || '', service.unit || '', Number(service.price || 0), asJson(service)],
+        );
+      }
+
+      for (const customMenu of asArray(userData.customMenus)) {
+        await client.query(
+          `insert into cp_custom_menus (state_id, user_id, id, name, type, item_ids, raw)
+           values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
+          [pgStateId, user.id, customMenu.id || '', customMenu.name || '', customMenu.type || '', asJson(asArray(customMenu.itemIds)), asJson(customMenu)],
+        );
+      }
+
+      for (const event of asArray(userData.events)) {
+        await client.query(
+          `insert into cp_events
+           (state_id, user_id, id, name, primary_client, mobile, venue, status, notes, add_ons, raw)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb)`,
+          [pgStateId, user.id, event.id || '', event.name || '', event.primaryClient || '', event.mobile || '', event.venue || '', event.status || '', event.notes || '', asJson(asArray(event.addOns)), asJson(event)],
+        );
+        for (const date of asArray(event.dates)) {
+          await client.query(
+            `insert into cp_event_dates
+             (state_id, user_id, event_id, id, event_date, label, additional_services, raw)
+             values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,
+            [pgStateId, user.id, event.id || '', date.id || date.date || '', date.date || '', date.label || '', asJson(asArray(date.additionalServices)), asJson(date)],
+          );
+          for (const slot of asArray(date.menuSlots)) {
+            await client.query(
+              `insert into cp_menu_slots
+               (state_id, user_id, event_id, date_id, id, type, delivery_time, pax, price_per_pax, enabled, menu_item_ids, additional_services, raw)
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb)`,
+              [pgStateId, user.id, event.id || '', date.id || date.date || '', slot.id || `${slot.type || 'slot'}-${date.id || date.date || ''}`, slot.type || '', slot.time || '', Number(slot.pax || 0), Number(slot.pricePerPax || 0), slot.enabled !== false, asJson(asArray(slot.menuItemIds)), asJson(asArray(slot.additionalServices)), asJson(slot)],
+            );
+          }
+        }
+        for (const payment of asArray(event.payments)) {
+          await client.query(
+            `insert into cp_event_payments
+             (state_id, user_id, event_id, id, amount, payment_date, mode, reference, settled, raw)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+            [pgStateId, user.id, event.id || '', payment.id || '', Number(payment.amount || 0), payment.date || '', payment.mode || '', payment.reference || '', payment.settled === true, asJson(payment)],
+          );
+        }
+        for (const assignment of asArray(event.employeeAssignments)) {
+          await client.query(
+            `insert into cp_event_assignments
+             (state_id, user_id, event_id, employee_id, name, designation, pay_per_day, pay_per_hour, raw)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+            [pgStateId, user.id, event.id || '', assignment.employeeId || assignment.id || '', assignment.name || '', assignment.designation || '', Number(assignment.payPerDay || 0), Number(assignment.payPerHour || 0), asJson(assignment)],
+          );
+        }
+      }
+
+      for (const attendance of asArray(userData.attendance)) {
+        await client.query(
+          `insert into cp_attendance
+           (state_id, user_id, event_id, employee_id, attendance_date, status, hours, pay_per_day, pay_per_hour, raw)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
+          [pgStateId, user.id, attendance.eventId || '', attendance.employeeId || '', attendance.date || '', attendance.status || '', Number(attendance.hours || 0), Number(attendance.payPerDay || 0), Number(attendance.payPerHour || 0), asJson(attendance)],
+        );
+      }
+
+      for (const invoice of asArray(userData.manualInvoices)) {
+        await client.query(
+          `insert into cp_manual_invoices
+           (state_id, user_id, id, invoice_number, client_name, mobile, event_name, event_date, invoice_date, total, pending, raw)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,
+          [pgStateId, user.id, invoice.id || '', invoice.invoiceNumber || '', invoice.clientName || '', invoice.mobile || '', invoice.eventName || '', invoice.eventDate || '', invoice.invoiceDate || '', Number(invoice.total || 0), Number(invoice.pending || 0), asJson(invoice)],
+        );
+        for (const item of asArray(invoice.items)) {
+          await client.query(
+            `insert into cp_manual_invoice_items
+             (state_id, user_id, invoice_id, id, title, quantity, rate, amount, raw)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
+            [pgStateId, user.id, invoice.id || '', item.id || item.title || '', item.title || '', Number(item.quantity || 0), Number(item.rate || 0), Number(item.amount || 0), asJson(item)],
+          );
+        }
+      }
+    }
+
+    for (const item of asArray(db.universal?.menuItems)) {
+      await client.query(
+        `insert into cp_menu_items (state_id, id, english, kannada, title, category, meals, veg, raw)
+         values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb)`,
+        [pgStateId, item.id || '', item.english || '', item.kannada || '', item.title || '', item.category || '', asJson(asArray(item.meals)), item.veg === true, asJson(item)],
+      );
+    }
+    for (const item of asArray(db.universal?.rawMaterials)) {
+      await client.query(
+        `insert into cp_raw_materials (state_id, id, name, category, unit, raw)
+         values ($1,$2,$3,$4,$5,$6::jsonb)`,
+        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
+      );
+    }
+    for (const item of asArray(db.universal?.produceItems)) {
+      await client.query(
+        `insert into cp_produce_items (state_id, id, name, category, unit, raw)
+         values ($1,$2,$3,$4,$5,$6::jsonb)`,
+        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
+      );
+    }
+
+    await client.query('commit');
+  } catch (error) {
+    await client.query('rollback').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function schedulePostgresSave(db) {
@@ -2756,6 +3162,43 @@ app.get('/api/storage/status', async (req, res) => {
       produceItems: db.universal.produceItems.length,
     },
   });
+});
+
+app.get('/api/storage/tables', async (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  try {
+    await syncRelationalTables(db);
+    const tables = [
+      'cp_users',
+      'cp_business_profiles',
+      'cp_clients',
+      'cp_employees',
+      'cp_events',
+      'cp_event_dates',
+      'cp_menu_slots',
+      'cp_event_payments',
+      'cp_event_assignments',
+      'cp_attendance',
+      'cp_additional_services',
+      'cp_custom_menus',
+      'cp_manual_invoices',
+      'cp_manual_invoice_items',
+      'cp_menu_items',
+      'cp_raw_materials',
+      'cp_produce_items',
+    ];
+    const counts = {};
+    for (const table of tables) {
+      const result = await pgPool.query(`select count(*)::int as count from ${table} where state_id = $1`, [pgStateId]);
+      counts[table] = result.rows[0].count;
+    }
+    res.json({ stateId: pgStateId, counts });
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to inspect PostgreSQL tables', error: error.message });
+  }
 });
 
 app.post('/api/storage/push-local-to-postgres', async (req, res) => {
