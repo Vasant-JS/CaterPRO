@@ -8,10 +8,13 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:local_auth/local_auth.dart';
+import 'package:path/path.dart' as path_package;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 part 'src/app_core.dart';
+part 'src/local_database.dart';
 part 'src/auth.dart';
 part 'src/shell.dart';
 part 'src/dashboard.dart';

@@ -10,6 +10,7 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final api = ApiService();
   int tab = 0;
+  int parentTab = 0;
   bool loading = true;
   String? loadError;
   final List<AppEvent> events = [];
@@ -25,6 +26,8 @@ class _AppShellState extends State<AppShell> {
   int createSession = 0;
   Timer? autoSyncTimer;
   DateTime? lastSyncedAt;
+  bool localSyncPending = false;
+  static const _userDataCachePrefix = 'caterpro.userDataCache.v2.';
 
   @override
   void initState() {
@@ -40,6 +43,194 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
+  Future<String> userDataCacheKey() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('auth.userId') ??
+        prefs.getString('auth.email') ??
+        prefs.getString('auth.token') ??
+        'default';
+    return '$_userDataCachePrefix$userId';
+  }
+
+  Future<Map<String, dynamic>> loadCachedUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(await userDataCacheKey());
+    if (raw == null || raw.isEmpty) return {};
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    } catch (_) {
+      // Ignore corrupt local cache; fresh backend data will replace it.
+    }
+    return {};
+  }
+
+  Future<void> saveCachedUserData(Map<String, dynamic> userData) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(await userDataCacheKey(), jsonEncode(userData));
+  }
+
+  Future<void> cacheCurrentUserData(
+      {Map<String, dynamic>? base, bool synced = false}) {
+    final snapshot = currentUserDataJson(base: base);
+    return Future.wait([
+      saveCachedUserData(snapshot),
+      LocalCaterProDb.instance.saveSnapshot(
+        userData: snapshot,
+        universal: currentUniversalJson(),
+        synced: synced,
+      ),
+    ]).then((_) {
+      localSyncPending = !synced;
+    });
+  }
+
+  Map<String, dynamic> currentUserDataJson({Map<String, dynamic>? base}) => {
+        if (base != null) ...base,
+        'events': events.map((event) => event.toJson()).toList(),
+        'clients': clients.map((client) => client.toJson()).toList(),
+        'employees': employees.map((employee) => employee.toJson()).toList(),
+        'manualInvoices':
+            manualInvoices.map((invoice) => invoice.toJson()).toList(),
+        'additionalServices':
+            services.map((service) => service.toJson()).toList(),
+        'customMenus': customMenus.map((menu) => menu.toJson()).toList(),
+        'businessProfile': businessProfile.toJson(),
+      };
+
+  Map<String, dynamic> currentUniversalJson() => {
+        'menuItems':
+            MenuMasterScreen.menuItems.map((item) => item.toJson()).toList(),
+      };
+
+  Map<String, dynamic> mergeUserData(
+      Map<String, dynamic> server, Map<String, dynamic> cached) {
+    final merged = <String, dynamic>{...cached, ...server};
+    const userLists = [
+      'events',
+      'clients',
+      'employees',
+      'attendance',
+      'additionalServices',
+      'customMenus',
+      'manualInvoices',
+    ];
+    for (final key in userLists) {
+      merged[key] = mergeRecordLists(cached[key], server[key], key: key);
+    }
+    merged['businessProfile'] = {
+      if (cached['businessProfile'] is Map)
+        ...Map<String, dynamic>.from(cached['businessProfile'] as Map),
+      if (server['businessProfile'] is Map)
+        ...Map<String, dynamic>.from(server['businessProfile'] as Map),
+    };
+    return merged;
+  }
+
+  List<Map<String, dynamic>> mergeRecordLists(Object? cached, Object? server,
+      {required String key}) {
+    final records = <String, Map<String, dynamic>>{};
+    final order = <String>[];
+    void addAll(Object? source, bool fromServer) {
+      for (final item in jsonMapList(source)) {
+        final id = recordKey(item, key);
+        if (!order.contains(id)) order.add(id);
+        final previous = records[id];
+        records[id] = previous == null
+            ? item
+            : fromServer
+                ? mergeRecord(previous, item, key)
+                : mergeRecord(item, previous, key);
+      }
+    }
+
+    addAll(cached, false);
+    addAll(server, true);
+    return order.map((id) => records[id]!).toList();
+  }
+
+  Map<String, dynamic> mergeRecord(
+      Map<String, dynamic> cached, Map<String, dynamic> server, String key) {
+    final merged = <String, dynamic>{...cached, ...server};
+    if (key == 'events') {
+      merged['dates'] =
+          mergeRecordLists(cached['dates'], server['dates'], key: 'eventDates');
+      merged['payments'] = mergeRecordLists(cached['payments'],
+          server['payments'], key: 'payments');
+      merged['materialDocuments'] = mergeRecordLists(
+          cached['materialDocuments'], server['materialDocuments'],
+          key: 'materialDocuments');
+      merged['employeeAssignments'] = mergeRecordLists(
+          cached['employeeAssignments'], server['employeeAssignments'],
+          key: 'employeeAssignments');
+    } else if (key == 'eventDates') {
+      merged['menuSlots'] = mergeRecordLists(cached['menuSlots'],
+          server['menuSlots'], key: 'menuSlots');
+      merged['additionalServices'] = mergeRecordLists(
+          cached['additionalServices'], server['additionalServices'],
+          key: 'selectedServices');
+    } else if (key == 'menuSlots') {
+      merged['menuItemIds'] =
+          mergeStringList(cached['menuItemIds'], server['menuItemIds']);
+      merged['additionalServices'] = mergeRecordLists(
+          cached['additionalServices'], server['additionalServices'],
+          key: 'selectedServices');
+    } else if (key == 'materialDocuments') {
+      merged['items'] =
+          mergeRecordLists(cached['items'], server['items'], key: 'materialItems');
+    }
+    return merged;
+  }
+
+  List<Map<String, dynamic>> jsonMapList(Object? value) {
+    return ((value as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+
+  List<String> mergeStringList(Object? cached, Object? server) {
+    final values = <String>[];
+    for (final source in [cached, server]) {
+      for (final item in ((source as List?) ?? const [])) {
+        final value = item.toString();
+        if (value.isNotEmpty && !values.contains(value)) values.add(value);
+      }
+    }
+    return values;
+  }
+
+  String recordKey(Map<String, dynamic> item, String listKey) {
+    final id = item['id']?.toString() ?? '';
+    if (id.isNotEmpty) return id;
+    if (listKey == 'attendance') {
+      return [
+        item['eventId'],
+        item['employeeId'],
+        item['date'],
+      ].map((value) => value?.toString() ?? '').join('|');
+    }
+    if (listKey == 'selectedServices') {
+      return [
+        item['serviceId'],
+        item['name'],
+        item['count'],
+      ].map((value) => value?.toString() ?? '').join('|');
+    }
+    if (listKey == 'materialItems') {
+      return [
+        item['itemId'],
+        item['name'],
+        item['quantity'],
+      ].map((value) => value?.toString() ?? '').join('|');
+    }
+    final mobile = item['mobile']?.toString() ?? '';
+    if (mobile.isNotEmpty) return mobile;
+    final name = item['name']?.toString() ?? '';
+    if (name.isNotEmpty) return name;
+    return jsonEncode(item);
+  }
+
   Future<void> refreshEvents({bool silent = false}) async {
     if (!silent) {
       setState(() {
@@ -50,7 +241,10 @@ class _AppShellState extends State<AppShell> {
     try {
       final bootstrap = await api.bootstrap();
       final universal = (bootstrap['universal'] as Map?) ?? {};
-      final userData = (bootstrap['userData'] as Map?) ?? {};
+      final serverUserData = Map<String, dynamic>.from(
+          (bootstrap['userData'] as Map?) ?? const {});
+      final cachedUserData = await loadCachedUserData();
+      final userData = mergeUserData(serverUserData, cachedUserData);
       final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
       final loadedClients =
           decodeJsonList(userData['clients'], AppClient.fromJson);
@@ -94,7 +288,67 @@ class _AppShellState extends State<AppShell> {
         lastSyncedAt = DateTime.now();
         loadError = null;
       });
+      await saveCachedUserData(userData);
+      await LocalCaterProDb.instance.saveSnapshot(
+          userData: userData, universal: Map<String, dynamic>.from(universal), synced: true);
+      localSyncPending = false;
+      if (jsonEncode(userData) != jsonEncode(serverUserData)) {
+        unawaited(api.importBackup({'userData': userData}).catchError((_) {
+          return <String, dynamic>{};
+        }));
+      }
     } catch (e) {
+      final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
+      if (localSnapshot != null) {
+        final universal =
+            Map<String, dynamic>.from(localSnapshot['universal'] as Map);
+        final userData =
+            Map<String, dynamic>.from(localSnapshot['userData'] as Map);
+        final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
+        final loadedClients =
+            decodeJsonList(userData['clients'], AppClient.fromJson);
+        final loadedEmployees =
+            decodeJsonList(userData['employees'], Employee.fromJson);
+        final loadedManualInvoices =
+            decodeJsonList(userData['manualInvoices'], ManualInvoice.fromJson);
+        final menuItems =
+            decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
+        final additionalServices = decodeJsonList(
+            userData['additionalServices'], AdditionalServiceItem.fromJson);
+        final loadedCustomMenus =
+            decodeJsonList(userData['customMenus'], CustomMenu.fromJson);
+        final loadedBusinessProfile = BusinessProfile.fromJson(
+            Map<String, dynamic>.from(
+                (userData['businessProfile'] as Map?) ?? const {}));
+        if (!mounted) return;
+        setState(() {
+          events
+            ..clear()
+            ..addAll(loaded);
+          clients
+            ..clear()
+            ..addAll(loadedClients);
+          employees
+            ..clear()
+            ..addAll(loadedEmployees);
+          manualInvoices
+            ..clear()
+            ..addAll(loadedManualInvoices);
+          MenuMasterScreen.menuItems
+            ..clear()
+            ..addAll(menuItems);
+          services
+            ..clear()
+            ..addAll(additionalServices);
+          customMenus
+            ..clear()
+            ..addAll(loadedCustomMenus);
+          businessProfile = loadedBusinessProfile;
+          localSyncPending = true;
+          loadError = 'Offline mode: showing local SQLite data';
+        });
+        return;
+      }
       if (!mounted) return;
       final message = friendlyNetworkMessage(e);
       setState(() {
@@ -120,6 +374,7 @@ class _AppShellState extends State<AppShell> {
       tab = 1;
       editingEvent = null;
     });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> saveManualInvoice(ManualInvoice invoice) async {
@@ -134,6 +389,7 @@ class _AppShellState extends State<AppShell> {
       }
       tab = 3;
     });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> saveClient(AppClient client) async {
@@ -151,6 +407,7 @@ class _AppShellState extends State<AppShell> {
         clients[index] = saved;
       }
     });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> deleteClient(AppClient client) async {
@@ -160,6 +417,7 @@ class _AppShellState extends State<AppShell> {
         item.id == client.id ||
         normalizeMobileText(item.mobile) ==
             normalizeMobileText(client.mobile)));
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> saveEmployee(Employee employee) async {
@@ -177,6 +435,7 @@ class _AppShellState extends State<AppShell> {
         employees[index] = saved;
       }
     });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> deleteEmployee(Employee employee) async {
@@ -186,6 +445,7 @@ class _AppShellState extends State<AppShell> {
         item.id == employee.id ||
         normalizeMobileText(item.mobile) ==
             normalizeMobileText(employee.mobile)));
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> openManualInvoiceForm() async {
@@ -197,6 +457,7 @@ class _AppShellState extends State<AppShell> {
 
   void openEventDetails(AppEvent event) {
     setState(() {
+      parentTab = tab == 6 ? parentTab : tab;
       selectedEventId = event.id;
       tab = 6;
     });
@@ -212,10 +473,20 @@ class _AppShellState extends State<AppShell> {
       }
       selectedEventId = event.id;
     });
+    unawaited(cacheCurrentUserData(synced: true));
+  }
+
+  void removeSelectedEvent(String eventId) {
+    setState(() {
+      events.removeWhere((event) => event.id == eventId);
+      if (selectedEventId == eventId) selectedEventId = null;
+    });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   void openCreateEvent() {
     setState(() {
+      parentTab = tab == 5 ? parentTab : tab;
       editingEvent = null;
       selectedEventId = null;
       createSession++;
@@ -225,10 +496,41 @@ class _AppShellState extends State<AppShell> {
 
   void openEditEvent(AppEvent event) {
     setState(() {
+      parentTab = tab == 5 ? parentTab : tab;
       editingEvent = event;
       selectedEventId = event.id;
       createSession++;
       tab = 5;
+    });
+  }
+
+  void openChildTab(int nextTab) {
+    setState(() {
+      parentTab = tab;
+      tab = nextTab;
+    });
+  }
+
+  int parentForTab(int current) {
+    if (current == 5 && editingEvent != null) {
+      return selectedEventId == null ? 1 : 6;
+    }
+    if (current == 5 || current == 6) {
+      return parentTab == current ? 1 : parentTab;
+    }
+    if ({7, 8, 9, 10, 11, 12, 13, 15, 16, 17}.contains(current)) {
+      return 4;
+    }
+    if (current != 0) return parentTab == current ? 0 : parentTab;
+    return 0;
+  }
+
+  void closeToParent() {
+    setState(() {
+      final next = parentForTab(tab);
+      tab = next;
+      if (next != 6) selectedEventId = null;
+      if (next != 5) editingEvent = null;
     });
   }
 
@@ -242,6 +544,7 @@ class _AppShellState extends State<AppShell> {
         services[index] = service;
       }
     });
+    unawaited(cacheCurrentUserData());
     unawaited(api.saveAdditionalService(service).then((saved) {
       if (!mounted) return;
       setState(() {
@@ -252,6 +555,7 @@ class _AppShellState extends State<AppShell> {
           services[index] = saved;
         }
       });
+      unawaited(cacheCurrentUserData(synced: true));
     }).catchError((error) {
       if (mounted) {
         showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
@@ -262,7 +566,10 @@ class _AppShellState extends State<AppShell> {
   void removeService(String id) {
     showCpSnack(context, 'Deleting service...');
     setState(() => services.removeWhere((item) => item.id == id));
-    unawaited(api.deleteAdditionalService(id).catchError((error) {
+    unawaited(cacheCurrentUserData());
+    unawaited(api.deleteAdditionalService(id).then((_) {
+      unawaited(cacheCurrentUserData(synced: true));
+    }).catchError((error) {
       if (mounted) {
         showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
       }
@@ -280,18 +587,21 @@ class _AppShellState extends State<AppShell> {
         customMenus[index] = saved;
       }
     });
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> saveBusinessProfile(BusinessProfile profile) async {
     showCpSnack(context, 'Updating business profile...');
     final saved = await api.saveBusinessProfile(profile);
     setState(() => businessProfile = saved);
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   Future<void> saveInvoiceSettings(BusinessProfile profile) async {
     showCpSnack(context, 'Updating invoice settings...');
     final saved = await api.saveBusinessProfile(profile);
     setState(() => businessProfile = saved);
+    unawaited(cacheCurrentUserData(synced: true));
   }
 
   void addSystemNotification({
@@ -407,28 +717,24 @@ class _AppShellState extends State<AppShell> {
   }
 
   void openNotifications() {
-    setState(() => tab = 13);
+    openChildTab(13);
   }
 
   void openUserManagement() {
-    setState(() => tab = 14);
+    openChildTab(14);
   }
 
   void openAppAppearance() {
-    setState(() => tab = 15);
+    openChildTab(15);
   }
 
   void openInvoiceSettings() {
-    setState(() => tab = 16);
+    openChildTab(16);
   }
 
   Future<bool> handleBackPressed() async {
     if (tab != 0) {
-      setState(() {
-        tab = 0;
-        selectedEventId = null;
-        editingEvent = null;
-      });
+      closeToParent();
       return false;
     }
     final exit = await showDialog<bool>(
@@ -456,6 +762,9 @@ class _AppShellState extends State<AppShell> {
             loading: loading,
             loadError: loadError,
             openCreate: openCreateEvent,
+            openClients: () => setState(() => tab = 2),
+            openBilling: () => setState(() => tab = 3),
+            openInvoice: openManualInvoiceForm,
             openDetails: openEventDetails,
             refresh: refreshEvents),
         EventsScreen(
@@ -480,15 +789,16 @@ class _AppShellState extends State<AppShell> {
             onSaveManualInvoice: saveManualInvoice,
             onAddManualInvoice: openManualInvoiceForm),
         SettingsScreen(
-            openBusiness: () => setState(() => tab = 8),
+            openBusiness: () => openChildTab(8),
             openInvoiceSettings: openInvoiceSettings,
-            openMenu: () => setState(() => tab = 7),
-            openCustomMenus: () => setState(() => tab = 11),
-            openEmployees: () => setState(() => tab = 9),
-            openRawMaterials: () => setState(() => tab = 10),
-            openProduceItems: () => setState(() => tab = 12),
+            openMenu: () => openChildTab(7),
+            openCustomMenus: () => openChildTab(11),
+            openEmployees: () => openChildTab(9),
+            openRawMaterials: () => openChildTab(10),
+            openProduceItems: () => openChildTab(12),
             openNotifications: openNotifications,
             openUserManagement: openUserManagement,
+            openReports: () => openChildTab(17),
             openAppAppearance: openAppAppearance,
             onExportData: exportData,
             onImportData: importData,
@@ -503,10 +813,7 @@ class _AppShellState extends State<AppShell> {
             key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'),
             initialEvent: editingEvent,
             onDraftSaved: updateSelectedEvent,
-            onClose: () => setState(() {
-                  editingEvent = null;
-                  tab = 1;
-                }),
+            onClose: closeToParent,
             onCreate: createEvent,
             services: services,
             customMenus: customMenus,
@@ -521,24 +828,26 @@ class _AppShellState extends State<AppShell> {
             employees: employees,
             onEdit: openEditEvent,
             onEventUpdated: updateSelectedEvent,
-            onClose: () => setState(() => tab = 1)),
-        MenuMasterScreen(onClose: () => setState(() => tab = 4)),
+            onEventDeleted: removeSelectedEvent,
+            onClose: closeToParent),
+        MenuMasterScreen(onClose: closeToParent),
         BusinessProfileScreen(
             profile: businessProfile,
             onSave: saveBusinessProfile,
-            onClose: () => setState(() => tab = 4)),
+            onClose: closeToParent),
         EmployeeScreen(
             api: api,
             employees: employees,
+            events: events,
             onSave: saveEmployee,
             onDelete: deleteEmployee,
-            onClose: () => setState(() => tab = 4)),
-        RawMaterialScreen(onClose: () => setState(() => tab = 4)),
+            onClose: closeToParent),
+        RawMaterialScreen(onClose: closeToParent),
         CustomMenuScreen(
-            onClose: () => setState(() => tab = 4),
+            onClose: closeToParent,
             customMenus: customMenus,
             onSave: saveCustomMenu),
-        ProduceItemScreen(onClose: () => setState(() => tab = 4)),
+        ProduceItemScreen(onClose: closeToParent),
         NotificationsScreen(
             notifications: [
               ...systemNotifications,
@@ -546,19 +855,26 @@ class _AppShellState extends State<AppShell> {
             ]..sort((a, b) => b.date.compareTo(a.date)),
             events: events,
             onOpenEvent: openEventDetails,
-            onClose: () => setState(() => tab = 4)),
-        UserManagementScreen(
-            employees: employees, onClose: () => setState(() => tab = 4)),
-        AppAppearanceScreen(onClose: () => setState(() => tab = 4)),
+            onClose: closeToParent),
+        UserManagementScreen(employees: employees, onClose: closeToParent),
+        AppAppearanceScreen(onClose: closeToParent),
         InvoiceSettingsScreen(
             profile: businessProfile,
             onSave: saveInvoiceSettings,
-            onClose: () => setState(() => tab = 4)),
+            onClose: closeToParent),
+        ReportsScreen(
+            api: api,
+            events: events,
+            employees: employees,
+            manualInvoices: manualInvoices,
+            onClose: closeToParent),
       ];
 
   @override
   Widget build(BuildContext context) {
-    final showNav = tab < 5;
+    const drawerTabs = {0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17};
+    final showDrawer = drawerTabs.contains(tab);
+    final showMainFab = tab < 5;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
@@ -567,12 +883,18 @@ class _AppShellState extends State<AppShell> {
         if (shouldExit) SystemNavigator.pop();
       },
       child: Scaffold(
-        drawer: showNav
+        drawer: showDrawer
             ? CaterSideDrawer(
-                index: tab, onChanged: (i) => setState(() => tab = i))
+                index: tab,
+                onChanged: (i) => setState(() {
+                      parentTab = 0;
+                      selectedEventId = null;
+                      editingEvent = null;
+                      tab = i;
+                    }))
             : null,
         body: IndexedStack(index: tab, children: pages),
-        floatingActionButton: showNav ? _fabForTab() : null,
+        floatingActionButton: showMainFab ? _fabForTab() : null,
       ),
     );
   }
@@ -615,12 +937,13 @@ class CaterSideDrawer extends StatelessWidget {
 
   static const settingsSubItems = [
     (9, Icons.badge, 'Employees'),
+    (17, Icons.analytics_outlined, 'Reports'),
     (16, Icons.description, 'Invoice Settings'),
     (13, Icons.notifications, 'Notifications'),
     (15, Icons.wb_sunny, 'App Appearance'),
   ];
 
-  static const settingsTabs = {4, 8, 9, 10, 11, 12, 13, 15, 16};
+  static const settingsTabs = {4, 8, 9, 10, 11, 12, 13, 15, 16, 17};
 
   @override
   Widget build(BuildContext context) {
