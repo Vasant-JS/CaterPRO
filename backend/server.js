@@ -1187,6 +1187,13 @@ function menuSlotFromBody(body, existing = {}) {
     additionalServices: Array.isArray(body.additionalServices)
       ? body.additionalServices.map(serviceFromBody)
       : existing.additionalServices || [],
+    menuImages: Array.isArray(body.menuImages)
+      ? body.menuImages.slice(0, 2).map((image) => ({
+        id: image.id || makeId('menuimg'),
+        name: image.name || '',
+        dataUrl: image.dataUrl || '',
+      })).filter((image) => image.dataUrl)
+      : existing.menuImages || [],
   };
 }
 
@@ -2226,6 +2233,10 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       const row = Math.floor(index / 3);
       drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
     });
+    if (!items.length && (slot.menuImages || []).length) {
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+        .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} attached at end of PDF.`, 56, y + 31, { width: 320 });
+    }
     if (services.length) {
       const serviceY = y + 30 + itemRows * 14 + 7;
       doc.fillColor('#4b5563').font(fonts.bold).fontSize(7.8).text('Services', 56, serviceY, { width: 70 });
@@ -2245,8 +2256,44 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
   return pageNo;
 }
 
+function menuImageAttachments(dates) {
+  const attachments = [];
+  for (const date of dates) {
+    for (const slot of asArray(date.menuSlots)) {
+      for (const image of asArray(slot.menuImages).slice(0, 2)) {
+        if (!image?.dataUrl) continue;
+        attachments.push({ date, slot, image });
+      }
+    }
+  }
+  return attachments;
+}
+
+function drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo }) {
+  const { date, slot, image } = attachment;
+  const title = `${slot.type || 'Menu'} - ${prettyDate(date.date || '')}`;
+  doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('UPLOADED MENU IMAGE', 42, 34, { width: 260 });
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+    .text(`${title}${image.name ? ` - ${image.name}` : ''}`, 42, 56, { width: 500, height: 22 });
+  const buffer = imageBufferFromDataUrl(image.dataUrl);
+  if (buffer) {
+    try {
+      doc.image(buffer, 42, 86, {
+        fit: [511, 660],
+        align: 'center',
+        valign: 'center',
+      });
+    } catch {
+      doc.fillColor('#991b1b').font(fonts.regular).fontSize(10).text('Unable to render uploaded image.', 42, 110);
+    }
+  } else {
+    doc.fillColor('#991b1b').font(fonts.regular).fontSize(10).text('Uploaded image data is missing.', 42, 110);
+  }
+  menuFooter(doc, fonts, businessProfile, pageNo);
+}
+
 function generateMenuPdf({ res, db, event, dateId, allDates = false, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0);
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0 || (slot.menuImages || []).length > 0);
   const dates = allDates ? event.dates.filter(hasMenuContent) : event.dates.filter((date) => date.id === dateId || date.date === dateId);
   if (!dates.length) {
     res.status(404).json({ message: 'Event date not found' });
@@ -2265,6 +2312,11 @@ function generateMenuPdf({ res, db, event, dateId, allDates = false, businessPro
     pageNo = drawMenuPage({ doc, db, event, date, fonts, pageLabel: allDates ? `Day ${index + 1} of ${dates.length}` : 'Single day menu', businessProfile, pageNo });
     pageNo += 1;
   });
+  for (const attachment of menuImageAttachments(dates)) {
+    doc.addPage();
+    drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo });
+    pageNo += 1;
+  }
   doc.end();
 }
 
@@ -2281,7 +2333,7 @@ function todayIso() {
 }
 
 function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0);
+  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0 || (slot.menuImages || []).length > 0);
   const start = addDaysIso(todayIso(), 1);
   const end = addDaysIso(start, Math.max(1, days) - 1);
   const pages = [];
@@ -2305,6 +2357,11 @@ function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile =
     pageNo = drawMenuPage({ doc, db, event: page.event, date: page.date, fonts, pageLabel: `Upcoming ${index + 1} of ${pages.length}`, businessProfile, pageNo });
     pageNo += 1;
   });
+  for (const attachment of menuImageAttachments(pages.map((page) => page.date))) {
+    doc.addPage();
+    drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo });
+    pageNo += 1;
+  }
   doc.end();
 }
 
@@ -2393,6 +2450,131 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(10).text('No items added.', pageX, y + 14);
   }
   drawFooter(pageNo);
+  doc.end();
+}
+
+function menuCatalogLabel(item, language) {
+  const english = repairMojibake(item.english || '');
+  const kannada = repairMojibake(item.kannada || '');
+  if (language === 'kannada') return kannada || english || item.id || '';
+  if (language === 'english') return english || kannada || item.id || '';
+  if (kannada && english) return `${kannada} / ${english}`;
+  return kannada || english || item.id || '';
+}
+
+function generateMenuCatalogPdf({ res, db, language = 'both' }) {
+  const normalizedLanguage = ['kannada', 'english', 'both'].includes(language) ? language : 'both';
+  const doc = new PDFDocument({
+    size: 'A4',
+    layout: 'landscape',
+    margin: 12,
+    info: { Title: 'Menu Catalog' },
+    autoFirstPage: false,
+  });
+  const fonts = configurePdfFonts(doc);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="caterpro-menu-catalog-${normalizedLanguage}.pdf"`);
+  doc.pipe(res);
+
+  const items = asArray(db.universal?.menuItems)
+    .map((item) => ({
+      ...item,
+      english: repairMojibake(item.english || ''),
+      kannada: repairMojibake(item.kannada || ''),
+      category: repairMojibake(item.category || 'Other') || 'Other',
+      label: menuCatalogLabel(item, normalizedLanguage),
+      veg: item.veg !== false,
+    }))
+    .filter((item) => item.label);
+
+  const page = { width: 841.89, height: 595.28 };
+  const margin = 12;
+  const footerH = 13;
+  const topY = 32;
+  const gap = 8;
+  const columns = 4;
+  const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
+  const bottomY = page.height - margin - footerH;
+  let col = 0;
+  let y = topY;
+  let pageNo = 0;
+
+  function addPage() {
+    doc.addPage({ size: 'A4', layout: 'landscape', margin });
+    pageNo += 1;
+    doc.fillColor('#111827').font(fonts.bold).fontSize(13).text('Menu Catalog', margin, 11, { width: 180, lineBreak: false });
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(6.5).text(
+      `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} • ${items.length} items`,
+      page.width - 260,
+      14,
+      { width: 248, align: 'right', lineBreak: false },
+    );
+    doc.moveTo(margin, 28).lineTo(page.width - margin, 28).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.fillColor('#9ca3af').font(fonts.regular).fontSize(5.8).text(`CaterPro • Page ${pageNo}`, margin, page.height - 18, { width: page.width - margin * 2, align: 'center', lineBreak: false });
+    col = 0;
+    y = topY;
+  }
+
+  function nextColumn() {
+    col += 1;
+    if (col >= columns) addPage();
+    else y = topY;
+  }
+
+  function ensureSpace(height) {
+    if (y + height > bottomY) nextColumn();
+  }
+
+  function x() {
+    return margin + col * (colW + gap);
+  }
+
+  function sectionHeader(text, color = '#06445d') {
+    ensureSpace(16);
+    doc.roundedRect(x(), y, colW, 12, 3).fill(color);
+    doc.fillColor('white').font(fonts.bold).fontSize(7.2).text(text, x() + 4, y + 3, { width: colW - 8, height: 8, ellipsis: true, lineBreak: false });
+    y += 15;
+  }
+
+  function groupHeader(text) {
+    ensureSpace(13);
+    doc.fillColor('#111827').font(fonts.bold).fontSize(7.4).text(text, x(), y, { width: colW, height: 9, ellipsis: true, lineBreak: false });
+    doc.moveTo(x(), y + 10).lineTo(x() + colW, y + 10).strokeColor('#e5e7eb').lineWidth(0.4).stroke();
+    y += 13;
+  }
+
+  function itemLine(item) {
+    const label = menuCatalogLabel(item, normalizedLanguage);
+    const lineH = normalizedLanguage === 'both' ? 10.2 : 8.8;
+    ensureSpace(lineH);
+    doc.circle(x() + 2, y + 4.1, 1.2).fill(item.veg ? '#16a34a' : '#dc2626');
+    drawSingleLineText(doc, label, x() + 7, y, colW - 7, fonts, {
+      fontSize: normalizedLanguage === 'both' ? 6.2 : 6.7,
+      height: lineH,
+      color: '#202124',
+    });
+    y += lineH;
+  }
+
+  function writeSide(isVeg) {
+    const sideItems = items.filter((item) => item.veg === isVeg);
+    if (!sideItems.length) return;
+    sectionHeader(isVeg ? 'VEG' : 'NON VEG', isVeg ? '#0f766e' : '#991b1b');
+    const categories = [...new Set(sideItems.map((item) => item.category || 'Other'))]
+      .sort((a, b) => a.localeCompare(b, 'en-IN'));
+    for (const category of categories) {
+      const categoryItems = sideItems
+        .filter((item) => (item.category || 'Other') === category)
+        .sort((a, b) => menuCatalogLabel(a, normalizedLanguage).localeCompare(menuCatalogLabel(b, normalizedLanguage), 'kn-IN'));
+      groupHeader(category);
+      for (const item of categoryItems) itemLine(item);
+      y += 5;
+    }
+  }
+
+  addPage();
+  writeSide(true);
+  writeSide(false);
   doc.end();
 }
 
@@ -2892,6 +3074,16 @@ app.get('/api/menu-items', (req, res) => {
   ensureUniversal(db);
   res.json(db.universal.menuItems);
 });
+
+function handleMenuCatalogPdf(req, res) {
+  const db = readDb();
+  ensureUniversal(db);
+  return generateMenuCatalogPdf({ res, db, language: String(req.query.language || 'both') });
+}
+
+app.get('/api/menu-items/pdf', handleMenuCatalogPdf);
+app.get('/api/menu-items/export.pdf', handleMenuCatalogPdf);
+app.get('/api/menu-catalog.pdf', handleMenuCatalogPdf);
 
 app.post('/api/menu-items', (req, res) => {
   const db = readDb();
