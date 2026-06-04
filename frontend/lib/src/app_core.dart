@@ -1890,6 +1890,17 @@ class ApiService {
     });
   }
 
+  Future<Uri> monthlyReportPdfUri(String month) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/reports/monthly.pdf')
+        .replace(queryParameters: {
+      'token': token,
+      'month': month,
+      'ts': DateTime.now().millisecondsSinceEpoch.toString()
+    });
+  }
+
   Future<List<CustomMenu>> getCustomMenus() async {
     final response = await http.get(
         Uri.parse('${ApiConfig.baseUrl}/custom-menus'),

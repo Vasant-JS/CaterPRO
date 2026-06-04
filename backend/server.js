@@ -2142,6 +2142,139 @@ function generateAttendancePdf({ res, records, employees, month, businessProfile
   doc.end();
 }
 
+function parseIsoDateValue(value) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function eventFirstDateValue(event) {
+  const dates = asArray(event.dates).map((date) => parseIsoDateValue(date.date)).filter(Boolean).sort((a, b) => a - b);
+  return dates[0] || null;
+}
+
+function sameMonthValue(date, month) {
+  return date && date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
+}
+
+function eventMemberTotal(event) {
+  return asArray(event.dates).reduce((dateSum, date) => dateSum + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + Number(slot.pax || 0), 0), 0);
+}
+
+function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, businessProfile = emptyBusinessProfile() }) {
+  const [yearText, monthText] = String(monthKey || '').split('-');
+  const monthDate = new Date(Number(yearText || new Date().getFullYear()), Number(monthText || new Date().getMonth() + 1) - 1, 1);
+  const normalizedMonth = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
+  const monthLabel = monthDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+  const monthEvents = asArray(events).filter((event) => sameMonthValue(eventFirstDateValue(event), monthDate));
+  const monthPayments = asArray(events).flatMap((event) => asArray(event.payments)
+    .filter((payment) => String(payment.date || '').startsWith(normalizedMonth))
+    .map((payment) => ({ ...payment, eventName: event.name || 'Event', client: event.primaryClient || event.mobile || '' })));
+  const monthManualInvoices = asArray(manualInvoices).filter((invoice) => String(invoice.invoiceDate || '').startsWith(normalizedMonth));
+  const bookedRevenue = monthEvents.reduce((sum, event) => sum + eventTotals(event).total, 0);
+  const collected = monthPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+    + monthManualInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount || 0), 0);
+  const outstanding = monthEvents.reduce((sum, event) => sum + eventTotals(event).balance, 0)
+    + monthManualInvoices.reduce((sum, invoice) => {
+      const subtotal = asArray(invoice.items).reduce((itemSum, item) => itemSum + Number(item.amount || 0), 0);
+      const paid = Number(invoice.paidAmount || 0) + Number(invoice.settlementAmount || 0);
+      return sum + Math.max(0, subtotal - paid);
+    }, 0);
+  const netProfit = collected - outstanding;
+  const clients = new Set(monthEvents.map((event) => normalizeMobile(event.mobile)).filter(Boolean));
+  const members = monthEvents.reduce((sum, event) => sum + eventMemberTotal(event), 0);
+  const avgMembers = monthEvents.length ? Math.round(members / monthEvents.length) : 0;
+  const pendingEvents = monthEvents.filter((event) => eventTotals(event).balance > 0);
+
+  const doc = new PDFDocument({ size: 'A4', margin: 24, info: { Title: `Monthly Report - ${monthLabel}` }, autoFirstPage: false });
+  const fonts = configurePdfFonts(doc);
+  const pageW = 595.28;
+  const pageH = 841.89;
+  const left = 28;
+  const right = pageW - 28;
+  const width = right - left;
+  let pageNo = 0;
+  let y = 0;
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="monthly-report-${normalizedMonth}.pdf"`);
+  doc.pipe(res);
+
+  function addPage() {
+    doc.addPage({ size: 'A4', margin: 24 });
+    pageNo += 1;
+    doc.rect(0, 0, pageW, pageH).fill('#ffffff');
+    doc.fillColor('#111827').font(fonts.bold).fontSize(18).text('Monthly Report', left, 24, { width: 220 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(`${monthLabel} - ${businessProfile.businessName || 'CaterPro'} - Page ${pageNo}`, right - 270, 29, { width: 270, align: 'right' });
+    doc.moveTo(left, 52).lineTo(right, 52).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+    y = 68;
+  }
+  function ensure(height) {
+    if (y + height > pageH - 34) addPage();
+  }
+  function section(title) {
+    ensure(28);
+    doc.roundedRect(left, y, width, 20, 4).fill('#eef2f7');
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(title, left + 8, y + 5, { width: width - 16 });
+    y += 28;
+  }
+  function metric(x, w, title, value, note, color = '#06445d') {
+    doc.roundedRect(x, y, w, 58, 5).fill('#f8fafc').strokeColor('#d9e2ec').lineWidth(0.5).stroke();
+    doc.fillColor('#6b7280').font(fonts.bold).fontSize(7.5).text(title, x + 8, y + 8, { width: w - 16 });
+    doc.fillColor(color).font(fonts.bold).fontSize(13).text(value, x + 8, y + 25, { width: w - 16, ellipsis: true });
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(note, x + 8, y + 43, { width: w - 16, ellipsis: true });
+  }
+  function row(cells, widths, opts = {}) {
+    const h = opts.header ? 20 : 24;
+    ensure(h);
+    let x = left;
+    if (opts.header) doc.rect(left, y, width, h).fill('#f3f4f6');
+    cells.forEach((cell, index) => {
+      doc.fillColor(opts.color || '#202124').font(opts.header ? fonts.bold : fonts.regular).fontSize(opts.header ? 8 : 7.5)
+        .text(String(cell ?? ''), x + 4, y + 6, { width: widths[index] - 8, height: h - 8, ellipsis: true, align: opts.align?.[index] || 'left' });
+      x += widths[index];
+    });
+    doc.moveTo(left, y + h).lineTo(right, y + h).strokeColor('#edf0f2').lineWidth(0.4).stroke();
+    y += h;
+  }
+
+  addPage();
+  const cardGap = 8;
+  const cardW = (width - cardGap * 2) / 3;
+  metric(left, cardW, 'COLLECTED', money(collected), `${monthPayments.length} event payments`, '#0f766e');
+  metric(left + cardW + cardGap, cardW, 'BOOKED', money(bookedRevenue), `${monthEvents.length} events`, '#06445d');
+  metric(left + (cardW + cardGap) * 2, cardW, 'OUTSTANDING', money(outstanding), `${pendingEvents.length} pending`, '#ba1a1a');
+  y += 70;
+  metric(left, cardW, 'NET POSITION', money(netProfit), netProfit >= 0 ? 'Positive cash position' : 'Pending exceeds collection', netProfit >= 0 ? '#0f766e' : '#ba1a1a');
+  metric(left + cardW + cardGap, cardW, 'CLIENTS', `${clients.size}`, 'Unique event mobiles', '#1c7c8a');
+  metric(left + (cardW + cardGap) * 2, cardW, 'AVG MEMBERS', `${avgMembers}`, `${members} total members`, '#7c3aed');
+  y += 76;
+
+  section('Events');
+  row(['Date', 'Event', 'Client', 'Members', 'Booked', 'Paid', 'Discount', 'Balance'], [48, 122, 82, 48, 66, 58, 58, 66], { header: true, align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
+  for (const event of monthEvents) {
+    const totals = eventTotals(event);
+    row([eventFirstDateValue(event)?.toISOString().slice(0, 10) || '-', event.name || 'Event', event.primaryClient || event.mobile || '-', eventMemberTotal(event), money(totals.total), money(totals.paid), money(totals.discount), money(totals.balance)], [48, 122, 82, 48, 66, 58, 58, 66], { align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
+  }
+  if (!monthEvents.length) row(['No events for this month'], [width]);
+
+  section('Payments Collected This Month');
+  row(['Date', 'Event', 'Client', 'Mode', 'Reference', 'Amount'], [56, 132, 96, 62, 132, 72], { header: true, align: ['', '', '', '', '', 'right'] });
+  for (const payment of monthPayments) {
+    row([payment.date || '-', payment.eventName, payment.client || '-', payment.mode || '-', payment.reference || '-', money(payment.amount)], [56, 132, 96, 62, 132, 72], { align: ['', '', '', '', '', 'right'] });
+  }
+  if (!monthPayments.length) row(['No event payments collected this month'], [width]);
+
+  section('Manual Invoices');
+  row(['Date', 'Invoice', 'Client', 'Total', 'Paid', 'Pending'], [58, 120, 148, 76, 76, 76], { header: true, align: ['', '', '', 'right', 'right', 'right'] });
+  for (const invoice of monthManualInvoices) {
+    const total = asArray(invoice.items).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const paid = Number(invoice.paidAmount || 0) + Number(invoice.settlementAmount || 0);
+    row([invoice.invoiceDate || '-', invoice.invoiceNumber || invoice.id, invoice.clientName || '-', money(total), money(paid), money(Math.max(0, total - paid))], [58, 120, 148, 76, 76, 76], { align: ['', '', '', 'right', 'right', 'right'] });
+  }
+  if (!monthManualInvoices.length) row(['No manual invoices for this month'], [width]);
+  doc.end();
+}
+
 function mealAccent(type) {
   const key = String(type || '').toLowerCase();
   if (key.includes('breakfast')) return '#f2a51a';
@@ -3040,6 +3173,20 @@ app.get('/api/attendance/monthly.pdf', (req, res) => {
   const month = String(req.query.month || new Date().toISOString().slice(0, 7));
   const records = db.userData[user.id].attendance.filter((record) => String(record.date || '').startsWith(month));
   return generateAttendancePdf({ res, records, employees: db.userData[user.id].employees, month, businessProfile: db.userData[user.id].businessProfile });
+});
+
+app.get('/api/reports/monthly.pdf', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  return generateMonthlyReportPdf({
+    res,
+    events: db.userData[user.id].events,
+    manualInvoices: db.userData[user.id].manualInvoices,
+    monthKey: month,
+    businessProfile: db.userData[user.id].businessProfile,
+  });
 });
 
 app.get('/api/manual-invoices', (req, res) => {

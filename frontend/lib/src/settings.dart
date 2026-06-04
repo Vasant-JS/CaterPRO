@@ -54,7 +54,9 @@ class SettingsScreen extends StatelessWidget {
       required this.openProduceItems,
       required this.openNotifications,
       required this.openUserManagement,
+      required this.openReports,
       required this.openAppAppearance,
+      required this.openEventDefaults,
       required this.onExportData,
       required this.onImportData,
       required this.onBackupToGoogleDrive,
@@ -73,7 +75,9 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback openProduceItems;
   final VoidCallback openNotifications;
   final VoidCallback openUserManagement;
+  final VoidCallback openReports;
   final VoidCallback openAppAppearance;
+  final VoidCallback openEventDefaults;
   final Future<void> Function() onExportData;
   final Future<void> Function() onImportData;
   final Future<void> Function() onBackupToGoogleDrive;
@@ -292,13 +296,20 @@ class SettingsScreen extends StatelessWidget {
         ], onItemTap: {
           'Employees': openEmployees,
         }),
+        SettingsGroup(title: 'Reports', items: [
+          (Icons.analytics_outlined, 'Reports'),
+        ], onItemTap: {
+          'Reports': openReports,
+        }),
         SettingsGroup(title: t('Preferences'), items: [
           (Icons.description, 'Invoice Settings'),
+          (Icons.tune, 'Event Defaults'),
           (Icons.notifications_active, 'Notifications'),
           (Icons.light_mode, 'App Appearance'),
           (Icons.lock_reset, 'Reset Password')
         ], onItemTap: {
           'Invoice Settings': openInvoiceSettings,
+          'Event Defaults': openEventDefaults,
           'Notifications': openNotifications,
           'App Appearance': openAppAppearance,
           'Reset Password': () => unawaited(showResetPasswordDialog(context)),
@@ -349,6 +360,594 @@ class SettingsScreen extends StatelessWidget {
       ],
     );
   }
+}
+
+class EventDefaultsScreen extends StatefulWidget {
+  const EventDefaultsScreen({super.key, required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  State<EventDefaultsScreen> createState() => _EventDefaultsScreenState();
+}
+
+class _EventDefaultsScreenState extends State<EventDefaultsScreen> {
+  late Map<String, String> times;
+  late Set<String> autoTypes;
+
+  @override
+  void initState() {
+    super.initState();
+    final prefs = appPreferences.value;
+    times = {
+      for (final type in eventMenuTypes)
+        type: prefs.defaultMenuTimes[type] ??
+            defaultEventMenuTimes[type] ??
+            '10:00 AM'
+    };
+    autoTypes = {...prefs.autoMenuTypes};
+  }
+
+  TimeOfDay parseTime(String value) {
+    final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', caseSensitive: false)
+        .firstMatch(value.trim());
+    if (match == null) return const TimeOfDay(hour: 10, minute: 0);
+    var hour = int.tryParse(match.group(1) ?? '') ?? 10;
+    final minute = int.tryParse(match.group(2) ?? '') ?? 0;
+    final period = (match.group(3) ?? 'AM').toUpperCase();
+    if (period == 'PM' && hour != 12) hour += 12;
+    if (period == 'AM' && hour == 12) hour = 0;
+    return TimeOfDay(
+        hour: hour.clamp(0, 23).toInt(), minute: minute.clamp(0, 59).toInt());
+  }
+
+  String formatTime(TimeOfDay time) {
+    final period = time.hour >= 12 ? 'PM' : 'AM';
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    return '$hour:${time.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  Future<void> pickTime(String type) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: parseTime(times[type] ?? defaultEventMenuTimes[type] ?? ''),
+    );
+    if (picked == null) return;
+    setState(() => times[type] = formatTime(picked));
+  }
+
+  Future<void> save() async {
+    await appPreferences.save(appPreferences.value
+        .copyWith(defaultMenuTimes: times, autoMenuTypes: autoTypes));
+    if (!mounted) return;
+    showCpSnack(context, 'Event defaults saved');
+    widget.onClose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScreenFrame(
+      topBar: TopBar(
+          title: 'Event Defaults',
+          avatar: false,
+          leading: IconButton(
+              onPressed: widget.onClose,
+              icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+          actions: [
+            TextButton(
+                onPressed: save,
+                child: const Text('Save',
+                    style: TextStyle(fontWeight: FontWeight.w900)))
+          ]),
+      children: [
+        CpCard(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Default Menu Types',
+                style: TextStyle(
+                    color: Cp.primary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900)),
+            const SizedBox(height: 6),
+            Text('Selected types are automatically added to every new date.',
+                style: TextStyle(color: cpOnVariant(context))),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: eventMenuTypes.map((type) {
+                final selected = autoTypes.contains(type);
+                return FilterChip(
+                    selected: selected,
+                    label: Text(type),
+                    avatar: selected ? const Icon(Icons.check) : null,
+                    onSelected: (value) => setState(() {
+                          if (value) {
+                            autoTypes.add(type);
+                          } else {
+                            autoTypes.remove(type);
+                          }
+                        }));
+              }).toList(),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        CpCard(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Default Timing',
+                style: TextStyle(
+                    color: Cp.primary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            ...eventMenuTypes.map((type) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.schedule, color: Cp.primary),
+                    title: Text(type,
+                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                    trailing: FilledButton.tonalIcon(
+                        onPressed: () => pickTime(type),
+                        icon: const Icon(Icons.access_time),
+                        label: Text(times[type] ?? '-')),
+                  ),
+                )),
+          ]),
+        ),
+      ],
+    );
+  }
+}
+
+class ReportsScreen extends StatefulWidget {
+  const ReportsScreen(
+      {super.key,
+      required this.api,
+      required this.events,
+      required this.employees,
+      required this.manualInvoices,
+      required this.onClose});
+  final ApiService api;
+  final List<AppEvent> events;
+  final List<Employee> employees;
+  final List<ManualInvoice> manualInvoices;
+  final VoidCallback onClose;
+
+  @override
+  State<ReportsScreen> createState() => _ReportsScreenState();
+}
+
+class _ReportsScreenState extends State<ReportsScreen> {
+  DateTime month = DateTime(DateTime.now().year, DateTime.now().month);
+
+  String get monthKey =>
+      '${month.year}-${month.month.toString().padLeft(2, '0')}';
+
+  void changeMonth(int delta) {
+    setState(() => month = DateTime(month.year, month.month + delta));
+  }
+
+  bool isSameMonth(DateTime date) =>
+      date.year == month.year && date.month == month.month;
+
+  DateTime? firstDate(AppEvent event) {
+    final dates = event.dates
+        .map((date) => parseIsoDate(date.date))
+        .whereType<DateTime>()
+        .toList();
+    if (dates.isEmpty) return null;
+    dates.sort();
+    return dates.first;
+  }
+
+  List<AppEvent> get monthEvents => widget.events.where((event) {
+        final date = firstDate(event);
+        return date != null && isSameMonth(date);
+      }).toList();
+
+  int get revenue => widget.events.fold(
+      0,
+      (sum, event) =>
+          sum +
+          event.payments.where((payment) {
+            final date = parseIsoDate(payment.date);
+            return date != null && isSameMonth(date);
+          }).fold<int>(
+              0, (paymentSum, payment) => paymentSum + payment.amount));
+
+  int get bookedRevenue =>
+      monthEvents.fold(0, (sum, event) => sum + eventTotal(event));
+  int get outstanding =>
+      monthEvents.fold(0, (sum, event) => sum + eventBalance(event));
+  int get netProfit => revenue - outstanding;
+  int get avgMembers {
+    final slots = monthEvents
+        .expand((event) => event.dates)
+        .expand((date) => date.menuSlots)
+        .toList();
+    if (slots.isEmpty) return 0;
+    return (slots.fold<int>(0, (sum, slot) => sum + slot.pax) / slots.length)
+        .round();
+  }
+
+  Future<void> openAttendanceReport() async {
+    await showDialog<void>(
+        context: context,
+        builder: (context) => AttendanceSheetDialog(
+            api: widget.api, employees: widget.employees));
+  }
+
+  Future<void> downloadAttendancePdf() async {
+    try {
+      showCpSnack(context, 'Preparing attendance report...');
+      final uri = await widget.api.attendancePdfUri(monthKey);
+      final launched = await launchUrl(uri,
+          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      if (!mounted) return;
+      showCpSnack(
+          context,
+          launched
+              ? 'Attendance report download started'
+              : 'Unable to download');
+    } catch (e) {
+      if (mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
+
+  Future<void> downloadMonthlyReportPdf() async {
+    try {
+      showCpSnack(context, 'Preparing monthly report...');
+      final uri = await widget.api.monthlyReportPdfUri(monthKey);
+      final launched = await launchUrl(uri,
+          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      if (!mounted) return;
+      showCpSnack(
+          context,
+          launched
+              ? 'Monthly report download started'
+              : 'Unable to download report');
+    } catch (e) {
+      if (mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final newClients = monthEvents
+        .map((event) => normalizeMobileText(event.mobile))
+        .where((mobile) => mobile.isNotEmpty)
+        .toSet()
+        .length;
+    final eventTypeCounts = <String, int>{};
+    for (final event in monthEvents) {
+      eventTypeCounts[event.name.isEmpty ? 'Event' : event.name] =
+          (eventTypeCounts[event.name.isEmpty ? 'Event' : event.name] ?? 0) + 1;
+    }
+    final topStaff = widget.employees.take(3).toList();
+    final pendingEvents =
+        monthEvents.where((event) => eventBalance(event) > 0).take(3).toList();
+    return ScreenFrame(
+      topBar: TopBar(
+          title: 'Reports',
+          avatar: false,
+          leading: IconButton(
+              onPressed: widget.onClose,
+              icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+          actions: [
+            IconButton(
+                onPressed: downloadMonthlyReportPdf,
+                icon:
+                    const Icon(Icons.insert_chart_outlined, color: Cp.primary),
+                tooltip: 'Monthly report PDF'),
+            IconButton(
+                onPressed: openAttendanceReport,
+                icon: const Icon(Icons.fact_check, color: Cp.primary),
+                tooltip: 'Attendance report')
+          ]),
+      children: [
+        Row(children: [
+          Expanded(
+              child: Text('Monthly Report',
+                  style: TextStyle(
+                      color: cpOnSurface(context),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900))),
+          IconButton(
+              onPressed: () => changeMonth(-1),
+              icon: Icon(Icons.chevron_left, color: cpPrimary(context))),
+          Pill('${_monthShortNames[month.month - 1]} ${month.year}',
+              color: Cp.surfaceHigh, textColor: cpOnSurface(context)),
+          IconButton(
+              onPressed: () => changeMonth(1),
+              icon: Icon(Icons.chevron_right, color: cpPrimary(context))),
+        ]),
+        const SizedBox(height: 12),
+        ReportMetricCard(
+            title: 'TOTAL REVENUE',
+            value: money(revenue),
+            note: bookedRevenue > 0
+                ? '${((revenue / bookedRevenue) * 100).round()}% collected'
+                : 'No bookings this month',
+            icon: Icons.trending_up,
+            accent: Cp.tertiaryContainer),
+        ReportMetricCard(
+            title: 'OUTSTANDING PAYMENTS',
+            value: money(outstanding),
+            note: '${pendingEvents.length} pending invoices/events',
+            icon: Icons.trending_up,
+            accent: Cp.error),
+        CpCard(
+          color: Cp.primaryContainer,
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(
+                  child: Text('NET PROFIT',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: .76),
+                          fontWeight: FontWeight.w900))),
+              const Icon(Icons.payments, color: Cp.secondaryContainer),
+            ]),
+            const SizedBox(height: 28),
+            Text(money(netProfit),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 23,
+                    fontWeight: FontWeight.w900)),
+            Text(
+                netProfit >= 0
+                    ? 'Positive cash position'
+                    : 'Pending exceeds collection',
+                style: TextStyle(
+                    color: Colors.white.withValues(alpha: .76),
+                    fontWeight: FontWeight.w700)),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+              child: ReportMiniCard(
+                  icon: Icons.restaurant_menu,
+                  value: '${monthEvents.length}',
+                  label: 'Events',
+                  color: Cp.secondary)),
+          const SizedBox(width: 8),
+          Expanded(
+              child: ReportMiniCard(
+                  icon: Icons.person_add_alt,
+                  value: '$newClients',
+                  label: 'Clients',
+                  color: Cp.primary)),
+          const SizedBox(width: 8),
+          Expanded(
+              child: ReportMiniCard(
+                  icon: Icons.groups,
+                  value: '$avgMembers',
+                  label: 'Avg. Members',
+                  color: Cp.tertiary)),
+        ]),
+        const SizedBox(height: 16),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Revenue by Event Type',
+              style: TextStyle(
+                  color: cpOnSurface(context),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900)),
+          const SizedBox(height: 14),
+          if (eventTypeCounts.isEmpty)
+            Text('No events this month.',
+                style: TextStyle(color: cpOnVariant(context)))
+          else
+            ...eventTypeCounts.entries.take(4).map((entry) {
+              final percent =
+                  ((entry.value / monthEvents.length) * 100).round();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(children: [
+                  Container(
+                      width: 9,
+                      height: 9,
+                      decoration: const BoxDecoration(
+                          color: Cp.primaryContainer, shape: BoxShape.circle)),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(entry.key)),
+                  Text('$percent%',
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                ]),
+              );
+            }),
+        ])),
+        const SizedBox(height: 16),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Top Performing Staff',
+              style: TextStyle(
+                  color: cpOnSurface(context),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900)),
+          const SizedBox(height: 12),
+          if (topStaff.isEmpty)
+            Text('Add employees to see this report.',
+                style: TextStyle(color: cpOnVariant(context)))
+          else
+            ...topStaff.map((employee) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(children: [
+                    CircleAvatar(
+                        backgroundColor: Cp.primaryFixed,
+                        child: Text(employee.name.substring(0, 1),
+                            style: const TextStyle(
+                                color: Cp.primary,
+                                fontWeight: FontWeight.w900))),
+                    const SizedBox(width: 10),
+                    Expanded(
+                        child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                          Text(employee.name,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w900)),
+                          Text(employee.designation,
+                              style: TextStyle(color: cpOnVariant(context))),
+                        ])),
+                    Text('${money(employee.payPerDay)}/day',
+                        style: TextStyle(
+                            color: cpPrimary(context),
+                            fontWeight: FontWeight.w900)),
+                  ]),
+                )),
+        ])),
+        const SizedBox(height: 16),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+                child: Text('Outstanding Payments',
+                    style: TextStyle(
+                        color: cpOnSurface(context),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900))),
+            Text(money(outstanding),
+                style: const TextStyle(
+                    color: Cp.error, fontWeight: FontWeight.w900)),
+          ]),
+          const SizedBox(height: 12),
+          if (pendingEvents.isEmpty)
+            Text('No outstanding event payments this month.',
+                style: TextStyle(color: cpOnVariant(context)))
+          else
+            ...pendingEvents.map((event) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: CpCard(
+                    color: Cp.surfaceLow,
+                    child: Row(children: [
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(event.name,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900)),
+                            Text(event.primaryClient,
+                                style: TextStyle(color: cpOnVariant(context))),
+                          ])),
+                      Text(money(eventBalance(event)),
+                          style: const TextStyle(
+                              color: Cp.error, fontWeight: FontWeight.w900)),
+                    ]),
+                  ),
+                )),
+        ])),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 52,
+          child: FilledButton.icon(
+              onPressed: downloadMonthlyReportPdf,
+              style:
+                  FilledButton.styleFrom(backgroundColor: Cp.primaryContainer),
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Download Monthly PDF',
+                  style: TextStyle(fontWeight: FontWeight.w900))),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          height: 52,
+          child: OutlinedButton.icon(
+              onPressed: downloadAttendancePdf,
+              icon: const Icon(Icons.picture_as_pdf),
+              label: const Text('Download Attendance PDF',
+                  style: TextStyle(fontWeight: FontWeight.w900))),
+        ),
+      ],
+    );
+  }
+}
+
+class ReportMetricCard extends StatelessWidget {
+  const ReportMetricCard(
+      {super.key,
+      required this.title,
+      required this.value,
+      required this.note,
+      required this.icon,
+      required this.accent});
+  final String title;
+  final String value;
+  final String note;
+  final IconData icon;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: CpCard(
+          child: Row(children: [
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 28),
+                  Text(value,
+                      style: TextStyle(
+                          color: cpOnSurface(context),
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900)),
+                  Text(note,
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w700)),
+                ])),
+            Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                    color: accent.withValues(alpha: .16),
+                    borderRadius: BorderRadius.circular(999)),
+                child: Icon(icon, color: accent)),
+          ]),
+        ),
+      );
+}
+
+class ReportMiniCard extends StatelessWidget {
+  const ReportMiniCard(
+      {super.key,
+      required this.icon,
+      required this.value,
+      required this.label,
+      required this.color});
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => CpCard(
+        child: Column(children: [
+          Icon(icon, color: color),
+          const SizedBox(height: 10),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          Text(label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: cpOnVariant(context), fontWeight: FontWeight.w700)),
+        ]),
+      );
 }
 
 class SettingsGroup extends StatelessWidget {
@@ -1223,7 +1822,11 @@ class AdditionalServiceManagerSheet extends StatelessWidget {
                               service: service, onSave: onSave),
                           icon: const Icon(Icons.edit, color: Cp.primary)),
                       IconButton(
-                          onPressed: () => onDelete(service.id),
+                          onPressed: () async {
+                            final confirmed = await confirmEventAction(context,
+                                'Delete Service?', 'Delete ${service.name}?');
+                            if (confirmed) onDelete(service.id);
+                          },
                           icon: const Icon(Icons.delete, color: Cp.error)),
                     ]),
                   );

@@ -8,6 +8,9 @@ class DashboardScreen extends StatelessWidget {
       required this.loading,
       required this.loadError,
       required this.openCreate,
+      required this.openClients,
+      required this.openBilling,
+      required this.openInvoice,
       required this.openDetails,
       required this.refresh});
   final ApiService api;
@@ -15,6 +18,9 @@ class DashboardScreen extends StatelessWidget {
   final bool loading;
   final String? loadError;
   final VoidCallback openCreate;
+  final VoidCallback openClients;
+  final VoidCallback openBilling;
+  final VoidCallback openInvoice;
   final ValueChanged<AppEvent> openDetails;
   final VoidCallback refresh;
 
@@ -32,11 +38,93 @@ class DashboardScreen extends StatelessWidget {
       event.dates.where(upcomingDate).toList()
         ..sort((a, b) => a.date.compareTo(b.date));
 
-  bool hasMenuContent(AppEventDate date) =>
-      date.menuSlots.any((slot) => slot.enabled && slot.menuItemIds.isNotEmpty);
+  bool hasMenuContent(AppEventDate date) => date.menuSlots.any((slot) =>
+      slot.enabled &&
+      (slot.menuItemIds.isNotEmpty || slot.menuImages.isNotEmpty));
 
   List<AppEventDate> upcomingMenuDatesFor(AppEvent event) =>
       upcomingDatesFor(event).where(hasMenuContent).toList();
+
+  DateTime? eventFirstDate(AppEvent event) {
+    final dates = event.dates
+        .map((date) => parseIsoDate(date.date))
+        .whereType<DateTime>()
+        .toList();
+    if (dates.isEmpty) return null;
+    dates.sort();
+    return dates.first;
+  }
+
+  DateTime? eventLastDate(AppEvent event) {
+    final dates = event.dates
+        .map((date) => parseIsoDate(date.date))
+        .whereType<DateTime>()
+        .toList();
+    if (dates.isEmpty) return null;
+    dates.sort();
+    return dates.last;
+  }
+
+  bool eventHasHappened(AppEvent event) {
+    final lastDate = eventLastDate(event);
+    if (lastDate == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return lastDate.isBefore(today);
+  }
+
+  bool isSameMonth(DateTime date, DateTime month) =>
+      date.year == month.year && date.month == month.month;
+
+  Iterable<AppEvent> monthlyEvents(DateTime month) => events.where((event) {
+        final firstDate = eventFirstDate(event);
+        return firstDate != null && isSameMonth(firstDate, month);
+      });
+
+  int monthlyRevenue(DateTime month) =>
+      monthlyEvents(month).fold(0, (sum, event) => sum + eventTotal(event));
+
+  int monthlyCompletedRevenue(DateTime month) => monthlyEvents(month)
+      .where(eventHasHappened)
+      .fold(0, (sum, event) => sum + eventTotal(event));
+
+  int monthlyDue(DateTime month) =>
+      monthlyEvents(month).fold(0, (sum, event) => sum + eventBalance(event));
+
+  int monthlyCompletedDue(DateTime month) => monthlyEvents(month)
+      .where(eventHasHappened)
+      .fold(0, (sum, event) => sum + eventBalance(event));
+
+  List<int> sixMonthRevenue(DateTime now) {
+    return List.generate(6, (index) {
+      final month = DateTime(now.year, now.month - 5 + index);
+      return monthlyRevenue(month);
+    });
+  }
+
+  String monthShort(DateTime date) => _monthShortNames[date.month - 1];
+
+  Future<void> downloadMonthlyReport(
+      BuildContext context, DateTime month) async {
+    try {
+      showCpSnack(context, 'Preparing monthly report...');
+      final monthKey =
+          '${month.year}-${month.month.toString().padLeft(2, '0')}';
+      final uri = await api.monthlyReportPdfUri(monthKey);
+      final launched = await launchUrl(uri,
+          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      if (!context.mounted) return;
+      showCpSnack(
+          context,
+          launched
+              ? 'Monthly report download started'
+              : 'Unable to download report');
+    } catch (error) {
+      if (context.mounted) {
+        showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
 
   Future<void> downloadUpcomingMenus(BuildContext context) async {
     try {
@@ -66,25 +154,36 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalDates =
-        events.fold<int>(0, (sum, event) => sum + event.dates.length);
-    final totalSlots = events.fold<int>(
-        0,
-        (sum, event) =>
-            sum +
-            event.dates.fold<int>(
-                0, (dateSum, date) => dateSum + date.menuSlots.length));
-    final paidTotal =
-        events.fold<int>(0, (sum, event) => sum + eventPaid(event));
+    final now = DateTime.now();
+    final month = DateTime(now.year, now.month);
+    final revenue = monthlyRevenue(month);
+    final completedRevenue = monthlyCompletedRevenue(month);
+    final pending = monthlyDue(month);
+    final completedDue = monthlyCompletedDue(month);
+    final profitLoss = completedRevenue - completedDue;
+    final todayEvents = events
+        .where((event) => event.dates.any((date) {
+              final parsed = parseIsoDate(date.date);
+              return parsed != null &&
+                  parsed.year == now.year &&
+                  parsed.month == now.month &&
+                  parsed.day == now.day;
+            }))
+        .toList();
+    final overdueEvents =
+        events.where((event) => eventBalance(event) > 0).length;
     final upcomingEvents =
         events.where((event) => upcomingDatesFor(event).isNotEmpty).toList();
     final upcomingMenuEvents = events
         .where((event) => upcomingMenuDatesFor(event).isNotEmpty)
         .toList();
+    final trend = sixMonthRevenue(now);
+    final maxTrend =
+        trend.fold<int>(0, (max, value) => value > max ? value : max);
     return ScreenFrame(
       topBar: TopBar(
-        title: 'CaterPro',
-        subtitle: t('Manage your events'),
+        title: 'Command Center',
+        subtitle: 'Welcome back',
         actions: [
           IconButton(
               onPressed: refresh,
@@ -101,55 +200,111 @@ class DashboardScreen extends StatelessWidget {
                       fontWeight: FontWeight.w800))),
           const SizedBox(height: 12),
         ],
-        LayoutBuilder(
-          builder: (context, constraints) => GridView.count(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: constraints.maxWidth > 720 ? 4 : 2,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-            childAspectRatio: constraints.maxWidth > 720 ? 2.45 : 1.95,
+        Row(children: [
+          Text('LIVE METRICS',
+              style: TextStyle(
+                  color: cpOnVariant(context),
+                  fontSize: 11,
+                  letterSpacing: .8,
+                  fontWeight: FontWeight.w900)),
+          const Spacer(),
+          Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                  color: Cp.tertiaryContainer, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+          Text('Live',
+              style: TextStyle(
+                  color: cpOnVariant(context), fontWeight: FontWeight.w800)),
+        ]),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 118,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
             children: [
-              MetricCard(
-                  label: t('Events'),
-                  value: '${events.length}',
-                  note: loading ? t('Loading...') : t('Created'),
-                  icon: Icons.calendar_month,
-                  color: Cp.card,
-                  valueColor: Cp.primary),
-              MetricCard(
-                  label: t('Dates'),
-                  value: '$totalDates',
-                  note: t('Event dates'),
+              DashboardMetricTile(
+                  width: 154,
+                  label: 'Revenue',
+                  value: money(revenue),
+                  note: '${monthShort(now)} earnings',
+                  icon: Icons.trending_up,
+                  primary: true),
+              DashboardMetricTile(
+                  width: 154,
+                  label: 'Profit / Loss',
+                  value: money(profitLoss),
+                  note: completedDue > 0
+                      ? '${money(completedDue)} due'
+                      : 'Completed events',
+                  icon: profitLoss >= 0
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+                  valueColor:
+                      profitLoss >= 0 ? Cp.tertiaryContainer : Cp.error),
+              DashboardMetricTile(
+                  width: 154,
+                  label: 'Unpaid Invoices',
+                  value: money(pending),
+                  note: '$overdueEvents pending',
+                  icon: Icons.receipt_long,
+                  valueColor: Cp.error),
+              DashboardMetricTile(
+                  width: 154,
+                  label: "Today's Events",
+                  value: '${todayEvents.length}',
+                  note: '${events.length} total events',
                   icon: Icons.today,
-                  color: Cp.primaryFixed.withValues(alpha: .5),
                   valueColor: Cp.primary),
-              MetricCard(
-                  label: t('Menus'),
-                  value: '$totalSlots',
-                  note: t('Menu slots'),
-                  icon: Icons.restaurant_menu,
-                  color: Cp.secondaryFixed,
-                  valueColor: Cp.secondary),
-              MetricCard(
-                  label: t('Payments'),
-                  value: money(paidTotal),
-                  note: t('Collected'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+        CpCard(
+          color: Cp.surfaceLow,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              DashboardActionButton(
+                  icon: Icons.add_circle_outline,
+                  label: 'New Event',
+                  color: Cp.primaryContainer,
+                  onTap: openCreate),
+              DashboardActionButton(
                   icon: Icons.payments,
-                  color: Cp.tertiaryFixed.withValues(alpha: .4),
-                  valueColor: Cp.tertiary),
+                  label: 'Payment',
+                  color: Cp.secondaryContainer,
+                  onTap: openBilling),
+              DashboardActionButton(
+                  icon: Icons.person_add_alt,
+                  label: 'Add Client',
+                  color: Cp.surfaceHigh,
+                  onTap: openClients),
+              DashboardActionButton(
+                  icon: Icons.description_outlined,
+                  label: 'Invoice',
+                  color: Cp.surfaceHigh,
+                  onTap: openInvoice),
             ],
           ),
         ),
         const SizedBox(height: 18),
+        RevenueTrendCard(
+            value: revenue,
+            due: pending,
+            values: trend,
+            maxValue: maxTrend,
+            onReportTap: () => downloadMonthlyReport(context, month),
+            monthLabels: List.generate(
+                6,
+                (index) =>
+                    monthShort(DateTime(now.year, now.month - 5 + index)))),
+        const SizedBox(height: 22),
         Row(
           children: [
-            Expanded(
-                child: Text(t('Upcoming Events'),
-                    style: TextStyle(
-                        fontSize: 22,
-                        color: cpPrimary(context),
-                        fontWeight: FontWeight.w700))),
+            Expanded(child: SectionHeader('Upcoming Deliveries')),
             IconButton(
               onPressed: upcomingMenuEvents.isEmpty
                   ? null
@@ -188,14 +343,19 @@ class DashboardScreen extends StatelessWidget {
                     sum +
                     date.menuSlots
                         .fold<int>(0, (slotSum, slot) => slotSum + slot.pax));
-            return EventMiniCard(
-                title: event.name,
-                client: event.mobile,
-                time: dates
-                    .map((date) => readableDateLabel(date.date))
-                    .join(', '),
-                pax: '$members Members',
-                showDraft: eventIsIncomplete(event),
+            final firstDate = dates.first;
+            final slots = dates
+                .expand((date) => date.menuSlots)
+                .where((slot) => slot.enabled)
+                .toList();
+            final itemCount = slots.fold<int>(
+                0, (sum, slot) => sum + slot.menuItemIds.length);
+            return DeliveryCard(
+                event: event,
+                date: firstDate,
+                members: members,
+                itemCount: itemCount,
+                slots: slots,
                 onTap: () => openDetails(event));
           }),
       ],
@@ -310,6 +470,319 @@ class MetricCard extends StatelessWidget {
     );
   }
 }
+
+class DashboardMetricTile extends StatelessWidget {
+  const DashboardMetricTile(
+      {super.key,
+      required this.width,
+      required this.label,
+      required this.value,
+      required this.note,
+      required this.icon,
+      this.primary = false,
+      this.valueColor});
+  final double width;
+  final String label;
+  final String value;
+  final String note;
+  final IconData icon;
+  final bool primary;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = primary ? Cp.primaryContainer : cpCard(context);
+    final muted =
+        primary ? Colors.white.withValues(alpha: .72) : cpOnVariant(context);
+    final accent = primary ? Colors.white : (valueColor ?? cpPrimary(context));
+    return Container(
+      width: width,
+      margin: const EdgeInsets.only(right: 12),
+      child: CpCard(
+        color: bg,
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Expanded(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        TextStyle(color: muted, fontWeight: FontWeight.w800))),
+            Icon(icon, color: accent, size: 18),
+          ]),
+          const Spacer(),
+          Text(value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: accent, fontSize: 20, fontWeight: FontWeight.w900)),
+          Text(note,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                  color: muted, fontSize: 11, fontWeight: FontWeight.w800)),
+        ]),
+      ),
+    );
+  }
+}
+
+class DashboardActionButton extends StatelessWidget {
+  const DashboardActionButton(
+      {super.key,
+      required this.icon,
+      required this.label,
+      required this.color,
+      required this.onTap});
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: SizedBox(
+          width: 70,
+          child: Column(children: [
+            Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                    color: Cp.surfaceHigh,
+                    borderRadius: BorderRadius.circular(18),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x12000000), blurRadius: 10)
+                    ]),
+                child: Icon(icon, color: cpPrimary(context), size: 23)),
+            const SizedBox(height: 6),
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: cpOnSurface(context),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      );
+}
+
+class RevenueTrendCard extends StatelessWidget {
+  const RevenueTrendCard(
+      {super.key,
+      required this.value,
+      required this.due,
+      required this.values,
+      required this.maxValue,
+      required this.onReportTap,
+      required this.monthLabels});
+  final int value;
+  final int due;
+  final List<int> values;
+  final int maxValue;
+  final VoidCallback onReportTap;
+  final List<String> monthLabels;
+
+  @override
+  Widget build(BuildContext context) {
+    final safeMax = maxValue <= 0 ? 1 : maxValue;
+    return CpCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+              child: Text('Revenue Trend',
+                  style: TextStyle(
+                      color: cpOnSurface(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800))),
+          IconButton(
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Download monthly report',
+              onPressed: onReportTap,
+              icon:
+                  Icon(Icons.insert_chart_outlined, color: cpPrimary(context))),
+        ]),
+        const SizedBox(height: 4),
+        Row(children: [
+          Text(money(value),
+              style: TextStyle(
+                  color: cpOnSurface(context),
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900)),
+          const SizedBox(width: 8),
+          Pill(due > 0 ? '${money(due)} due' : 'No due',
+              color: due > 0 ? Cp.errorContainer : Cp.tertiaryFixed,
+              textColor: due > 0 ? Cp.error : Cp.tertiary),
+        ]),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 150,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: List.generate(values.length, (index) {
+              final heightFactor = (values[index] / safeMax).clamp(.12, 1.0);
+              final active = index == values.length - 1;
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Column(children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: FractionallySizedBox(
+                          heightFactor: heightFactor,
+                          widthFactor: .82,
+                          child: Container(
+                              alignment: Alignment.topCenter,
+                              padding: const EdgeInsets.only(top: 4),
+                              decoration: BoxDecoration(
+                                  color: active
+                                      ? Cp.primaryContainer
+                                      : Cp.primaryFixed.withValues(alpha: .5),
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(8))),
+                              child: active
+                                  ? Text(
+                                      values[index] == 0
+                                          ? ''
+                                          : compactMoney(values[index]),
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w900))
+                                  : null),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(monthLabels[index],
+                        style: TextStyle(
+                            color: cpOnVariant(context),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700)),
+                  ]),
+                ),
+              );
+            }),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+String compactMoney(int value) {
+  if (value >= 100000) return '${(value / 100000).toStringAsFixed(1)}L';
+  if (value >= 1000) return '${(value / 1000).round()}k';
+  return '$value';
+}
+
+class DeliveryCard extends StatelessWidget {
+  const DeliveryCard(
+      {super.key,
+      required this.event,
+      required this.date,
+      required this.members,
+      required this.itemCount,
+      required this.slots,
+      required this.onTap});
+  final AppEvent event;
+  final AppEventDate date;
+  final int members;
+  final int itemCount;
+  final List<AppMenuSlot> slots;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final parsed = parseIsoDate(date.date);
+    final firstSlot = slots.isEmpty ? null : slots.first;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        onTap: onTap,
+        padding: const EdgeInsets.all(12),
+        child: Row(children: [
+          Container(
+            width: 58,
+            height: 74,
+            decoration: BoxDecoration(
+                color: Cp.primaryFixed.withValues(alpha: .65),
+                borderRadius: BorderRadius.circular(12)),
+            child:
+                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+              Text(parsed == null ? '--' : monthShortName(parsed.month),
+                  style: const TextStyle(
+                      color: Cp.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900)),
+              Text(parsed == null ? '--' : '${parsed.day}',
+                  style: const TextStyle(
+                      color: Cp.primary,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900)),
+            ]),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Row(children: [
+                  Expanded(
+                      child: Text(event.name.isEmpty ? 'Event' : event.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: cpOnSurface(context),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900))),
+                  Pill(eventIsIncomplete(event) ? 'Draft' : 'Confirmed',
+                      color: eventIsIncomplete(event)
+                          ? Cp.secondaryFixed
+                          : Cp.tertiaryFixed,
+                      textColor: eventIsIncomplete(event)
+                          ? Cp.secondary
+                          : Cp.tertiary),
+                ]),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Icon(Icons.schedule, size: 15, color: cpOnVariant(context)),
+                  Text(
+                      ' ${firstSlot?.time.isEmpty ?? true ? '--' : firstSlot!.time}',
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 10),
+                  Icon(Icons.group, size: 15, color: cpOnVariant(context)),
+                  Text(' $members Members',
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ]),
+                const Divider(height: 16),
+                Wrap(spacing: 8, runSpacing: 6, children: [
+                  Pill('$itemCount Items',
+                      color: Cp.secondaryFixed, textColor: Cp.secondary),
+                  if (slots.isNotEmpty)
+                    ...slots.take(2).map((slot) => Pill(slot.type,
+                        color: Cp.surfaceHigh,
+                        textColor: cpOnVariant(context))),
+                ]),
+              ])),
+        ]),
+      ),
+    );
+  }
+}
+
+String monthShortName(int month) => _monthShortNames[month - 1].toUpperCase();
 
 class RevenueChart extends StatelessWidget {
   const RevenueChart({super.key});
