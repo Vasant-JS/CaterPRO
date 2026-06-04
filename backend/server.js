@@ -2517,6 +2517,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   const itemLineGap = 0.8;
   let col = 0;
   let y = topY;
+  let columnTopY = topY;
   let pageNo = 0;
 
   function addPage() {
@@ -2534,12 +2535,13 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
     doc.y = topY;
     col = 0;
     y = topY;
+    columnTopY = topY;
   }
 
   function nextColumn() {
     col += 1;
     if (col >= columns) addPage();
-    else y = topY;
+    else y = columnTopY;
   }
 
   function ensureSpace(height) {
@@ -2551,17 +2553,18 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   }
 
   function sectionHeader(text, color = '#06445d') {
-    ensureSpace(22 + 21 + 20);
+    ensureSpace(26 + 24 + 22);
     doc.roundedRect(x(), y, colW, 18, 3).fill(color);
     doc.fillColor('white').font(fonts.bold).fontSize(10.6).text(text, x() + 6, y + 3.8, { width: colW - 12, height: 12, ellipsis: true, lineBreak: false });
-    y += 22;
+    y += 27;
+    columnTopY = Math.max(columnTopY, y);
   }
 
   function groupHeader(text) {
-    ensureSpace(21 + 20);
+    ensureSpace(23 + 22);
     doc.roundedRect(x(), y, colW, 17, 3).fill('#eef2f7').strokeColor('#d7dee8').lineWidth(0.45).stroke();
     doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(text, x() + 5, y + 3.1, { width: colW - 10, height: 12, ellipsis: true, lineBreak: false });
-    y += 20;
+    y += 23;
   }
 
   function wrappedTextHeight(text, width) {
@@ -2576,15 +2579,36 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
     const source = repairMojibake(String(label || ''));
     const textX = x() + 13;
     const textW = colW - 13;
-    const textH = wrappedTextHeight(source, textW);
+    const bothParts = normalizedLanguage === 'both' && source.includes('/')
+      ? source.split(/\s*\/\s*/).filter(Boolean)
+      : [];
+    const kannadaPart = bothParts[0] || '';
+    const englishPart = bothParts.slice(1).join(' / ');
+    const textH = bothParts.length
+      ? wrappedTextHeight(kannadaPart, textW) + wrappedTextHeight(englishPart, textW) + 1.5
+      : wrappedTextHeight(source, textW);
     const rowH = Math.max(18, Math.ceil(textH) + 5);
     ensureSpace(rowH);
     const boxSize = 7.2;
     doc.rect(x(), y + 3.6, boxSize, boxSize).lineWidth(0.75).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
-    doc.fillColor('#202124')
-      .font(hasKannadaText(source) ? fonts.kannada : fonts.regular)
-      .fontSize(itemFontSize)
-      .text(source, textX, y, { width: textW, lineGap: itemLineGap });
+    if (bothParts.length) {
+      const kannadaH = wrappedTextHeight(kannadaPart, textW);
+      doc.fillColor('#202124')
+        .font(fonts.kannada)
+        .fontSize(itemFontSize)
+        .text(kannadaPart, textX, y, { width: textW, lineGap: itemLineGap });
+      if (englishPart) {
+        doc.fillColor('#374151')
+          .font(fonts.regular)
+          .fontSize(itemFontSize)
+          .text(englishPart, textX, y + kannadaH + 1.5, { width: textW, lineGap: itemLineGap });
+      }
+    } else {
+      doc.fillColor('#202124')
+        .font(hasKannadaText(source) ? fonts.kannada : fonts.regular)
+        .fontSize(itemFontSize)
+        .text(source, textX, y, { width: textW, lineGap: itemLineGap });
+    }
     y += rowH;
   }
 
