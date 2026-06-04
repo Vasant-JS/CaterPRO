@@ -2489,12 +2489,14 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
 
   const page = { width: 841.89, height: 595.28 };
   const margin = 12;
-  const footerH = 13;
-  const topY = 32;
-  const gap = 8;
-  const columns = 4;
+  const footerH = 14;
+  const topY = 34;
+  const gap = 10;
+  const columns = 3;
   const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
   const bottomY = page.height - margin - footerH;
+  const itemLineH = normalizedLanguage === 'both' ? 13.2 : 11.6;
+  const itemFontSize = normalizedLanguage === 'both' ? 8.1 : 8.7;
   let col = 0;
   let y = topY;
   let pageNo = 0;
@@ -2504,13 +2506,14 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
     pageNo += 1;
     doc.fillColor('#111827').font(fonts.bold).fontSize(13).text('Menu Catalog', margin, 11, { width: 180, lineBreak: false });
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(6.5).text(
-      `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} • ${items.length} items`,
+      `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} - ${items.length} items - CaterPro - Page ${pageNo}`,
       page.width - 260,
       14,
       { width: 248, align: 'right', lineBreak: false },
     );
     doc.moveTo(margin, 28).lineTo(page.width - margin, 28).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    doc.fillColor('#9ca3af').font(fonts.regular).fontSize(5.8).text(`CaterPro • Page ${pageNo}`, margin, page.height - 18, { width: page.width - margin * 2, align: 'center', lineBreak: false });
+    doc.x = margin;
+    doc.y = topY;
     col = 0;
     y = topY;
   }
@@ -2530,30 +2533,30 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   }
 
   function sectionHeader(text, color = '#06445d') {
-    ensureSpace(16);
-    doc.roundedRect(x(), y, colW, 12, 3).fill(color);
-    doc.fillColor('white').font(fonts.bold).fontSize(7.2).text(text, x() + 4, y + 3, { width: colW - 8, height: 8, ellipsis: true, lineBreak: false });
-    y += 15;
+    ensureSpace(18 + 13 + itemLineH);
+    doc.roundedRect(x(), y, colW, 14, 3).fill(color);
+    doc.fillColor('white').font(fonts.bold).fontSize(8.7).text(text, x() + 5, y + 3.2, { width: colW - 10, height: 10, ellipsis: true, lineBreak: false });
+    y += 18;
   }
 
   function groupHeader(text) {
-    ensureSpace(13);
-    doc.fillColor('#111827').font(fonts.bold).fontSize(7.4).text(text, x(), y, { width: colW, height: 9, ellipsis: true, lineBreak: false });
-    doc.moveTo(x(), y + 10).lineTo(x() + colW, y + 10).strokeColor('#e5e7eb').lineWidth(0.4).stroke();
-    y += 13;
+    ensureSpace(14 + itemLineH);
+    doc.fillColor('#111827').font(fonts.bold).fontSize(8.9).text(text, x(), y, { width: colW, height: 11, ellipsis: true, lineBreak: false });
+    doc.moveTo(x(), y + 12).lineTo(x() + colW, y + 12).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
+    y += 15;
   }
 
   function itemLine(item) {
     const label = menuCatalogLabel(item, normalizedLanguage);
-    const lineH = normalizedLanguage === 'both' ? 10.2 : 8.8;
-    ensureSpace(lineH);
-    doc.circle(x() + 2, y + 4.1, 1.2).fill(item.veg ? '#16a34a' : '#dc2626');
-    drawSingleLineText(doc, label, x() + 7, y, colW - 7, fonts, {
-      fontSize: normalizedLanguage === 'both' ? 6.2 : 6.7,
-      height: lineH,
+    ensureSpace(itemLineH);
+    const boxSize = 6.4;
+    doc.rect(x(), y + 2.7, boxSize, boxSize).lineWidth(0.65).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
+    drawSingleLineText(doc, label, x() + 10.5, y - 0.2, colW - 10.5, fonts, {
+      fontSize: itemFontSize,
+      height: itemLineH,
       color: '#202124',
     });
-    y += lineH;
+    y += itemLineH;
   }
 
   function writeSide(isVeg) {
