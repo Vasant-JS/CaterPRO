@@ -1556,8 +1556,8 @@ function documentTheme(businessProfile = emptyBusinessProfile()) {
 }
 
 function documentMetrics(theme = documentTheme()) {
-  if (theme.name === 'elegant') return { left: 106, right: 559, width: 453, tableY: 260 };
-  return { left: 36, right: 559, width: 523, tableY: theme.name === 'classic' ? 270 : 282 };
+  if (theme.name === 'elegant') return { left: 106, right: 559, width: 453, tableY: 228 };
+  return { left: 36, right: 559, width: 523, tableY: theme.name === 'classic' ? 238 : 232 };
 }
 
 function writeDocumentHeader(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
