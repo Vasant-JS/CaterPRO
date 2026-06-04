@@ -2606,7 +2606,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   });
   const fonts = configurePdfFonts(doc);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="caterpro-menu-catalog-${normalizedLanguage}.pdf"`);
+  res.setHeader('Content-Disposition', `attachment; filename="caterpro-menu-catalog-${normalizedLanguage}.pdf"`);
   doc.pipe(res);
 
   const search = repairMojibake(String(filters.search || '')).trim().toLowerCase();
@@ -2711,7 +2711,6 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   function itemLine(item) {
     const label = menuCatalogLabel(item, normalizedLanguage);
     const source = repairMojibake(String(label || ''));
-    const textX = x() + 13;
     const textW = colW - 13;
     const bothParts = normalizedLanguage === 'both' && source.includes('/')
       ? source.split(/\s*\/\s*/).filter(Boolean)
@@ -2723,6 +2722,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
       : wrappedTextHeight(source, textW);
     const rowH = Math.max(18, Math.ceil(textH) + 5);
     ensureSpace(rowH);
+    const textX = x() + 13;
     const boxSize = 7.2;
     doc.rect(x(), y + 3.6, boxSize, boxSize).lineWidth(0.75).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
     if (bothParts.length) {
@@ -2730,18 +2730,18 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
       doc.fillColor('#202124')
         .font(fonts.kannada)
         .fontSize(itemFontSize)
-        .text(kannadaPart, textX, y, { width: textW, lineGap: itemLineGap });
+        .text(kannadaPart, textX, y, { width: textW, height: kannadaH + 1, lineGap: itemLineGap });
       if (englishPart) {
         doc.fillColor('#374151')
           .font(fonts.regular)
           .fontSize(itemFontSize)
-          .text(englishPart, textX, y + kannadaH + 1.5, { width: textW, lineGap: itemLineGap });
+          .text(englishPart, textX, y + kannadaH + 1.5, { width: textW, height: Math.max(8, rowH - kannadaH - 3), lineGap: itemLineGap });
       }
     } else {
       doc.fillColor('#202124')
         .font(hasKannadaText(source) ? fonts.kannada : fonts.regular)
         .fontSize(itemFontSize)
-        .text(source, textX, y, { width: textW, lineGap: itemLineGap });
+        .text(source, textX, y, { width: textW, height: rowH - 2, lineGap: itemLineGap });
     }
     y += rowH;
   }
