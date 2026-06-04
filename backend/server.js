@@ -2565,6 +2565,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
     doc.roundedRect(x(), y, colW, 17, 3).fill('#eef2f7').strokeColor('#d7dee8').lineWidth(0.45).stroke();
     doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(text, x() + 5, y + 3.1, { width: colW - 10, height: 12, ellipsis: true, lineBreak: false });
     y += 23;
+    if (col === 0 && columnTopY < topY + 60) columnTopY = Math.max(columnTopY, y);
   }
 
   function wrappedTextHeight(text, width) {
