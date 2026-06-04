@@ -401,14 +401,30 @@ async function syncRelationalTables(db) {
           await client.query(
             `insert into cp_event_dates
              (state_id, user_id, event_id, id, event_date, label, additional_services, raw)
-             values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)`,
+             values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
+             on conflict (state_id, user_id, event_id, id)
+             do update set
+               event_date = excluded.event_date,
+               label = excluded.label,
+               additional_services = excluded.additional_services,
+               raw = excluded.raw`,
             [pgStateId, user.id, event.id || '', date.id || date.date || '', date.date || '', date.label || '', asJson(asArray(date.additionalServices)), asJson(date)],
           );
           for (const slot of asArray(date.menuSlots)) {
             await client.query(
               `insert into cp_menu_slots
                (state_id, user_id, event_id, date_id, id, type, delivery_time, pax, price_per_pax, enabled, menu_item_ids, additional_services, raw)
-               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb)`,
+               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb)
+               on conflict (state_id, user_id, event_id, date_id, id)
+               do update set
+                 type = excluded.type,
+                 delivery_time = excluded.delivery_time,
+                 pax = excluded.pax,
+                 price_per_pax = excluded.price_per_pax,
+                 enabled = excluded.enabled,
+                 menu_item_ids = excluded.menu_item_ids,
+                 additional_services = excluded.additional_services,
+                 raw = excluded.raw`,
               [pgStateId, user.id, event.id || '', date.id || date.date || '', slot.id || `${slot.type || 'slot'}-${date.id || date.date || ''}`, slot.type || '', slot.time || '', Number(slot.pax || 0), Number(slot.pricePerPax || 0), slot.enabled !== false, asJson(asArray(slot.menuItemIds)), asJson(asArray(slot.additionalServices)), asJson(slot)],
             );
           }
