@@ -2466,7 +2466,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   const normalizedLanguage = ['kannada', 'english', 'both'].includes(language) ? language : 'both';
   const doc = new PDFDocument({
     size: 'A4',
-    layout: 'landscape',
+    layout: 'portrait',
     margin: 12,
     info: { Title: 'Menu Catalog' },
     autoFirstPage: false,
@@ -2487,31 +2487,31 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
     }))
     .filter((item) => item.label);
 
-  const page = { width: 841.89, height: 595.28 };
+  const page = { width: 595.28, height: 841.89 };
   const margin = 12;
   const footerH = 14;
-  const topY = 34;
-  const gap = 10;
-  const columns = 3;
+  const topY = 40;
+  const gap = 12;
+  const columns = 2;
   const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
   const bottomY = page.height - margin - footerH;
-  const itemLineH = normalizedLanguage === 'both' ? 23 : 20;
-  const itemFontSize = normalizedLanguage === 'both' ? 14.2 : 15.2;
+  const itemFontSize = 12;
+  const itemLineGap = 1.2;
   let col = 0;
   let y = topY;
   let pageNo = 0;
 
   function addPage() {
-    doc.addPage({ size: 'A4', layout: 'landscape', margin });
+    doc.addPage({ size: 'A4', layout: 'portrait', margin });
     pageNo += 1;
-    doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('Menu Catalog', margin, 9, { width: 190, lineBreak: false });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('Menu Catalog', margin, 10, { width: 160, lineBreak: false });
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(7.2).text(
       `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} - ${items.length} items - CaterPro - Page ${pageNo}`,
-      page.width - 260,
-      14,
+      page.width - 270,
+      15,
       { width: 248, align: 'right', lineBreak: false },
     );
-    doc.moveTo(margin, 28).lineTo(page.width - margin, 28).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+    doc.moveTo(margin, 32).lineTo(page.width - margin, 32).strokeColor('#d1d5db').lineWidth(0.5).stroke();
     doc.x = margin;
     doc.y = topY;
     col = 0;
@@ -2533,30 +2533,41 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   }
 
   function sectionHeader(text, color = '#06445d') {
-    ensureSpace(25 + 19 + itemLineH);
+    ensureSpace(24 + 24 + 22);
     doc.roundedRect(x(), y, colW, 20, 3).fill(color);
-    doc.fillColor('white').font(fonts.bold).fontSize(12.5).text(text, x() + 7, y + 4.3, { width: colW - 14, height: 14, ellipsis: true, lineBreak: false });
+    doc.fillColor('white').font(fonts.bold).fontSize(12).text(text, x() + 7, y + 4.2, { width: colW - 14, height: 14, ellipsis: true, lineBreak: false });
     y += 25;
   }
 
   function groupHeader(text) {
-    ensureSpace(20 + itemLineH);
-    doc.fillColor('#111827').font(fonts.bold).fontSize(13).text(text, x(), y, { width: colW, height: 15, ellipsis: true, lineBreak: false });
-    doc.moveTo(x(), y + 17).lineTo(x() + colW, y + 17).strokeColor('#e5e7eb').lineWidth(0.55).stroke();
-    y += 21;
+    ensureSpace(24 + 22);
+    doc.roundedRect(x(), y, colW, 19, 3).fill('#eef2f7').strokeColor('#d7dee8').lineWidth(0.45).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(12).text(text, x() + 6, y + 3.4, { width: colW - 12, height: 13, ellipsis: true, lineBreak: false });
+    y += 23;
+  }
+
+  function wrappedTextHeight(text, width) {
+    const source = repairMojibake(String(text || ''));
+    const font = hasKannadaText(source) ? fonts.kannada : fonts.regular;
+    doc.font(font).fontSize(itemFontSize);
+    return doc.heightOfString(source, { width, lineGap: itemLineGap });
   }
 
   function itemLine(item) {
     const label = menuCatalogLabel(item, normalizedLanguage);
-    ensureSpace(itemLineH);
-    const boxSize = 10.5;
-    doc.rect(x(), y + 4, boxSize, boxSize).lineWidth(0.85).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
-    drawSingleLineText(doc, label, x() + 16, y - 0.4, colW - 16, fonts, {
-      fontSize: itemFontSize,
-      height: itemLineH,
-      color: '#202124',
-    });
-    y += itemLineH;
+    const source = repairMojibake(String(label || ''));
+    const textX = x() + 16;
+    const textW = colW - 16;
+    const textH = wrappedTextHeight(source, textW);
+    const rowH = Math.max(22, Math.ceil(textH) + 6);
+    ensureSpace(rowH);
+    const boxSize = 8.5;
+    doc.rect(x(), y + 4.5, boxSize, boxSize).lineWidth(0.8).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
+    doc.fillColor('#202124')
+      .font(hasKannadaText(source) ? fonts.kannada : fonts.regular)
+      .fontSize(itemFontSize)
+      .text(source, textX, y, { width: textW, lineGap: itemLineGap });
+    y += rowH;
   }
 
   function writeSide(isVeg) {
