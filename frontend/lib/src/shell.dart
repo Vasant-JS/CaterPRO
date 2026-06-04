@@ -127,6 +127,41 @@ class _AppShellState extends State<AppShell> {
     return merged;
   }
 
+  Map<String, dynamic> normalizeUserData(Map<String, dynamic> userData) {
+    final normalized = <String, dynamic>{...userData};
+    normalized['events'] =
+        jsonMapList(userData['events']).map(normalizeEventJson).toList();
+    normalized['attendance'] =
+        dedupeJsonList(userData['attendance'], key: 'attendance');
+    return normalized;
+  }
+
+  Map<String, dynamic> normalizeEventJson(Map<String, dynamic> event) {
+    final normalized = <String, dynamic>{...event};
+    normalized['dates'] =
+        dedupeJsonList(event['dates'], key: 'eventDates').map((date) {
+      final copy = <String, dynamic>{...date};
+      copy['menuSlots'] = dedupeJsonList(copy['menuSlots'], key: 'menuSlots');
+      copy['additionalServices'] =
+          dedupeJsonList(copy['additionalServices'], key: 'selectedServices');
+      return copy;
+    }).toList();
+    normalized['payments'] = dedupeJsonList(event['payments'], key: 'payments');
+    normalized['materialDocuments'] =
+        dedupeJsonList(event['materialDocuments'], key: 'materialDocuments');
+    normalized['employeeAssignments'] =
+        dedupeJsonList(event['employeeAssignments'], key: 'employeeAssignments');
+    return normalized;
+  }
+
+  List<Map<String, dynamic>> dedupeJsonList(Object? value, {required String key}) {
+    final byKey = <String, Map<String, dynamic>>{};
+    for (final item in jsonMapList(value)) {
+      byKey[recordKey(item, key)] = item;
+    }
+    return byKey.values.toList();
+  }
+
   List<Map<String, dynamic>> mergeRecordLists(Object? cached, Object? server,
       {required String key}) {
     final records = <String, Map<String, dynamic>>{};
@@ -243,8 +278,7 @@ class _AppShellState extends State<AppShell> {
       final universal = (bootstrap['universal'] as Map?) ?? {};
       final serverUserData = Map<String, dynamic>.from(
           (bootstrap['userData'] as Map?) ?? const {});
-      final cachedUserData = await loadCachedUserData();
-      final userData = mergeUserData(serverUserData, cachedUserData);
+      final userData = normalizeUserData(serverUserData);
       final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
       final loadedClients =
           decodeJsonList(userData['clients'], AppClient.fromJson);
@@ -292,11 +326,6 @@ class _AppShellState extends State<AppShell> {
       await LocalCaterProDb.instance.saveSnapshot(
           userData: userData, universal: Map<String, dynamic>.from(universal), synced: true);
       localSyncPending = false;
-      if (jsonEncode(userData) != jsonEncode(serverUserData)) {
-        unawaited(api.importBackup({'userData': userData}).catchError((_) {
-          return <String, dynamic>{};
-        }));
-      }
     } catch (e) {
       final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
       if (localSnapshot != null) {

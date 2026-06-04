@@ -610,16 +610,45 @@ function ensureUserDataShape(userData) {
   userData.employees = userData.employees || [];
   if (userData.employees.length === 0) userData.employees = defaultEmployees();
   userData.employees = userData.employees.map((employee) => ({ ...employee, payPerHour: Number(employee.payPerHour ?? (employee.payPerDay ? Math.round(Number(employee.payPerDay) / 8) : 0)) }));
-  userData.events = userData.events.map((event) => ({ employeeAssignments: [], ...event }));
-  userData.events = userData.events.map((event) => ({ ...event, employeeAssignments: (event.employeeAssignments || []).map((assignment) => ({ ...assignment, payPerHour: Number(assignment.payPerHour ?? (assignment.payPerDay ? Math.round(Number(assignment.payPerDay) / 8) : 0)) })) }));
+  userData.events = userData.events.map((event) => normalizeEventShape({ employeeAssignments: [], ...event }));
   userData.attendance = userData.attendance || [];
   userData.attendance = userData.attendance.map((record) => ({ ...record, payPerHour: Number(record.payPerHour ?? (record.payPerDay ? Math.round(Number(record.payPerDay) / 8) : 0)) }));
+  userData.attendance = dedupeBy(userData.attendance, (record) => [record.eventId, record.employeeId, record.date].join('|'));
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
   userData.payments = userData.payments || [];
   userData.manualInvoices = userData.manualInvoices || [];
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
   return userData;
+}
+
+function dedupeBy(items = [], keyForItem) {
+  const byKey = new Map();
+  for (const item of asArray(items)) {
+    byKey.set(keyForItem(item), item);
+  }
+  return [...byKey.values()];
+}
+
+function normalizeEventShape(event = {}) {
+  const normalized = {
+    ...event,
+    dates: asArray(event.dates),
+    payments: asArray(event.payments),
+    materialDocuments: asArray(event.materialDocuments),
+    employeeAssignments: asArray(event.employeeAssignments).map((assignment) => ({
+      ...assignment,
+      payPerHour: Number(assignment.payPerHour ?? (assignment.payPerDay ? Math.round(Number(assignment.payPerDay) / 8) : 0)),
+    })),
+  };
+  normalized.dates = dedupeBy(normalized.dates.map((date) => ({
+    ...date,
+    id: date.id || date.date || makeId('date'),
+    menuSlots: dedupeBy(asArray(date.menuSlots), (slot) => slot.id || `${slot.type || 'slot'}-${date.id || date.date || ''}`),
+    additionalServices: dedupeBy(asArray(date.additionalServices), (service) => [service.serviceId || service.id || service.name, service.count || service.quantity || ''].join('|')),
+  })), (date) => date.id || date.date);
+  normalized.attendance = dedupeBy(asArray(normalized.attendance), (record) => [record.eventId, record.employeeId, record.date].join('|'));
+  return normalized;
 }
 
 const defaultRawMaterialNames = [
@@ -1056,7 +1085,7 @@ function upsertById(list, item) {
 }
 
 function eventFromBody(body, existing = {}) {
-  return {
+  return normalizeEventShape({
     ...existing,
     id: existing.id || body.id || makeId('evt'),
     name: body.name ?? existing.name ?? '',
@@ -1072,7 +1101,7 @@ function eventFromBody(body, existing = {}) {
     employeeAssignments: Array.isArray(body.employeeAssignments) ? body.employeeAssignments.map(employeeAssignmentFromBody) : existing.employeeAssignments || [],
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-  };
+  });
 }
 
 function employeeAssignmentFromBody(body, existing = {}) {
@@ -2471,6 +2500,26 @@ app.get('/api/bootstrap', (req, res) => {
   const user = requireUser(req, res, db);
   if (!user) return;
   res.json({ universal: db.universal, userData: db.userData[user.id] });
+});
+
+app.post('/api/storage/repair-normalize', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const before = {
+    events: db.userData[user.id].events.length,
+    dates: db.userData[user.id].events.reduce((sum, event) => sum + asArray(event.dates).length, 0),
+    attendance: db.userData[user.id].attendance.length,
+  };
+  db.userData[user.id] = ensureUserDataShape(db.userData[user.id]);
+  writeDb(db);
+  const after = {
+    events: db.userData[user.id].events.length,
+    dates: db.userData[user.id].events.reduce((sum, event) => sum + asArray(event.dates).length, 0),
+    attendance: db.userData[user.id].attendance.length,
+  };
+  res.json({ message: 'Storage normalized', before, after });
 });
 
 function exportBackup(req, res) {
