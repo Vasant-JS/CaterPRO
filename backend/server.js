@@ -2495,8 +2495,8 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   const columns = 3;
   const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
   const bottomY = page.height - margin - footerH;
-  const itemLineH = normalizedLanguage === 'both' ? 13.2 : 11.6;
-  const itemFontSize = normalizedLanguage === 'both' ? 8.1 : 8.7;
+  const itemLineH = normalizedLanguage === 'both' ? 23 : 20;
+  const itemFontSize = normalizedLanguage === 'both' ? 14.2 : 15.2;
   let col = 0;
   let y = topY;
   let pageNo = 0;
@@ -2504,8 +2504,8 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   function addPage() {
     doc.addPage({ size: 'A4', layout: 'landscape', margin });
     pageNo += 1;
-    doc.fillColor('#111827').font(fonts.bold).fontSize(13).text('Menu Catalog', margin, 11, { width: 180, lineBreak: false });
-    doc.fillColor('#6b7280').font(fonts.regular).fontSize(6.5).text(
+    doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('Menu Catalog', margin, 9, { width: 190, lineBreak: false });
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7.2).text(
       `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} - ${items.length} items - CaterPro - Page ${pageNo}`,
       page.width - 260,
       14,
@@ -2533,25 +2533,25 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   }
 
   function sectionHeader(text, color = '#06445d') {
-    ensureSpace(18 + 13 + itemLineH);
-    doc.roundedRect(x(), y, colW, 14, 3).fill(color);
-    doc.fillColor('white').font(fonts.bold).fontSize(8.7).text(text, x() + 5, y + 3.2, { width: colW - 10, height: 10, ellipsis: true, lineBreak: false });
-    y += 18;
+    ensureSpace(25 + 19 + itemLineH);
+    doc.roundedRect(x(), y, colW, 20, 3).fill(color);
+    doc.fillColor('white').font(fonts.bold).fontSize(12.5).text(text, x() + 7, y + 4.3, { width: colW - 14, height: 14, ellipsis: true, lineBreak: false });
+    y += 25;
   }
 
   function groupHeader(text) {
-    ensureSpace(14 + itemLineH);
-    doc.fillColor('#111827').font(fonts.bold).fontSize(8.9).text(text, x(), y, { width: colW, height: 11, ellipsis: true, lineBreak: false });
-    doc.moveTo(x(), y + 12).lineTo(x() + colW, y + 12).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
-    y += 15;
+    ensureSpace(20 + itemLineH);
+    doc.fillColor('#111827').font(fonts.bold).fontSize(13).text(text, x(), y, { width: colW, height: 15, ellipsis: true, lineBreak: false });
+    doc.moveTo(x(), y + 17).lineTo(x() + colW, y + 17).strokeColor('#e5e7eb').lineWidth(0.55).stroke();
+    y += 21;
   }
 
   function itemLine(item) {
     const label = menuCatalogLabel(item, normalizedLanguage);
     ensureSpace(itemLineH);
-    const boxSize = 6.4;
-    doc.rect(x(), y + 2.7, boxSize, boxSize).lineWidth(0.65).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
-    drawSingleLineText(doc, label, x() + 10.5, y - 0.2, colW - 10.5, fonts, {
+    const boxSize = 10.5;
+    doc.rect(x(), y + 4, boxSize, boxSize).lineWidth(0.85).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
+    drawSingleLineText(doc, label, x() + 16, y - 0.4, colW - 16, fonts, {
       fontSize: itemFontSize,
       height: itemLineH,
       color: '#202124',
