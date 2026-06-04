@@ -114,12 +114,16 @@ class AppPreferences {
       {this.textScale = 1,
       this.font = 'Quicksand',
       this.theme = 'system',
-      this.languageCode = 'en'});
+      this.languageCode = 'en',
+      this.defaultMenuTimes = defaultEventMenuTimes,
+      this.autoMenuTypes = defaultAutoMenuTypes});
 
   final double textScale;
   final String font;
   final String theme;
   final String languageCode;
+  final Map<String, String> defaultMenuTimes;
+  final Set<String> autoMenuTypes;
 
   ThemeMode get themeMode => switch (theme) {
         'light' => ThemeMode.light,
@@ -148,19 +152,36 @@ class AppPreferences {
           {double? textScale,
           String? font,
           String? theme,
-          String? languageCode}) =>
+          String? languageCode,
+          Map<String, String>? defaultMenuTimes,
+          Set<String>? autoMenuTypes}) =>
       AppPreferences(
           textScale: textScale ?? this.textScale,
           font: font ?? this.font,
           theme: theme ?? this.theme,
-          languageCode: languageCode ?? this.languageCode);
+          languageCode: languageCode ?? this.languageCode,
+          defaultMenuTimes: defaultMenuTimes ?? this.defaultMenuTimes,
+          autoMenuTypes: autoMenuTypes ?? this.autoMenuTypes);
 
-  static AppPreferences fromPrefs(SharedPreferences prefs) => AppPreferences(
-        textScale: prefs.getDouble('appearance.textScale') ?? 1,
-        font: prefs.getString('appearance.font') ?? 'Quicksand',
-        theme: prefs.getString('appearance.theme') ?? 'system',
-        languageCode: prefs.getString('appearance.language') ?? 'en',
-      );
+  static AppPreferences fromPrefs(SharedPreferences prefs) {
+    final menuTimes = <String, String>{};
+    for (final type in eventMenuTypes) {
+      menuTimes[type] = prefs.getString('eventDefaults.time.$type') ??
+          defaultEventMenuTimes[type] ??
+          '10:00 AM';
+    }
+    return AppPreferences(
+      textScale: prefs.getDouble('appearance.textScale') ?? 1,
+      font: prefs.getString('appearance.font') ?? 'Quicksand',
+      theme: prefs.getString('appearance.theme') ?? 'system',
+      languageCode: prefs.getString('appearance.language') ?? 'en',
+      defaultMenuTimes: menuTimes,
+      autoMenuTypes: (prefs.getStringList('eventDefaults.autoMenuTypes') ??
+              defaultAutoMenuTypes.toList())
+          .where(eventMenuTypes.contains)
+          .toSet(),
+    );
+  }
 }
 
 class AppPreferencesController extends ValueNotifier<AppPreferences> {
@@ -178,8 +199,33 @@ class AppPreferencesController extends ValueNotifier<AppPreferences> {
     await prefs.setString('appearance.font', next.font);
     await prefs.setString('appearance.theme', next.theme);
     await prefs.setString('appearance.language', next.languageCode);
+    for (final entry in next.defaultMenuTimes.entries) {
+      await prefs.setString('eventDefaults.time.${entry.key}', entry.value);
+    }
+    await prefs.setStringList(
+        'eventDefaults.autoMenuTypes', next.autoMenuTypes.toList()..sort());
   }
 }
+
+const eventMenuTypes = [
+  'Breakfast',
+  'Juice',
+  'Lunch',
+  'Snack',
+  'Dinner',
+  'Others',
+];
+
+const defaultEventMenuTimes = {
+  'Breakfast': '8:00 AM',
+  'Juice': '5:00 PM',
+  'Lunch': '1:30 PM',
+  'Snack': '4:30 PM',
+  'Dinner': '8:00 PM',
+  'Others': '10:00 AM',
+};
+
+const defaultAutoMenuTypes = {'Breakfast', 'Lunch', 'Dinner'};
 
 String tr(String english, {String? kn, String? hi}) {
   return switch (appPreferences.value.languageCode) {
@@ -901,6 +947,24 @@ class AppEvent {
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'primaryClient': primaryClient,
+        'mobile': mobile,
+        'venue': venue,
+        'notes': notes,
+        'status': status,
+        'addOns': addOns,
+        'dates': dates.map((date) => date.toJson()).toList(),
+        'payments': payments.map((payment) => payment.toJson()).toList(),
+        'materialDocuments':
+            materialDocuments.map((document) => document.toJson()).toList(),
+        'employeeAssignments': employeeAssignments
+            .map((assignment) => assignment.toJson())
+            .toList(),
+      };
 }
 
 class EventEmployeeAssignment {
@@ -1206,6 +1270,16 @@ class AppPayment {
       settledDiscount: (json['settledDiscount'] as num?)?.toInt() ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'amount': amount,
+        'date': date,
+        'mode': mode,
+        'reference': reference,
+        'settled': settled,
+        'settledDiscount': settledDiscount,
+      };
 }
 
 class ManualInvoiceItem {
@@ -1344,10 +1418,19 @@ class AppEventDate {
           .map(AppMenuSlot.fromJson)
           .toList(),
       additionalServices: ((json['additionalServices'] as List?) ?? [])
-          .whereType<Map<String, dynamic>>()
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
           .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'date': date,
+        'label': label,
+        'menuSlots': menuSlots.map((slot) => slot.toJson()).toList(),
+        'additionalServices': additionalServices,
+      };
 }
 
 class AppMenuSlot {
@@ -1358,7 +1441,9 @@ class AppMenuSlot {
       required this.pax,
       required this.pricePerPax,
       required this.enabled,
-      required this.menuItemIds});
+      required this.menuItemIds,
+      required this.additionalServices,
+      required this.menuImages});
   final String id;
   final String type;
   final String time;
@@ -1366,6 +1451,8 @@ class AppMenuSlot {
   final int pricePerPax;
   final bool enabled;
   final List<String> menuItemIds;
+  final List<Map<String, dynamic>> additionalServices;
+  final List<Map<String, dynamic>> menuImages;
 
   factory AppMenuSlot.fromJson(Map<String, dynamic> json) {
     return AppMenuSlot(
@@ -1378,8 +1465,28 @@ class AppMenuSlot {
       menuItemIds: ((json['menuItemIds'] as List?) ?? [])
           .map((item) => item.toString())
           .toList(),
+      additionalServices: ((json['additionalServices'] as List?) ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
+      menuImages: ((json['menuImages'] as List?) ?? [])
+          .whereType<Map>()
+          .map((item) => Map<String, dynamic>.from(item))
+          .toList(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'type': type,
+        'time': time,
+        'pax': pax,
+        'pricePerPax': pricePerPax,
+        'enabled': enabled,
+        'menuItemIds': menuItemIds,
+        'additionalServices': additionalServices,
+        'menuImages': menuImages,
+      };
 }
 
 class ApiService {
@@ -1470,6 +1577,33 @@ class ApiService {
     return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<void> deleteEvent(String eventId) async {
+    final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}/events/$eventId'),
+        headers: await authHeaders());
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Unable to delete event');
+    }
+  }
+
+  Future<AppEvent> deleteEventDate(String eventId, String dateId) async {
+    final response = await http.delete(
+        Uri.parse('${ApiConfig.baseUrl}/events/$eventId/dates/$dateId'),
+        headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to delete date');
+    return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<AppEvent> deleteMenuSlot(
+      String eventId, String dateId, String slotId) async {
+    final response = await http.delete(
+        Uri.parse(
+            '${ApiConfig.baseUrl}/events/$eventId/dates/$dateId/menu-slots/$slotId'),
+        headers: await authHeaders());
+    if (response.statusCode != 200) throw Exception('Unable to delete menu');
+    return AppEvent.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
   Future<List<MenuMasterItem>> getMenuItems() async {
     final response =
         await http.get(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
@@ -1480,6 +1614,17 @@ class ApiService {
         .whereType<Map<String, dynamic>>()
         .map(MenuMasterItem.fromJson)
         .toList();
+  }
+
+  Future<Uri> menuCatalogPdfUri(String language,
+      {String search = '', String meal = 'All', bool vegOnly = false}) async {
+    final query = <String, String>{'language': language};
+    final normalizedSearch = search.trim();
+    if (normalizedSearch.isNotEmpty) query['search'] = normalizedSearch;
+    if (meal != 'All') query['meal'] = meal;
+    if (vegOnly) query['vegOnly'] = 'true';
+    return Uri.parse('${ApiConfig.baseUrl}/menu-items/export.pdf')
+        .replace(queryParameters: query);
   }
 
   Future<MenuMasterItem> saveMenuItem(MenuMasterItem item) async {
@@ -1817,7 +1962,9 @@ class ApiService {
             'pax': int.tryParse(slot.pax) ?? 0,
             'pricePerPax': slot.pricePerPax,
             'enabled': slot.enabled,
-            'menuItemIds': slot.selectedMenuIds.toList()
+            'menuItemIds': slot.selectedMenuIds,
+            'additionalServices': slot.additionalServices,
+            'menuImages': slot.menuImages,
           }),
         );
       }
@@ -2069,10 +2216,18 @@ int eventServiceTotal(AppEvent event) => event.dates.fold(
     0,
     (dateSum, date) =>
         dateSum +
-        date.additionalServices.fold(
+        date.additionalServices.fold<int>(
             0,
             (sum, service) =>
-                sum + ((service['price'] as num?)?.toInt() ?? 0)));
+                sum + ((service['price'] as num?)?.toInt() ?? 0)) +
+        date.menuSlots.fold<int>(
+            0,
+            (slotSum, slot) =>
+                slotSum +
+                slot.additionalServices.fold<int>(
+                    0,
+                    (sum, service) =>
+                        sum + ((service['price'] as num?)?.toInt() ?? 0))));
 int eventAddOnTotal(AppEvent event) => event.addOns
     .fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
 int eventTotal(AppEvent event) =>

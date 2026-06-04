@@ -53,7 +53,7 @@ MenuMasterItem? menuItemById(String id) {
   return null;
 }
 
-int selectedOrder(String id, Set<String> selectedIds) {
+int selectedOrder(String id, Iterable<String> selectedIds) {
   var index = 0;
   for (final selectedId in selectedIds) {
     if (selectedId == id) return index;
@@ -74,6 +74,7 @@ class MenuMasterScreen extends StatefulWidget {
 
 class _MenuMasterScreenState extends State<MenuMasterScreen> {
   final api = ApiService();
+  final searchController = TextEditingController();
   String query = '';
   String selectedMealFilter = 'All';
   bool vegOnly = false;
@@ -93,6 +94,12 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
       final matchesVeg = !vegOnly || item.veg;
       return matchesSearch && matchesMeal && matchesVeg;
     }).toList();
+  }
+
+  @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
   }
 
   void upsertMenuItem(MenuMasterItem item) {
@@ -123,6 +130,30 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
     }));
   }
 
+  Future<void> exportMenuCatalogPdf(String language) async {
+    final uri = await api.menuCatalogPdfUri(language,
+        search: query, meal: selectedMealFilter, vegOnly: vegOnly);
+    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!mounted) return;
+    showCpSnack(context,
+        launched ? 'Menu catalog PDF started' : 'Unable to open menu PDF');
+  }
+
+  PopupMenuItem<String> filterItem(String value, String label,
+      {IconData? icon, bool selected = false}) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(children: [
+        Icon(selected ? Icons.check_circle : icon ?? Icons.restaurant_menu,
+            color: selected ? Cp.tertiaryContainer : Cp.primary),
+        const SizedBox(width: 10),
+        Expanded(
+            child: Text(label,
+                style: const TextStyle(fontWeight: FontWeight.w800))),
+      ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ScreenFrame(
           topBar: TopBar(
@@ -132,10 +163,60 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                   onPressed: widget.onClose,
                   icon: const Icon(Icons.arrow_back, color: Cp.primary)),
               actions: [
-                IconButton(
-                    onPressed: () =>
-                        showMenuItemEditor(context, onSave: upsertMenuItem),
-                    icon: const Icon(Icons.add))
+                PopupMenuButton<String>(
+                  tooltip: 'Filter menu items',
+                  icon: const Icon(Icons.filter_list, color: Cp.primary),
+                  onSelected: (value) {
+                    setState(() {
+                      if (value == 'veg') {
+                        vegOnly = !vegOnly;
+                      } else if (value == 'clear') {
+                        selectedMealFilter = 'All';
+                        vegOnly = false;
+                      } else {
+                        selectedMealFilter = value;
+                      }
+                    });
+                  },
+                  itemBuilder: (context) => [
+                    ...eventMenuTypes.map((type) => filterItem(type, type,
+                        selected: selectedMealFilter == type)),
+                    const PopupMenuDivider(),
+                    filterItem('All', 'All Menu Types',
+                        icon: Icons.all_inclusive,
+                        selected: selectedMealFilter == 'All' && !vegOnly),
+                    filterItem('veg', 'Veg Only',
+                        icon: Icons.eco, selected: vegOnly),
+                    const PopupMenuDivider(),
+                    filterItem('clear', 'Clear Filters',
+                        icon: Icons.filter_alt_off),
+                  ],
+                ),
+                PopupMenuButton<String>(
+                  tooltip: 'Menu export options',
+                  icon: const Icon(Icons.more_vert, color: Cp.primary),
+                  onSelected: exportMenuCatalogPdf,
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(
+                        value: 'kannada',
+                        child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.picture_as_pdf),
+                            title: Text('Export Kannada menu'))),
+                    PopupMenuItem(
+                        value: 'english',
+                        child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.picture_as_pdf),
+                            title: Text('Export English menu'))),
+                    PopupMenuItem(
+                        value: 'both',
+                        child: ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.picture_as_pdf),
+                            title: Text('Export both language menu'))),
+                  ],
+                ),
               ]),
           children: [
             CpCard(
@@ -147,55 +228,46 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                       child: Text(
                           'Universal menu catalog. Add/edit only. Every user can access these items.',
                           style: TextStyle(
-                              color: Cp.primary, fontWeight: FontWeight.w800)))
+                              color: Cp.primary,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800)))
                 ])),
             const SizedBox(height: 12),
             TextField(
+              controller: searchController,
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
+                  suffixIcon: query.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () => setState(() {
+                                query = '';
+                                searchController.clear();
+                              }),
+                          icon: const Icon(Icons.close)),
                   hintText: 'Search menu items',
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12))),
               onChanged: (value) => setState(() => query = value),
             ),
-            const SizedBox(height: 12),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  ...['All', 'Breakfast', 'Juice', 'Lunch', 'Snack', 'Dinner']
-                      .map((filter) {
-                    final selected = selectedMealFilter == filter;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: () =>
-                            setState(() => selectedMealFilter = filter),
-                        child: Pill(filter,
-                            color:
-                                selected ? Cp.primaryContainer : Cp.surfaceHigh,
-                            textColor: selected ? Colors.white : Cp.onVariant,
-                            icon: selected ? Icons.check : null),
-                      ),
-                    );
-                  }),
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () => setState(() => vegOnly = !vegOnly),
-                      child: Pill('Veg Only',
-                          color:
-                              vegOnly ? Cp.tertiaryContainer : Cp.surfaceHigh,
-                          textColor: vegOnly ? Colors.white : Cp.onVariant,
-                          icon: vegOnly ? Icons.check : Icons.eco),
-                    ),
-                  ),
-                ],
-              ),
-            ),
             const SizedBox(height: 18),
+            if (query.trim().isNotEmpty &&
+                !visibleItems.any((item) =>
+                    item.english.toLowerCase() == query.trim().toLowerCase() ||
+                    item.kannada == query.trim()))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: DashedAction(
+                    label: 'Add "${query.trim()}"',
+                    icon: Icons.add_circle,
+                    onTap: () => showMenuItemEditor(context,
+                        initialEnglish: query.trim(),
+                        initialMeals: {
+                          if (selectedMealFilter != 'All') selectedMealFilter
+                        },
+                        onSave: upsertMenuItem)),
+              ),
             ...visibleItems.map((item) => MenuItemCard(
                 item: item,
                 onEdit: () => showMenuItemEditor(context,
@@ -212,87 +284,93 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
           ]);
 }
 
-class MenuItemCard extends StatefulWidget {
+class MenuItemCard extends StatelessWidget {
   const MenuItemCard({super.key, required this.item, required this.onEdit});
   final MenuMasterItem item;
   final VoidCallback onEdit;
 
   @override
-  State<MenuItemCard> createState() => _MenuItemCardState();
-}
-
-class _MenuItemCardState extends State<MenuItemCard> {
-  bool active = true;
-
-  @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: 8),
         child: CpCard(
-          onTap: widget.onEdit,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          onTap: onEdit,
           child: Row(children: [
             Container(
-                width: 64,
-                height: 64,
+                width: 44,
+                height: 44,
                 decoration: BoxDecoration(
-                    color: widget.item.veg
+                    color: item.veg
                         ? Cp.tertiaryFixed.withValues(alpha: .3)
                         : Cp.errorContainer,
                     borderRadius: BorderRadius.circular(8)),
                 child: Icon(Icons.restaurant,
-                    color: widget.item.veg ? Cp.tertiary : Cp.error)),
-            const SizedBox(width: 14),
+                    size: 24, color: item.veg ? Cp.tertiary : Cp.error)),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(widget.item.id,
-                        style: const TextStyle(
-                            color: Cp.outline,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900)),
                     Row(children: [
                       Container(
                           width: 8,
                           height: 8,
                           decoration: BoxDecoration(
-                              color:
-                                  widget.item.veg ? Colors.green : Colors.red,
+                              color: item.veg ? Colors.green : Colors.red,
                               shape: BoxShape.circle)),
                       const SizedBox(width: 8),
                       Expanded(
-                          child: Text(widget.item.title,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.w500)))
+                          child: Text('${item.kannada} / ${item.english}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontSize: 15, fontWeight: FontWeight.w800)))
                     ]),
-                    Text('${widget.item.category} • ${widget.item.meals}',
-                        style: const TextStyle(color: Cp.onVariant)),
+                    const SizedBox(height: 2),
+                    Text('${item.id} • ${item.category} • ${item.meals}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            const TextStyle(color: Cp.onVariant, fontSize: 12)),
                   ]),
             ),
             IconButton(
-                onPressed: widget.onEdit,
+                onPressed: onEdit,
+                visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.edit, color: Cp.primary)),
-            Switch(
-                value: active,
-                activeThumbColor: Cp.primaryContainer,
-                onChanged: (value) => setState(() => active = value)),
           ]),
         ),
       );
 }
 
 void showMenuItemEditor(BuildContext context,
-    {MenuMasterItem? item, required ValueChanged<MenuMasterItem> onSave}) {
+    {MenuMasterItem? item,
+    String? initialEnglish,
+    Set<String>? initialMeals,
+    required ValueChanged<MenuMasterItem> onSave}) {
   showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
-    builder: (context) => MenuItemEditorSheet(item: item, onSave: onSave),
+    builder: (context) => MenuItemEditorSheet(
+        item: item,
+        initialEnglish: initialEnglish,
+        initialMeals: initialMeals,
+        onSave: onSave),
   );
 }
 
 class MenuItemEditorSheet extends StatefulWidget {
-  const MenuItemEditorSheet({super.key, this.item, required this.onSave});
+  const MenuItemEditorSheet(
+      {super.key,
+      this.item,
+      this.initialEnglish,
+      this.initialMeals,
+      required this.onSave});
   final MenuMasterItem? item;
+  final String? initialEnglish;
+  final Set<String>? initialMeals;
   final ValueChanged<MenuMasterItem> onSave;
 
   @override
@@ -311,16 +389,17 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
   ];
   static const mealOptions = [
     'Breakfast',
+    'Juice',
     'Lunch',
-    'Dinner',
-    'Other',
     'Snack',
-    'Juice'
+    'Dinner',
+    'Others'
   ];
   late final id = TextEditingController(
       text: widget.item?.id ??
           'MNU-${(MenuMasterScreen.menuItems.length + 1).toString().padLeft(3, '0')}');
-  late final english = TextEditingController(text: widget.item?.english ?? '');
+  late final english = TextEditingController(
+      text: widget.item?.english ?? widget.initialEnglish ?? '');
   late final kannada = TextEditingController(text: widget.item?.kannada ?? '');
   late String category = categoryOptions.contains(widget.item?.category)
       ? widget.item!.category
@@ -330,6 +409,11 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
       ...widget.item!.meals
           .split(',')
           .map((meal) => meal.trim())
+          .map((meal) => meal == 'Other' ? 'Others' : meal)
+          .where((meal) => mealOptions.contains(meal)),
+    if (widget.item == null && widget.initialMeals != null)
+      ...widget.initialMeals!
+          .map((meal) => meal == 'Other' ? 'Others' : meal)
           .where((meal) => mealOptions.contains(meal)),
   };
   late bool veg = widget.item?.veg ?? true;

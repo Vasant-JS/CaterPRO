@@ -2462,7 +2462,7 @@ function menuCatalogLabel(item, language) {
   return kannada || english || item.id || '';
 }
 
-function generateMenuCatalogPdf({ res, db, language = 'both' }) {
+function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   const normalizedLanguage = ['kannada', 'english', 'both'].includes(language) ? language : 'both';
   const doc = new PDFDocument({
     size: 'A4',
@@ -2476,27 +2476,45 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   res.setHeader('Content-Disposition', `inline; filename="caterpro-menu-catalog-${normalizedLanguage}.pdf"`);
   doc.pipe(res);
 
+  const search = repairMojibake(String(filters.search || '')).trim().toLowerCase();
+  const mealFilter = String(filters.meal || '').trim();
+  const vegOnly = filters.vegOnly === true || String(filters.vegOnly || '').toLowerCase() === 'true';
+  const mealText = (item) => Array.isArray(item.meals) ? item.meals.join(', ') : String(item.meals || '');
+
   const items = asArray(db.universal?.menuItems)
     .map((item) => ({
       ...item,
       english: repairMojibake(item.english || ''),
       kannada: repairMojibake(item.kannada || ''),
       category: repairMojibake(item.category || 'Other') || 'Other',
+      mealsText: repairMojibake(mealText(item)),
       label: menuCatalogLabel(item, normalizedLanguage),
       veg: item.veg !== false,
     }))
-    .filter((item) => item.label);
+    .filter((item) => item.label)
+    .filter((item) => {
+      if (vegOnly && !item.veg) return false;
+      if (mealFilter && mealFilter !== 'All') {
+        const meals = item.mealsText.split(',').map((meal) => meal.trim());
+        if (!meals.includes(mealFilter)) return false;
+      }
+      if (search) {
+        const haystack = `${item.id || ''} ${item.english} ${item.kannada} ${item.category} ${item.mealsText}`.toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
 
   const page = { width: 595.28, height: 841.89 };
   const margin = 12;
   const footerH = 14;
   const topY = 40;
-  const gap = 12;
-  const columns = 2;
+  const gap = 9;
+  const columns = 3;
   const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
   const bottomY = page.height - margin - footerH;
-  const itemFontSize = 12;
-  const itemLineGap = 1.2;
+  const itemFontSize = 10;
+  const itemLineGap = 0.8;
   let col = 0;
   let y = topY;
   let pageNo = 0;
@@ -2533,17 +2551,17 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   }
 
   function sectionHeader(text, color = '#06445d') {
-    ensureSpace(24 + 24 + 22);
-    doc.roundedRect(x(), y, colW, 20, 3).fill(color);
-    doc.fillColor('white').font(fonts.bold).fontSize(12).text(text, x() + 7, y + 4.2, { width: colW - 14, height: 14, ellipsis: true, lineBreak: false });
-    y += 25;
+    ensureSpace(22 + 21 + 20);
+    doc.roundedRect(x(), y, colW, 18, 3).fill(color);
+    doc.fillColor('white').font(fonts.bold).fontSize(10.6).text(text, x() + 6, y + 3.8, { width: colW - 12, height: 12, ellipsis: true, lineBreak: false });
+    y += 22;
   }
 
   function groupHeader(text) {
-    ensureSpace(24 + 22);
-    doc.roundedRect(x(), y, colW, 19, 3).fill('#eef2f7').strokeColor('#d7dee8').lineWidth(0.45).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(12).text(text, x() + 6, y + 3.4, { width: colW - 12, height: 13, ellipsis: true, lineBreak: false });
-    y += 23;
+    ensureSpace(21 + 20);
+    doc.roundedRect(x(), y, colW, 17, 3).fill('#eef2f7').strokeColor('#d7dee8').lineWidth(0.45).stroke();
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10.5).text(text, x() + 5, y + 3.1, { width: colW - 10, height: 12, ellipsis: true, lineBreak: false });
+    y += 20;
   }
 
   function wrappedTextHeight(text, width) {
@@ -2556,13 +2574,13 @@ function generateMenuCatalogPdf({ res, db, language = 'both' }) {
   function itemLine(item) {
     const label = menuCatalogLabel(item, normalizedLanguage);
     const source = repairMojibake(String(label || ''));
-    const textX = x() + 16;
-    const textW = colW - 16;
+    const textX = x() + 13;
+    const textW = colW - 13;
     const textH = wrappedTextHeight(source, textW);
-    const rowH = Math.max(22, Math.ceil(textH) + 6);
+    const rowH = Math.max(18, Math.ceil(textH) + 5);
     ensureSpace(rowH);
-    const boxSize = 8.5;
-    doc.rect(x(), y + 4.5, boxSize, boxSize).lineWidth(0.8).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
+    const boxSize = 7.2;
+    doc.rect(x(), y + 3.6, boxSize, boxSize).lineWidth(0.75).strokeColor(item.veg ? '#0f766e' : '#991b1b').stroke();
     doc.fillColor('#202124')
       .font(hasKannadaText(source) ? fonts.kannada : fonts.regular)
       .fontSize(itemFontSize)
@@ -3092,7 +3110,16 @@ app.get('/api/menu-items', (req, res) => {
 function handleMenuCatalogPdf(req, res) {
   const db = readDb();
   ensureUniversal(db);
-  return generateMenuCatalogPdf({ res, db, language: String(req.query.language || 'both') });
+  return generateMenuCatalogPdf({
+    res,
+    db,
+    language: String(req.query.language || 'both'),
+    filters: {
+      search: req.query.search,
+      meal: req.query.meal,
+      vegOnly: req.query.vegOnly,
+    },
+  });
 }
 
 app.get('/api/menu-items/pdf', handleMenuCatalogPdf);
