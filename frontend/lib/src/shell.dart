@@ -138,20 +138,49 @@ class _AppShellState extends State<AppShell> {
 
   Map<String, dynamic> normalizeEventJson(Map<String, dynamic> event) {
     final normalized = <String, dynamic>{...event};
-    normalized['dates'] =
-        dedupeJsonList(event['dates'], key: 'eventDates').map((date) {
-      final copy = <String, dynamic>{...date};
-      copy['menuSlots'] = dedupeJsonList(copy['menuSlots'], key: 'menuSlots');
-      copy['additionalServices'] =
-          dedupeJsonList(copy['additionalServices'], key: 'selectedServices');
-      return copy;
-    }).toList();
+    normalized['dates'] = mergeEventDateJsonList(event['dates']);
     normalized['payments'] = dedupeJsonList(event['payments'], key: 'payments');
     normalized['materialDocuments'] =
         dedupeJsonList(event['materialDocuments'], key: 'materialDocuments');
     normalized['employeeAssignments'] =
         dedupeJsonList(event['employeeAssignments'], key: 'employeeAssignments');
     return normalized;
+  }
+
+  List<Map<String, dynamic>> mergeEventDateJsonList(Object? value) {
+    final byDate = <String, Map<String, dynamic>>{};
+    for (final date in jsonMapList(value)) {
+      final key = date['date']?.toString().isNotEmpty == true
+          ? date['date'].toString()
+          : date['id']?.toString() ?? '';
+      final normalized = <String, dynamic>{
+        ...date,
+        'id': date['date']?.toString().isNotEmpty == true
+            ? date['date'].toString()
+            : date['id']?.toString() ?? '',
+        'menuSlots': dedupeJsonList(date['menuSlots'], key: 'menuSlots'),
+        'additionalServices':
+            dedupeJsonList(date['additionalServices'], key: 'selectedServices'),
+      };
+      final existing = byDate[key];
+      if (existing == null) {
+        byDate[key] = normalized;
+      } else {
+        byDate[key] = {
+          ...existing,
+          ...normalized,
+          'id': existing['date'] ?? existing['id'] ?? normalized['id'],
+          'menuSlots': dedupeJsonList(
+              [...jsonMapList(existing['menuSlots']), ...jsonMapList(normalized['menuSlots'])],
+              key: 'menuSlots'),
+          'additionalServices': dedupeJsonList([
+            ...jsonMapList(existing['additionalServices']),
+            ...jsonMapList(normalized['additionalServices'])
+          ], key: 'selectedServices'),
+        };
+      }
+    }
+    return byDate.values.toList();
   }
 
   List<Map<String, dynamic>> dedupeJsonList(Object? value, {required String key}) {
@@ -236,6 +265,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   String recordKey(Map<String, dynamic> item, String listKey) {
+    if (listKey == 'eventDates') {
+      final date = item['date']?.toString() ?? '';
+      if (date.isNotEmpty) return date;
+    }
     final id = item['id']?.toString() ?? '';
     if (id.isNotEmpty) return id;
     if (listKey == 'attendance') {

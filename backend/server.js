@@ -641,14 +641,39 @@ function normalizeEventShape(event = {}) {
       payPerHour: Number(assignment.payPerHour ?? (assignment.payPerDay ? Math.round(Number(assignment.payPerDay) / 8) : 0)),
     })),
   };
-  normalized.dates = dedupeBy(normalized.dates.map((date) => ({
-    ...date,
-    id: date.id || date.date || makeId('date'),
-    menuSlots: dedupeBy(asArray(date.menuSlots), (slot) => slot.id || `${slot.type || 'slot'}-${date.id || date.date || ''}`),
-    additionalServices: dedupeBy(asArray(date.additionalServices), (service) => [service.serviceId || service.id || service.name, service.count || service.quantity || ''].join('|')),
-  })), (date) => date.id || date.date);
+  normalized.dates = mergeEventDates(normalized.dates);
   normalized.attendance = dedupeBy(asArray(normalized.attendance), (record) => [record.eventId, record.employeeId, record.date].join('|'));
   return normalized;
+}
+
+function normalizeEventDate(date = {}) {
+  return {
+    ...date,
+    id: date.date || date.id || makeId('date'),
+    menuSlots: dedupeBy(asArray(date.menuSlots), (slot) => slot.id || slot.type || `${date.date || date.id}-slot`),
+    additionalServices: dedupeBy(asArray(date.additionalServices), (service) => [service.serviceId || service.id || service.name, service.count || service.quantity || ''].join('|')),
+  };
+}
+
+function mergeEventDates(dates = []) {
+  const byDate = new Map();
+  for (const rawDate of asArray(dates)) {
+    const date = normalizeEventDate(rawDate);
+    const key = date.date || date.id;
+    const existing = byDate.get(key);
+    if (!existing) {
+      byDate.set(key, date);
+      continue;
+    }
+    byDate.set(key, {
+      ...existing,
+      ...date,
+      id: existing.date || existing.id || date.id,
+      menuSlots: dedupeBy([...asArray(existing.menuSlots), ...asArray(date.menuSlots)], (slot) => slot.id || slot.type || `${key}-slot`),
+      additionalServices: dedupeBy([...asArray(existing.additionalServices), ...asArray(date.additionalServices)], (service) => [service.serviceId || service.id || service.name, service.count || service.quantity || ''].join('|')),
+    });
+  }
+  return [...byDate.values()];
 }
 
 const defaultRawMaterialNames = [
