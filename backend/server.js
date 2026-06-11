@@ -4067,6 +4067,47 @@ app.get('/api/storage/tables', async (req, res) => {
   }
 });
 
+app.post('/api/storage/import-menu-items-from-db', async (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  try {
+    const result = await pgPool.query(
+      `select id, english, kannada, title, category, meals, veg, raw
+       from cp_menu_items
+       where state_id = $1
+       order by id`,
+      [pgStateId],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'No menu items found in cp_menu_items' });
+    }
+    db.universal = db.universal || {};
+    db.universal.menuItems = result.rows.map((row) => {
+      const raw = row.raw && typeof row.raw === 'object' ? row.raw : {};
+      return {
+        ...raw,
+        id: row.id || raw.id || makeId('mnu'),
+        english: row.english ?? raw.english ?? '',
+        kannada: row.kannada ?? raw.kannada ?? '',
+        title: row.title ?? raw.title ?? `${row.kannada || raw.kannada || ''}/${row.english || raw.english || ''}`,
+        category: row.category ?? raw.category ?? '',
+        meals: asArray(row.meals ?? raw.meals),
+        veg: row.veg === null || row.veg === undefined ? Boolean(raw.veg) : Boolean(row.veg),
+      };
+    });
+    writeDb(db);
+    await flushPostgresWrites();
+    res.json({
+      message: 'Menu items imported from PostgreSQL table',
+      count: db.universal.menuItems.length,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Unable to import menu items from PostgreSQL table', error: error.message });
+  }
+});
+
 app.post('/api/storage/push-local-to-postgres', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
