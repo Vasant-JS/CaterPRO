@@ -249,6 +249,17 @@ async function ensureRelationalTables(client) {
       primary key (state_id, user_id, id)
     );
 
+    create table if not exists cp_requirement_lists (
+      state_id text not null,
+      user_id text not null,
+      id text not null,
+      type text,
+      title text,
+      item_count integer,
+      raw jsonb not null,
+      primary key (state_id, user_id, id)
+    );
+
     create table if not exists cp_manual_invoices (
       state_id text not null,
       user_id text not null,
@@ -310,6 +321,16 @@ async function ensureRelationalTables(client) {
       raw jsonb not null,
       primary key (state_id, id)
     );
+
+    create table if not exists cp_vessel_items (
+      state_id text not null,
+      id text not null,
+      name text,
+      category text,
+      unit text,
+      raw jsonb not null,
+      primary key (state_id, id)
+    );
   `);
 }
 
@@ -322,6 +343,7 @@ async function syncRelationalTables(db) {
     const tables = [
       'cp_manual_invoice_items',
       'cp_manual_invoices',
+      'cp_requirement_lists',
       'cp_event_assignments',
       'cp_event_payments',
       'cp_menu_slots',
@@ -337,6 +359,7 @@ async function syncRelationalTables(db) {
       'cp_menu_items',
       'cp_raw_materials',
       'cp_produce_items',
+      'cp_vessel_items',
     ];
     for (const table of tables) {
       await client.query(`delete from ${table} where state_id = $1`, [pgStateId]);
@@ -387,6 +410,14 @@ async function syncRelationalTables(db) {
           `insert into cp_custom_menus (state_id, user_id, id, name, type, item_ids, raw)
            values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
           [pgStateId, user.id, customMenu.id || '', customMenu.name || '', customMenu.type || '', asJson(asArray(customMenu.itemIds)), asJson(customMenu)],
+        );
+      }
+
+      for (const list of asArray(userData.requirementLists)) {
+        await client.query(
+          `insert into cp_requirement_lists (state_id, user_id, id, type, title, item_count, raw)
+           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
+          [pgStateId, user.id, list.id || '', list.type || '', list.title || '', asArray(list.items).length, asJson(list)],
         );
       }
 
@@ -516,6 +547,13 @@ async function syncRelationalTables(db) {
         [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
       );
     }
+    for (const item of asArray(db.universal?.vesselItems)) {
+      await client.query(
+        `insert into cp_vessel_items (state_id, id, name, category, unit, raw)
+         values ($1,$2,$3,$4,$5,$6::jsonb)`,
+        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
+      );
+    }
 
     await client.query('commit');
   } catch (error) {
@@ -587,8 +625,18 @@ function requireUser(req, res, db) {
   return user;
 }
 
+function requireAdminUser(req, res, db) {
+  const user = requireUser(req, res, db);
+  if (!user) return null;
+  if (String(user.email || '').toLowerCase() !== 'admin@caterpro.in') {
+    res.status(403).json({ message: 'Admin access required' });
+    return null;
+  }
+  return user;
+}
+
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], customMenus: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
+  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], customMenus: [], requirementLists: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
 }
 
 function emptyBusinessProfile() {
@@ -616,6 +664,7 @@ function ensureUserDataShape(userData) {
   userData.attendance = dedupeBy(userData.attendance, (record) => [record.eventId, record.employeeId, record.date].join('|'));
   userData.additionalServices = userData.additionalServices || [];
   userData.customMenus = userData.customMenus || [];
+  userData.requirementLists = asArray(userData.requirementLists).map((item) => materialDocumentFromBody(item));
   userData.payments = userData.payments || [];
   userData.manualInvoices = userData.manualInvoices || [];
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
@@ -866,7 +915,142 @@ function defaultProduceCatalog() {
   }));
 }
 
-const protectedUniversalCatalogKeys = ['menuItems', 'rawMaterials', 'produceItems'];
+const defaultVesselItems = [
+  ['ದೊಡ್ಡ ಚಟ್ಟಿ', 'ಪಾತ್ರೆಗಳು'],
+  ['ನೀರು ಚಟ್ಟಿ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಕೊಳಿಗೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಂ.ಟಿ. ಪಾತ್ರೆ 40 ಕೆ.ಜಿ.', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಂ.ಟಿ. ಪಾತ್ರೆ 25 ಕೆ.ಜಿ.', 'ಪಾತ್ರೆಗಳು'],
+  ['ಪಾತ್ರೆ 15 ಕೆ.ಜಿ.', 'ಪಾತ್ರೆಗಳು'],
+  ['ಸಣ್ಣ ಪಾತ್ರೆ ಸೆಟ್', 'ಪಾತ್ರೆಗಳು'],
+  ['ಕಾಶಿ ಫಿಲ್ಟರ್', 'ಪಾನೀಯ'],
+  ['ಕಾಶಿ ಜಗ್', 'ಪಾನೀಯ'],
+  ['ಎಲ್.ಪಿ. ಟೆಕ್ಕೆ', 'ಸೇವೆ'],
+  ['ನಂ. 2 ಟೆಕ್ಕೆ', 'ಸೇವೆ'],
+  ['ನಂ. 1 ಟೆಕ್ಕೆ', 'ಸೇವೆ'],
+  ['ಇಡ್ಲಿ ಪಾತ್ರೆ ಟೆಕ್ಕೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಡಬ್ಬಿ', 'ಸಂಗ್ರಹ'],
+  ['ಮೈಸೂರು ಪಾಕ್ ಟ್ರೇ', 'ಟ್ರೇ'],
+  ['ಮೈಸೂರು ಪಾಕ್ ರೂಲ್', 'ಟ್ರೇ'],
+  ['ಪರಾಂತ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಕಟ್ಲರ್', 'ಸೇವೆ'],
+  ['ಕೈ ತಟ್ಟೆ', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಚಟರ್', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಸೋಸರ್', 'ಸೇವೆ'],
+  ['ಅನ್ನದ ಕೈ', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಬಂಡಕೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಸ್ಟೀಲ್ ಸೌಟು', 'ಸೇವೆ'],
+  ['ಚಾಕು ಸೌಟು', 'ಸೇವೆ'],
+  ['ಲೋಟ', 'ಪಾನೀಯ'],
+  ['ಸ್ಟೀಲ್ ಜಗ್', 'ಪಾನೀಯ'],
+  ['ಸ್ಟೀಲ್ ಬೇಸನ್', 'ಪಾತ್ರೆಗಳು'],
+  ['ತಟ್ಟೆ ಮಗ್', 'ಸೇವೆ'],
+  ['ಗೋಧಿ ಮೇಳೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಚಟ್ಟಿ ಕೊಳ್ಳಿಗೆ ಮಣೆ', 'ಮಣೆ'],
+  ['ತೆಂಗಿನ ಮಣೆ', 'ಮಣೆ'],
+  ['ಚಪಾತಿ ಮಣೆ', 'ಮಣೆ'],
+  ['ಲಗ್ನಿಗೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಣ್ಣೆ ಬಾಂದಿ ದೊಡ್ಡದು', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಣ್ಣೆ ಬಾಂದಿ ಚಿಕ್ಕದು', 'ಪಾತ್ರೆಗಳು'],
+  ['ಜಲ್ಲಿ ಬಾಂದಿ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಹೊಳಿಗೆ ಚಟ್ಟಿ ಕಂಬಿ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಸಕ್ಕರೆ ಕರಂಡಿ', 'ಸೇವೆ'],
+  ['ಮಿಕ್ಸಿ', 'ಉಪಕರಣ'],
+  ['ಪೀಠದ ಜಾರ್', 'ಉಪಕರಣ'],
+  ['ಎಣ್ಣೆ ಜಾರ್', 'ಸಂಗ್ರಹ'],
+  ['ಲಾಡು ಜಾರ್', 'ಸಂಗ್ರಹ'],
+  ['ಸಾರ ಸೇವೆ ಮಣೆ', 'ಮಣೆ'],
+  ['ಕೈ ಬಂಡಿ', 'ಸಾಗಣೆ'],
+  ['ಮೂಲ ಬಡಿಗೆ', 'ಸೇವೆ'],
+  ['ಹಿಡಿದು ಸಾಗಿಸುವುದು', 'ಸಾಗಣೆ'],
+  ['ಫ್ಲಾಸ್ಕ್ ನೀರಿನ ಡ್ರಂ', 'ಪಾನೀಯ'],
+  ['ಸ್ಟೀಲ್ ನೀರಿನ ಡ್ರಂ', 'ಪಾನೀಯ'],
+  ['ಫೈಬರ್ ಡ್ರಂ', 'ಸಂಗ್ರಹ'],
+  ['ಸ್ಟೀಲ್ ಡಬ್ಬ', 'ಸಂಗ್ರಹ'],
+  ['ಗ್ರೈಂಡರ್', 'ಉಪಕರಣ'],
+  ['ಮಿಕ್ಸಿ ಮತ್ತು ಜಾರ್', 'ಉಪಕರಣ'],
+  ['ಗ್ಯಾಸ್ ಸಿಲಿಂಡರ್', 'ಉಪಕರಣ'],
+  ['ಬಟ್ಟಿ', 'ಉಪಕರಣ'],
+  ['ಸೊಳ್ಳೆ ಪರದೆ', 'ಇತರೆ'],
+  ['ಎಲೆ ತೆಗೆಯುವ ಟೇಬಲ್', 'ಸೇವೆ'],
+  ['ಜನರೇಟರ್ ಬ್ಯಾಟರಿ', 'ಉಪಕರಣ'],
+  ['ಅಡ್ಡೆ ಸೆಟ್', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ದೊಡ್ಡಾಳು', 'ಪಾತ್ರೆಗಳು'],
+];
+
+const correctedDefaultVesselItems = [
+  ['ಡಬ್ಬಲ್ ಒಲೆ', 'ಒಲೆ'],
+  ['ಸಿಂಗಲ್ ಒಲೆ', 'ಒಲೆ'],
+  ['ಕೊಳಿಗೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಂ.ಟಿ. ಪಾತ್ರೆ 40 kg', 'ಪಾತ್ರೆಗಳು'],
+  ['ಎಂ.ಟಿ. ಪಾತ್ರೆ 25 kg', 'ಪಾತ್ರೆಗಳು'],
+  ['ಪಾತ್ರೆ 15 kg', 'ಪಾತ್ರೆಗಳು'],
+  ['ಸಣ್ಣ ಪಾತ್ರೆ ಸೆಟ್', 'ಪಾತ್ರೆಗಳು'],
+  ['ಕಾಫಿ ಫಿಲ್ಟರ್', 'ಪಾನೀಯ'],
+  ['ಕಾಫಿ ಫ್ಲಾಸ್ಕ್', 'ಪಾನೀಯ'],
+  ['ಎಸ್. ಪಿ. ತಟ್ಟೆ', 'ತಟ್ಟೆ'],
+  ['ನಂ. 2 ತಟ್ಟೆ', 'ತಟ್ಟೆ'],
+  ['ನಂ. 1 ತಟ್ಟೆ', 'ತಟ್ಟೆ'],
+  ['ಇಡ್ಲಿ ಪಾತ್ರೆ ತಟ್ಟೆ', 'ತಟ್ಟೆ'],
+  ['ಟಬ್ಬು', 'ಸಂಗ್ರಹ'],
+  ['ಮೈಸೂರ್ ಪಾಕ್ ಟ್ರೇ', 'ಟ್ರೇ'],
+  ['ಮೈಸೂರು ಪಾಕ್ ಕುರ್ಪಿ', 'ಟ್ರೇ'],
+  ['ಪರಾತ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಕೆಟಲ್', 'ಪಾನೀಯ'],
+  ['ಕೈ ಪಾತ್ರೆ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಸ್ಟೀಲ್ ಬಕೆಟ್', 'ಸಂಗ್ರಹ'],
+  ['ಸ್ಟೀಲ್ ಸೌಟ್', 'ಸೇವೆ'],
+  ['ಅನ್ನದ ಕೈ', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಚುಂಚಕ', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಸ್ಪೂನ್', 'ಸೇವೆ'],
+  ['ಬಾತ್ ಸ್ಪೂನ್', 'ಸೇವೆ'],
+  ['ಲೋಟ', 'ಪಾನೀಯ'],
+  ['ಸ್ಟೀಲ್ ಜಗ್', 'ಪಾನೀಯ'],
+  ['ಸ್ಟೀಲ್ ಬೇಸನ್', 'ಪಾತ್ರೆಗಳು'],
+  ['ತುಪ್ಪದ ಮಗ್ಗು', 'ಸೇವೆ'],
+  ['ಈಳಿಗೆಮಣಿ', 'ಮಣೆ'],
+  ['ಒಣ ಕೊಬ್ಬರಿ ಮಣಿ', 'ಮಣೆ'],
+  ['ತರಕಾರಿ ಮಣಿ', 'ಮಣೆ'],
+  ['ಚಪಾತಿ ಮಣೆ', 'ಮಣೆ'],
+  ['ಲಟ್ಟನಿಗೆ', 'ಸೇವೆ'],
+  ['ಎಣ್ಣೆ ಬಾಂಡ್ಲಿ ದೊಡ್ಡದು', 'ಬಾಂಡ್ಲಿ'],
+  ['ಎಣ್ಣೆ ಬಾಂಡ್ಲಿ ಚಿಕ್ಕದು', 'ಬಾಂಡ್ಲಿ'],
+  ['ಜಿಲೇಬಿ ಬಾಂಡ್ಲಿ', 'ಬಾಂಡ್ಲಿ'],
+  ['ಹೋಳಿಗೆ ಒಲೆ, ಹಂಚು', 'ಒಲೆ'],
+  ['ಸಕ್ಕರೆ ಕಡಾಯಿ', 'ಪಾತ್ರೆಗಳು'],
+  ['ಹುಟ್ಟು', 'ಸೇವೆ'],
+  ['ಬೊಂದಿ ಜಾರ', 'ಜಾರ್'],
+  ['ಎಣೆ ಜಾರ', 'ಜಾರ್'],
+  ['ಲಾಡು ಜಾರ', 'ಜಾರ್'],
+  ['ಖಾರ ಸೇವ್ ಮಣಿ', 'ಮಣೆ'],
+  ['ಕೈ ಜಾರ', 'ಜಾರ್'],
+  ['ಹುಳಿ ಜರಡಿ', 'ಜರಡಿ'],
+  ['ಹಿಟ್ಟು ಸಾಣಿಸುವುದು', 'ಜರಡಿ'],
+  ['ಪ್ಲಾಸ್ಟಿಕ್ ನೀರಿನ ಡಂ', 'ಡ್ರಂ'],
+  ['ಸ್ಟೀಲ್ ನೀರಿನ ಡ್ರಂ', 'ಡ್ರಂ'],
+  ['ಫೈಬರ್ ಪ್ಲೇಟ್', 'ಪ್ಲೇಟ್'],
+  ['ಸ್ಟೀಲ್ ಪ್ಲೇಟ್', 'ಪ್ಲೇಟ್'],
+  ['ಗ್ರೈಂಡರ್', 'ಉಪಕರಣ'],
+  ['ಮಿಕ್ಸಿ ಮತ್ತು ಜಾರ', 'ಉಪಕರಣ'],
+  ['ಟೀ ಸೊಸುವುದು', 'ಜರಡಿ'],
+  ['ಬುಟ್ಟಿ', 'ಸಂಗ್ರಹ'],
+  ['ಸೊಳ್ಳೆ ಪರದೆ', 'ಇತರೆ'],
+  ['ಎಲೆ ತೆಗೆಯುವ ಬೇಸನ್', 'ಪಾತ್ರೆಗಳು'],
+  ['ಜೆನ್‌ಕ್ಷನ್ ಬಾಕ್ಸ್', 'ಉಪಕರಣ'],
+  ['ಅಳತೆ ಸೇರು', 'ಸೇವೆ'],
+  ['ಸ್ಟೀಲ್ ಡಬ್ಬಿಗಳು', 'ಸಂಗ್ರಹ'],
+];
+
+function defaultVesselCatalog() {
+  return correctedDefaultVesselItems.map(([name, category], index) => ({
+    id: `VES-${String(index + 1).padStart(3, '0')}`,
+    name,
+    category,
+    unit: '',
+  }));
+}
+
+const protectedUniversalCatalogKeys = ['menuItems', 'rawMaterials', 'produceItems', 'vesselItems'];
 
 function readUniversalCatalogBackup() {
   if (!fs.existsSync(universalCatalogBackupPath)) return {};
@@ -1083,6 +1267,7 @@ function ensureUniversal(db) {
   db.universal.menuItems = Array.isArray(db.universal.menuItems) && db.universal.menuItems.length > 0 ? db.universal.menuItems : backup.menuItems || [];
   db.universal.rawMaterials = Array.isArray(db.universal.rawMaterials) && db.universal.rawMaterials.length > 0 ? db.universal.rawMaterials : backup.rawMaterials || [];
   db.universal.produceItems = Array.isArray(db.universal.produceItems) && db.universal.produceItems.length > 0 ? db.universal.produceItems : backup.produceItems || [];
+  db.universal.vesselItems = Array.isArray(db.universal.vesselItems) && db.universal.vesselItems.length > 0 ? db.universal.vesselItems : backup.vesselItems || [];
   const legacyNames = new Set(['Basmati Rice', 'Toor Dal', 'Cooking Oil', 'Tomato', 'Onion']);
   const hasOnlyLegacyRawMaterials = db.universal.rawMaterials.length > 0 && db.universal.rawMaterials.every((item) => legacyNames.has(item.name));
   if (db.universal.rawMaterials.length === 0 || hasOnlyLegacyRawMaterials) {
@@ -1092,6 +1277,7 @@ function ensureUniversal(db) {
   if (db.universal.produceItems.length === 0) {
     db.universal.produceItems = defaultProduceCatalog();
   }
+  db.universal.vesselItems = mergeCatalogById(defaultVesselCatalog(), db.universal.vesselItems);
 }
 
 function findUserEvent(db, userId, eventId) {
@@ -1145,7 +1331,7 @@ function materialDocumentFromBody(body, existing = {}) {
   return {
     ...existing,
     id: existing.id || body.id || makeId('matdoc'),
-    type: ['raw', 'produce'].includes(body.type) ? body.type : existing.type || 'raw',
+    type: ['raw', 'produce', 'vessels'].includes(body.type) ? body.type : existing.type || 'raw',
     title: body.title || existing.title || 'Material List',
     createdAt: existing.createdAt || body.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -1451,6 +1637,28 @@ function prettyDate(value) {
 function documentNumber(prefix, event) {
   const stamp = new Date().toISOString().slice(0, 10).replaceAll('-', '');
   return `${prefix}-${event.id.replace(/^evt_?/, '').toUpperCase()}-${stamp}`;
+}
+
+function safeFilenamePart(value) {
+  const normalized = String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-{2,}/g, '-');
+  return normalized;
+}
+
+function eventClientName(event = {}) {
+  return event.primaryClient || event.clientName || event.customerName || 'Client';
+}
+
+function pdfFilename(parts) {
+  const name = parts.map((part) => safeFilenamePart(part)).filter(Boolean).join('-');
+  return `${name || 'caterpro-document'}.pdf`;
+}
+
+function setPdfAttachment(res, parts) {
+  res.setHeader('Content-Disposition', `attachment; filename="${pdfFilename(parts)}"`);
 }
 
 function amountInWords(value) {
@@ -1839,7 +2047,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  setPdfAttachment(res, [title, eventClientName(event), event.name || event.id, number]);
   doc.pipe(res);
 
   writeDocumentHeader(doc, title, documentEvent, number, fonts, businessProfile);
@@ -1950,7 +2158,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  setPdfAttachment(res, ['INVOICE', invoice.clientName || 'Client', invoice.eventName || invoice.id, number]);
   doc.pipe(res);
 
   writeDocumentHeader(doc, 'INVOICE', event, number, fonts, businessProfile);
@@ -2437,7 +2645,7 @@ function generateMenuPdf({ res, db, event, dateId, allDates = false, businessPro
   const suffix = allDates ? 'ALL_DAYS' : (dates[0].date || dates[0].id);
   const number = `MENU_${event.id}_${suffix}`.replace(/[^A-Za-z0-9_-]/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  setPdfAttachment(res, [allDates ? 'All-Menus' : 'Menu', eventClientName(event), event.name || event.id, suffix]);
   doc.pipe(res);
   let pageNo = 1;
   dates.forEach((date, index) => {
@@ -2482,7 +2690,7 @@ function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile =
   const fonts = configurePdfFonts(doc);
   const number = `UPCOMING_MENUS_${start}_TO_${end}`.replace(/[^A-Za-z0-9_-]/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  setPdfAttachment(res, ['Upcoming-Menus', start, 'to', end]);
   doc.pipe(res);
   let pageNo = 1;
   pages.forEach((page, index) => {
@@ -2498,18 +2706,27 @@ function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile =
   doc.end();
 }
 
-function generateMaterialDocumentPdf({ res, event, materialDocument, businessProfile = emptyBusinessProfile() }) {
-  const title = materialDocument.type === 'produce' ? 'VEGETABLES & FRUITS' : 'RAW MATERIALS';
-  const filePrefix = materialDocument.type === 'produce' ? 'PRODUCE' : 'RAW';
+function generateMaterialDocumentPdf({ res, event = {}, materialDocument, businessProfile = emptyBusinessProfile() }) {
+  const title = materialDocument.type === 'produce'
+    ? 'VEGETABLES & FRUITS'
+    : materialDocument.type === 'vessels'
+      ? 'VESSELS & UTENSILS'
+      : 'RAW MATERIALS';
+  const filePrefix = materialDocument.type === 'produce'
+    ? 'PRODUCE'
+    : materialDocument.type === 'vessels'
+      ? 'VESSELS'
+      : 'RAW';
   const number = `${filePrefix}_${event.id}_${materialDocument.id}`.replace(/[^A-Za-z0-9_-]/g, '_');
-  const doc = new PDFDocument({ size: 'A4', margin: 12, info: { Title: `${title} - ${event.name}` }, autoFirstPage: false });
+  const eventName = event.name || 'Standalone Requirement List';
+  const doc = new PDFDocument({ size: 'A4', margin: 12, info: { Title: `${title} - ${eventName}` }, autoFirstPage: false });
   const fonts = configurePdfFonts(doc);
   const pageX = 18;
   const pageW = 559;
   const cellGap = 7;
   const cellWidth = (pageW - cellGap * 2) / 3;
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`);
+  setPdfAttachment(res, [title, eventName, eventClientName(event), event.id || materialDocument.id]);
   doc.pipe(res);
 
   function drawHeader(pageNo = 1) {
@@ -2518,10 +2735,10 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
     doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
       .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 360, 27, { width: 217, align: 'right' });
     doc.moveTo(pageX, 50).lineTo(pageX + pageW, 50).strokeColor('#9ca3af').lineWidth(0.7).stroke();
-    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', pageX, 64, { width: 245 });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Requirement List', pageX, 64, { width: 245 });
     doc.fillColor('#374151').font(fonts.regular).fontSize(8)
-      .text(`Event: ${event.name || '-'}`, pageX, 80, { width: 260 })
-      .text(`Venue: ${event.venue || '-'}`, pageX, 94, { width: 260 })
+      .text(event.id ? `Event: ${event.name || '-'}` : 'Created directly from dashboard', pageX, 80, { width: 260 })
+      .text(event.id ? `Venue: ${event.venue || '-'}` : `Type: ${title}`, pageX, 94, { width: 260 })
       .text(`Document: ${materialDocument.title || title}`, 360, 64, { width: 217, align: 'right' })
       .text(`Generated: ${prettyDate(new Date().toISOString().slice(0, 10))}`, 360, 80, { width: 217, align: 'right' })
       .text(`${materialDocument.items.length} items`, 360, 94, { width: 217, align: 'right' });
@@ -2532,15 +2749,15 @@ function generateMaterialDocumentPdf({ res, event, materialDocument, businessPro
     doc.rect(pageX, y, pageW, 20).fill('#f3f4f6').strokeColor('#d1d5db').lineWidth(0.5).stroke();
     [pageX, pageX + cellWidth + cellGap, pageX + (cellWidth + cellGap) * 2].forEach((x) => {
       doc.fillColor('#111827').font(fonts.bold).fontSize(9)
-        .text('Item', x + 10, y + 6, { width: cellWidth - 54 })
-        .text('Qty', x + cellWidth - 44, y + 6, { width: 34, align: 'right' });
+        .text('Item', x + 10, y + 6, { width: cellWidth - 70 })
+        .text('Qty', x + cellWidth - 60, y + 6, { width: 50, align: 'right' });
     });
   }
 
   function drawMaterialCell(item, x, y, width) {
     const qtyText = [item.quantity, item.unit].filter(Boolean).join(' ');
-    drawSingleLineText(doc, item.name || item.itemId, x + 10, y + 6, width - 58, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
-    drawSingleLineText(doc, qtyText, x + width - 44, y + 6, 34, fonts, { fontSize: 8.4, height: 14, color: '#111827', align: 'right' });
+    drawSingleLineText(doc, repairMojibake(item.name || item.itemId), x + 10, y + 6, width - 74, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
+    drawSingleLineText(doc, repairMojibake(qtyText), x + width - 60, y + 6, 50, fonts, { fontSize: 8.4, height: 14, color: '#111827', align: 'right' });
   }
 
   function drawFooter(pageNo = 1) {
@@ -2793,7 +3010,7 @@ const openApiSpec = {
       CustomMenu: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, type: { type: 'string' }, itemIds: { type: 'array', items: { type: 'string' } } } },
       RawMaterial: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, unit: { type: 'string' } } },
       ProduceItem: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, category: { type: 'string' }, unit: { type: 'string' } } },
-      MaterialDocument: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['raw', 'produce'] }, title: { type: 'string' }, items: { type: 'array' } } },
+      MaterialDocument: { type: 'object', properties: { id: { type: 'string' }, type: { type: 'string', enum: ['raw', 'produce', 'vessels'] }, title: { type: 'string' }, items: { type: 'array' } } },
       Event: { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' }, mobile: { type: 'string' }, venue: { type: 'string' }, dates: { type: 'array' }, materialDocuments: { type: 'array' } } },
     },
   },
@@ -2812,6 +3029,8 @@ const openApiSpec = {
     '/api/raw-materials/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal raw material', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/produce-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal vegetables and fruits', responses: { 200: { description: 'Vegetables and fruits' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal vegetable/fruit item', responses: { 201: { description: 'Created' } } } },
     '/api/produce-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal vegetable/fruit item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
+    '/api/vessel-items': { get: { tags: ['Universal Catalogs'], summary: 'List universal vessels and utensils', responses: { 200: { description: 'Vessels and utensils' } } }, post: { tags: ['Universal Catalogs'], summary: 'Create universal vessel/utensil item', responses: { 201: { description: 'Created' } } } },
+    '/api/vessel-items/{id}': { put: { tags: ['Universal Catalogs'], summary: 'Update universal vessel/utensil item', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'Updated' }, 404: { description: 'Not found' } } } },
     '/api/events': { get: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'List user events', responses: { 200: { description: 'Events' } } }, post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Create full event shell', requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Event' } } } }, responses: { 201: { description: 'Created' } } } },
     '/api/events/{eventId}': { get: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Get event' }, put: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Update event' } },
     '/api/events/{eventId}/dates': { post: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Add event date' } },
@@ -2834,8 +3053,8 @@ const apiDocs = {
   openapi: '/api/openapi.json',
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
-    universal: ['menuItems', 'rawMaterials', 'produceItems'],
-    userOwned: ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'businessProfile', 'payments', 'manualInvoices'],
+    universal: ['menuItems', 'rawMaterials', 'produceItems', 'vesselItems'],
+    userOwned: ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'requirementLists', 'businessProfile', 'payments', 'manualInvoices'],
   },
 };
 
@@ -2858,6 +3077,36 @@ app.post('/api/auth/login', (req, res) => {
 
 app.post('/api/auth/forgot-password', (req, res) => {
   res.json({ message: `Password reset requested for ${req.body.email || 'unknown email'}` });
+});
+
+app.post('/api/admin/users', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const name = String(req.body.name || '').trim() || email;
+  const id = String(req.body.id || '').trim() || makeId('usr');
+  if (!email.includes('@') || password.length < 4) {
+    return res.status(400).json({ message: 'Valid email and password are required' });
+  }
+  const duplicate = db.users.find((user) =>
+    String(user.id || '') === id ||
+    String(user.email || '').toLowerCase() === email);
+  if (duplicate) {
+    return res.status(409).json({
+      message: 'User already exists',
+      user: { id: duplicate.id, name: duplicate.name, email: duplicate.email },
+    });
+  }
+  const user = { id, name, email, password };
+  db.users.push(user);
+  db.userData[id] = ensureUserDataShape(emptyUserData());
+  writeDb(db);
+  res.status(201).json({
+    message: 'User inserted',
+    user: { id: user.id, name: user.name, email: user.email },
+  });
 });
 
 function changePasswordHandler(req, res) {
@@ -2969,10 +3218,12 @@ app.post('/api/backup/import', (req, res) => {
       attendance: db.userData[user.id].attendance.length,
       additionalServices: db.userData[user.id].additionalServices.length,
       customMenus: db.userData[user.id].customMenus.length,
+      requirementLists: db.userData[user.id].requirementLists.length,
       manualInvoices: db.userData[user.id].manualInvoices.length,
       menuItems: db.universal.menuItems.length,
       rawMaterials: db.universal.rawMaterials.length,
       produceItems: db.universal.produceItems.length,
+      vesselItems: db.universal.vesselItems.length,
     },
   });
 });
@@ -3273,6 +3524,63 @@ app.put('/api/custom-menus/:id', (req, res) => {
   res.json(menu);
 });
 
+app.get('/api/requirement-lists', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].requirementLists || []);
+});
+
+app.post('/api/requirement-lists', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const list = materialDocumentFromBody(req.body);
+  db.userData[user.id].requirementLists = db.userData[user.id].requirementLists || [];
+  db.userData[user.id].requirementLists.push(list);
+  writeDb(db);
+  res.status(201).json(list);
+});
+
+app.put('/api/requirement-lists/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].requirementLists = db.userData[user.id].requirementLists || [];
+  const existing = db.userData[user.id].requirementLists.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Requirement list not found' });
+  Object.assign(existing, materialDocumentFromBody({ ...req.body, id: req.params.id }, existing));
+  writeDb(db);
+  res.json(existing);
+});
+
+app.delete('/api/requirement-lists/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const before = asArray(db.userData[user.id].requirementLists).length;
+  db.userData[user.id].requirementLists = asArray(db.userData[user.id].requirementLists)
+    .filter((item) => item.id !== req.params.id);
+  if (db.userData[user.id].requirementLists.length === before) {
+    return res.status(404).json({ message: 'Requirement list not found' });
+  }
+  writeDb(db);
+  res.json({ message: 'Requirement list deleted' });
+});
+
+app.get('/api/requirement-lists/:id/pdf', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const list = asArray(db.userData[user.id].requirementLists).find((item) => item.id === req.params.id);
+  if (!list) return res.status(404).json({ message: 'Requirement list not found' });
+  return generateMaterialDocumentPdf({
+    res,
+    materialDocument: list,
+    businessProfile: db.userData[user.id].businessProfile,
+  });
+});
+
 app.get('/api/menu-items', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
@@ -3319,7 +3627,10 @@ app.put('/api/menu-items/:id', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
   const existing = db.universal.menuItems.find((item) => item.id === req.params.id);
-  const item = { ...(existing || {}), ...req.body, id: req.params.id };
+  const item = { ...(existing || {}), ...req.body, id: req.body.id || req.params.id };
+  if (item.id !== req.params.id) {
+    db.universal.menuItems = db.universal.menuItems.filter((entry) => entry.id !== req.params.id);
+  }
   upsertById(db.universal.menuItems, item);
   writeDb(db);
   res.status(existing ? 200 : 201).json(item);
@@ -3346,7 +3657,10 @@ app.put('/api/raw-materials/:id', (req, res) => {
   ensureUniversal(db);
   const existing = db.universal.rawMaterials.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Raw material not found' });
-  const item = { ...existing, ...req.body, id: req.params.id };
+  const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
+  if (item.id !== req.params.id) {
+    db.universal.rawMaterials = db.universal.rawMaterials.filter((entry) => entry.id !== req.params.id);
+  }
   upsertById(db.universal.rawMaterials, item);
   writeDb(db);
   res.json(item);
@@ -3373,8 +3687,41 @@ app.put('/api/produce-items/:id', (req, res) => {
   ensureUniversal(db);
   const existing = db.universal.produceItems.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Vegetable/fruit item not found' });
-  const item = { ...existing, ...req.body, id: req.params.id };
+  const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
+  if (item.id !== req.params.id) {
+    db.universal.produceItems = db.universal.produceItems.filter((entry) => entry.id !== req.params.id);
+  }
   upsertById(db.universal.produceItems, item);
+  writeDb(db);
+  res.json(item);
+});
+
+app.get('/api/vessel-items', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  writeDb(db);
+  res.json(db.universal.vesselItems);
+});
+
+app.post('/api/vessel-items', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const item = { id: req.body.id || makeId('ves'), name: req.body.name || '', category: req.body.category || '', unit: req.body.unit || '' };
+  upsertById(db.universal.vesselItems, item);
+  writeDb(db);
+  res.status(201).json(item);
+});
+
+app.put('/api/vessel-items/:id', (req, res) => {
+  const db = readDb();
+  ensureUniversal(db);
+  const existing = db.universal.vesselItems.find((item) => item.id === req.params.id);
+  if (!existing) return res.status(404).json({ message: 'Vessel/utensil item not found' });
+  const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
+  if (item.id !== req.params.id) {
+    db.universal.vesselItems = db.universal.vesselItems.filter((entry) => entry.id !== req.params.id);
+  }
+  upsertById(db.universal.vesselItems, item);
   writeDb(db);
   res.json(item);
 });
@@ -3676,6 +4023,7 @@ app.get('/api/storage/status', async (req, res) => {
       menuItems: db.universal.menuItems.length,
       rawMaterials: db.universal.rawMaterials.length,
       produceItems: db.universal.produceItems.length,
+      vesselItems: db.universal.vesselItems.length,
     },
   });
 });
@@ -3700,11 +4048,13 @@ app.get('/api/storage/tables', async (req, res) => {
       'cp_attendance',
       'cp_additional_services',
       'cp_custom_menus',
+      'cp_requirement_lists',
       'cp_manual_invoices',
       'cp_manual_invoice_items',
       'cp_menu_items',
       'cp_raw_materials',
       'cp_produce_items',
+      'cp_vessel_items',
     ];
     const counts = {};
     for (const table of tables) {
@@ -3732,6 +4082,7 @@ app.post('/api/storage/push-local-to-postgres', async (req, res) => {
         menuItems: db.universal.menuItems.length,
         rawMaterials: db.universal.rawMaterials.length,
         produceItems: db.universal.produceItems.length,
+        vesselItems: db.universal.vesselItems.length,
       },
     });
   } catch (error) {
@@ -3764,6 +4115,7 @@ app.post('/api/storage/pull-postgres-to-local', async (req, res) => {
         menuItems: postgresDb.universal.menuItems.length,
         rawMaterials: postgresDb.universal.rawMaterials.length,
         produceItems: postgresDb.universal.produceItems.length,
+        vesselItems: postgresDb.universal.vesselItems.length,
       },
     });
   } catch (error) {
