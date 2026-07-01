@@ -1331,8 +1331,9 @@ function materialDocumentFromBody(body, existing = {}) {
   return {
     ...existing,
     id: existing.id || body.id || makeId('matdoc'),
-    type: ['raw', 'produce', 'vessels'].includes(body.type) ? body.type : existing.type || 'raw',
+    type: ['raw', 'produce', 'vessels', 'menu'].includes(body.type) ? body.type : existing.type || 'raw',
     title: body.title || existing.title || 'Material List',
+    eventId: body.eventId || existing.eventId || '',
     date: body.date || existing.date || '',
     createdAt: existing.createdAt || body.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
