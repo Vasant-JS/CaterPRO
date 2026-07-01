@@ -1333,6 +1333,7 @@ function materialDocumentFromBody(body, existing = {}) {
     id: existing.id || body.id || makeId('matdoc'),
     type: ['raw', 'produce', 'vessels'].includes(body.type) ? body.type : existing.type || 'raw',
     title: body.title || existing.title || 'Material List',
+    date: body.date || existing.date || '',
     createdAt: existing.createdAt || body.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     items: Array.isArray(body.items) ? body.items.map((item) => ({
@@ -3318,10 +3319,28 @@ app.put('/api/clients/:id', (req, res) => {
   if (!user) return;
   const existing = db.userData[user.id].clients.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Client not found' });
+  const previousMobile = normalizeMobile(existing.mobile);
+  const previousName = existing.name || '';
   const client = clientFromBody({ ...req.body, id: req.params.id }, existing);
   if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
   if (client.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
   upsertById(db.userData[user.id].clients, client);
+  if (previousMobile && previousMobile !== client.mobile) {
+    for (const event of db.userData[user.id].events || []) {
+      if (normalizeMobile(event.mobile) === previousMobile) {
+        event.mobile = client.mobile;
+        if (!event.primaryClient || event.primaryClient === previousName) event.primaryClient = client.name;
+        event.updatedAt = new Date().toISOString();
+      }
+    }
+    for (const invoice of db.userData[user.id].manualInvoices || []) {
+      if (normalizeMobile(invoice.mobile) === previousMobile) {
+        invoice.mobile = client.mobile;
+        if (!invoice.clientName || invoice.clientName === previousName) invoice.clientName = client.name;
+        invoice.updatedAt = new Date().toISOString();
+      }
+    }
+  }
   writeDb(db);
   res.json(client);
 });
