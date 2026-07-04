@@ -4,21 +4,19 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
-const { Pool } = require('pg');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
 const dbPath = path.join(__dirname, 'db.json');
 const universalCatalogBackupPath = path.join(__dirname, 'universal-catalog.backup.json');
 const port = Number(process.env.PORT || 8787);
-const databaseUrl = process.env.DATABASE_URL || '';
-const pgStateId = process.env.PG_STATE_ID || 'default';
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseStateId = process.env.SUPABASE_STATE_ID || 'default';
 const allowJsonStorage = process.env.ALLOW_DB_JSON_STORAGE === 'true';
-const pgPool = databaseUrl ? new Pool({
-  connectionString: databaseUrl,
-  ssl: process.env.PGSSL === 'false' ? false : { rejectUnauthorized: false },
-}) : null;
+const supabase = supabaseUrl && supabaseServiceRoleKey ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } }) : null;
 let runtimeDb = null;
-let pendingPostgresWrite = Promise.resolve();
+let pendingSupabaseWrite = Promise.resolve();
 
 app.use(express.json({ limit: '50mb' }));
 app.use((req, res, next) => {
@@ -48,558 +46,228 @@ function writeDb(db) {
   if (allowJsonStorage) {
     fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
   }
-  schedulePostgresSave(db);
-}
-
-async function ensurePostgresStateTable() {
-  if (!pgPool) return;
-  await pgPool.query(`
-    create table if not exists caterpro_state (
-      id text primary key,
-      data jsonb not null,
-      updated_at timestamptz not null default now()
-    )
-  `);
-}
-
-async function loadPostgresDb() {
-  if (!pgPool) return null;
-  await ensurePostgresStateTable();
-  const result = await pgPool.query('select data from caterpro_state where id = $1', [pgStateId]);
-  if (result.rows.length === 0) return null;
-  const db = result.rows[0].data;
-  ensureUniversal(db);
-  return db;
-}
-
-async function savePostgresDb(db) {
-  if (!pgPool) return;
-  await ensurePostgresStateTable();
-  await pgPool.query(
-    `insert into caterpro_state (id, data, updated_at)
-     values ($1, $2::jsonb, now())
-     on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [pgStateId, JSON.stringify(db)],
-  );
-  await syncRelationalTables(db);
-}
-
-function asJson(value) {
-  return JSON.stringify(value ?? null);
+  scheduleSupabaseSave(db);
 }
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
-async function ensureRelationalTables(client) {
-  await client.query(`
-    create table if not exists cp_users (
-      state_id text not null,
-      id text not null,
-      name text,
-      email text,
-      role text,
-      raw jsonb not null,
-      primary key (state_id, id)
-    );
-
-    create table if not exists cp_business_profiles (
-      state_id text not null,
-      user_id text not null,
-      business_name text,
-      service_type text,
-      gstin text,
-      gst_type text,
-      gst_rate numeric,
-      phone text,
-      email text,
-      raw jsonb not null,
-      primary key (state_id, user_id)
-    );
-
-    create table if not exists cp_clients (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      name text,
-      mobile text,
-      city text,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_employees (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      name text,
-      mobile text,
-      designation text,
-      pay_per_day numeric,
-      pay_per_hour numeric,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_events (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      name text,
-      primary_client text,
-      mobile text,
-      venue text,
-      status text,
-      notes text,
-      add_ons jsonb not null default '[]'::jsonb,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_event_dates (
-      state_id text not null,
-      user_id text not null,
-      event_id text not null,
-      id text not null,
-      event_date text,
-      label text,
-      additional_services jsonb not null default '[]'::jsonb,
-      raw jsonb not null,
-      primary key (state_id, user_id, event_id, id)
-    );
-
-    create table if not exists cp_menu_slots (
-      state_id text not null,
-      user_id text not null,
-      event_id text not null,
-      date_id text not null,
-      id text not null,
-      type text,
-      delivery_time text,
-      pax integer,
-      price_per_pax integer,
-      enabled boolean,
-      menu_item_ids jsonb not null default '[]'::jsonb,
-      additional_services jsonb not null default '[]'::jsonb,
-      raw jsonb not null,
-      primary key (state_id, user_id, event_id, date_id, id)
-    );
-
-    create table if not exists cp_event_payments (
-      state_id text not null,
-      user_id text not null,
-      event_id text not null,
-      id text not null,
-      amount integer,
-      payment_date text,
-      mode text,
-      reference text,
-      settled boolean,
-      raw jsonb not null,
-      primary key (state_id, user_id, event_id, id)
-    );
-
-    create table if not exists cp_event_assignments (
-      state_id text not null,
-      user_id text not null,
-      event_id text not null,
-      employee_id text not null,
-      name text,
-      designation text,
-      pay_per_day numeric,
-      pay_per_hour numeric,
-      raw jsonb not null,
-      primary key (state_id, user_id, event_id, employee_id)
-    );
-
-    create table if not exists cp_attendance (
-      state_id text not null,
-      user_id text not null,
-      event_id text not null,
-      employee_id text not null,
-      attendance_date text not null,
-      status text,
-      hours numeric,
-      pay_per_day numeric,
-      pay_per_hour numeric,
-      raw jsonb not null,
-      primary key (state_id, user_id, event_id, employee_id, attendance_date)
-    );
-
-    create table if not exists cp_additional_services (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      name text,
-      unit text,
-      price numeric,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_custom_menus (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      name text,
-      type text,
-      item_ids jsonb not null default '[]'::jsonb,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_requirement_lists (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      type text,
-      title text,
-      item_count integer,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_manual_invoices (
-      state_id text not null,
-      user_id text not null,
-      id text not null,
-      invoice_number text,
-      client_name text,
-      mobile text,
-      event_name text,
-      event_date text,
-      invoice_date text,
-      total integer,
-      pending integer,
-      raw jsonb not null,
-      primary key (state_id, user_id, id)
-    );
-
-    create table if not exists cp_manual_invoice_items (
-      state_id text not null,
-      user_id text not null,
-      invoice_id text not null,
-      id text not null,
-      title text,
-      quantity integer,
-      rate integer,
-      amount integer,
-      raw jsonb not null,
-      primary key (state_id, user_id, invoice_id, id)
-    );
-
-    create table if not exists cp_menu_items (
-      state_id text not null,
-      id text not null,
-      english text,
-      kannada text,
-      title text,
-      category text,
-      meals jsonb not null default '[]'::jsonb,
-      veg boolean,
-      raw jsonb not null,
-      primary key (state_id, id)
-    );
-
-    create table if not exists cp_raw_materials (
-      state_id text not null,
-      id text not null,
-      name text,
-      category text,
-      unit text,
-      raw jsonb not null,
-      primary key (state_id, id)
-    );
-
-    create table if not exists cp_produce_items (
-      state_id text not null,
-      id text not null,
-      name text,
-      category text,
-      unit text,
-      raw jsonb not null,
-      primary key (state_id, id)
-    );
-
-    create table if not exists cp_vessel_items (
-      state_id text not null,
-      id text not null,
-      name text,
-      category text,
-      unit text,
-      raw jsonb not null,
-      primary key (state_id, id)
-    );
-  `);
-}
-
-async function syncRelationalTables(db) {
-  if (!pgPool) return;
-  const client = await pgPool.connect();
-  try {
-    await ensureRelationalTables(client);
-    await client.query('begin');
-    const tables = [
-      'cp_manual_invoice_items',
-      'cp_manual_invoices',
-      'cp_requirement_lists',
-      'cp_event_assignments',
-      'cp_event_payments',
-      'cp_menu_slots',
-      'cp_event_dates',
-      'cp_attendance',
-      'cp_events',
-      'cp_custom_menus',
-      'cp_additional_services',
-      'cp_employees',
-      'cp_clients',
-      'cp_business_profiles',
-      'cp_users',
-      'cp_menu_items',
-      'cp_raw_materials',
-      'cp_produce_items',
-      'cp_vessel_items',
-    ];
-    for (const table of tables) {
-      await client.query(`delete from ${table} where state_id = $1`, [pgStateId]);
-    }
-
-    for (const user of asArray(db.users)) {
-      await client.query(
-        `insert into cp_users (state_id, id, name, email, role, raw)
-         values ($1, $2, $3, $4, $5, $6::jsonb)`,
-        [pgStateId, user.id || '', user.name || '', user.email || '', user.role || '', asJson(user)],
-      );
-      const userData = ensureUserDataShape(db.userData?.[user.id] || emptyUserData());
-      const profile = userData.businessProfile || emptyBusinessProfile();
-      await client.query(
-        `insert into cp_business_profiles
-         (state_id, user_id, business_name, service_type, gstin, gst_type, gst_rate, phone, email, raw)
-         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
-        [pgStateId, user.id, profile.businessName || '', profile.serviceType || '', profile.gstin || '', profile.gstType || '', Number(profile.gstRate || 0), profile.phone || '', profile.email || '', asJson(profile)],
-      );
-
-      for (const clientItem of asArray(userData.clients)) {
-        await client.query(
-          `insert into cp_clients (state_id, user_id, id, name, mobile, city, raw)
-           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-          [pgStateId, user.id, clientItem.id || '', clientItem.name || '', clientItem.mobile || '', clientItem.city || clientItem.address || '', asJson(clientItem)],
-        );
-      }
-
-      for (const employee of asArray(userData.employees)) {
-        await client.query(
-          `insert into cp_employees
-           (state_id, user_id, id, name, mobile, designation, pay_per_day, pay_per_hour, raw)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)`,
-          [pgStateId, user.id, employee.id || '', employee.name || '', employee.mobile || '', employee.designation || '', Number(employee.payPerDay || 0), Number(employee.payPerHour || 0), asJson(employee)],
-        );
-      }
-
-      for (const service of asArray(userData.additionalServices)) {
-        await client.query(
-          `insert into cp_additional_services (state_id, user_id, id, name, unit, price, raw)
-           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-          [pgStateId, user.id, service.id || '', service.name || '', service.unit || '', Number(service.price || 0), asJson(service)],
-        );
-      }
-
-      for (const customMenu of asArray(userData.customMenus)) {
-        await client.query(
-          `insert into cp_custom_menus (state_id, user_id, id, name, type, item_ids, raw)
-           values ($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb)`,
-          [pgStateId, user.id, customMenu.id || '', customMenu.name || '', customMenu.type || '', asJson(asArray(customMenu.itemIds)), asJson(customMenu)],
-        );
-      }
-
-      for (const list of asArray(userData.requirementLists)) {
-        await client.query(
-          `insert into cp_requirement_lists (state_id, user_id, id, type, title, item_count, raw)
-           values ($1,$2,$3,$4,$5,$6,$7::jsonb)`,
-          [pgStateId, user.id, list.id || '', list.type || '', list.title || '', asArray(list.items).length, asJson(list)],
-        );
-      }
-
-      for (const event of asArray(userData.events)) {
-        await client.query(
-          `insert into cp_events
-           (state_id, user_id, id, name, primary_client, mobile, venue, status, notes, add_ons, raw)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11::jsonb)`,
-          [pgStateId, user.id, event.id || '', event.name || '', event.primaryClient || '', event.mobile || '', event.venue || '', event.status || '', event.notes || '', asJson(asArray(event.addOns)), asJson(event)],
-        );
-        for (const date of asArray(event.dates)) {
-          await client.query(
-            `insert into cp_event_dates
-             (state_id, user_id, event_id, id, event_date, label, additional_services, raw)
-             values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb)
-             on conflict (state_id, user_id, event_id, id)
-             do update set
-               event_date = excluded.event_date,
-               label = excluded.label,
-               additional_services = excluded.additional_services,
-               raw = excluded.raw`,
-            [pgStateId, user.id, event.id || '', date.id || date.date || '', date.date || '', date.label || '', asJson(asArray(date.additionalServices)), asJson(date)],
-          );
-          for (const slot of asArray(date.menuSlots)) {
-            await client.query(
-              `insert into cp_menu_slots
-               (state_id, user_id, event_id, date_id, id, type, delivery_time, pax, price_per_pax, enabled, menu_item_ids, additional_services, raw)
-               values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13::jsonb)
-               on conflict (state_id, user_id, event_id, date_id, id)
-               do update set
-                 type = excluded.type,
-                 delivery_time = excluded.delivery_time,
-                 pax = excluded.pax,
-                 price_per_pax = excluded.price_per_pax,
-                 enabled = excluded.enabled,
-                 menu_item_ids = excluded.menu_item_ids,
-                 additional_services = excluded.additional_services,
-                 raw = excluded.raw`,
-              [pgStateId, user.id, event.id || '', date.id || date.date || '', slot.id || `${slot.type || 'slot'}-${date.id || date.date || ''}`, slot.type || '', slot.time || '', Number(slot.pax || 0), Number(slot.pricePerPax || 0), slot.enabled !== false, asJson(asArray(slot.menuItemIds)), asJson(asArray(slot.additionalServices)), asJson(slot)],
-            );
-          }
-        }
-        for (const payment of asArray(event.payments)) {
-          await client.query(
-            `insert into cp_event_payments
-             (state_id, user_id, event_id, id, amount, payment_date, mode, reference, settled, raw)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)`,
-            [pgStateId, user.id, event.id || '', payment.id || '', Number(payment.amount || 0), payment.date || '', payment.mode || '', payment.reference || '', payment.settled === true, asJson(payment)],
-          );
-        }
-        for (const assignment of asArray(event.employeeAssignments)) {
-          await client.query(
-            `insert into cp_event_assignments
-             (state_id, user_id, event_id, employee_id, name, designation, pay_per_day, pay_per_hour, raw)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-             on conflict (state_id, user_id, event_id, employee_id)
-             do update set
-               name = excluded.name,
-               designation = excluded.designation,
-               pay_per_day = excluded.pay_per_day,
-               pay_per_hour = excluded.pay_per_hour,
-               raw = excluded.raw`,
-            [pgStateId, user.id, event.id || '', assignment.employeeId || assignment.id || '', assignment.name || '', assignment.designation || '', Number(assignment.payPerDay || 0), Number(assignment.payPerHour || 0), asJson(assignment)],
-          );
-        }
-      }
-
-      for (const attendance of asArray(userData.attendance)) {
-        await client.query(
-          `insert into cp_attendance
-           (state_id, user_id, event_id, employee_id, attendance_date, status, hours, pay_per_day, pay_per_hour, raw)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-           on conflict (state_id, user_id, event_id, employee_id, attendance_date)
-           do update set
-             status = excluded.status,
-             hours = excluded.hours,
-             pay_per_day = excluded.pay_per_day,
-             pay_per_hour = excluded.pay_per_hour,
-             raw = excluded.raw`,
-          [pgStateId, user.id, attendance.eventId || '', attendance.employeeId || '', attendance.date || '', attendance.status || '', Number(attendance.hours || 0), Number(attendance.payPerDay || 0), Number(attendance.payPerHour || 0), asJson(attendance)],
-        );
-      }
-
-      for (const invoice of asArray(userData.manualInvoices)) {
-        await client.query(
-          `insert into cp_manual_invoices
-           (state_id, user_id, id, invoice_number, client_name, mobile, event_name, event_date, invoice_date, total, pending, raw)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)`,
-          [pgStateId, user.id, invoice.id || '', invoice.invoiceNumber || '', invoice.clientName || '', invoice.mobile || '', invoice.eventName || '', invoice.eventDate || '', invoice.invoiceDate || '', Number(invoice.total || 0), Number(invoice.pending || 0), asJson(invoice)],
-        );
-        for (const item of asArray(invoice.items)) {
-          await client.query(
-          `insert into cp_manual_invoice_items
-             (state_id, user_id, invoice_id, id, title, quantity, rate, amount, raw)
-             values ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb)
-             on conflict (state_id, user_id, invoice_id, id)
-             do update set
-               title = excluded.title,
-               quantity = excluded.quantity,
-               rate = excluded.rate,
-               amount = excluded.amount,
-               raw = excluded.raw`,
-            [pgStateId, user.id, invoice.id || '', item.id || item.title || '', item.title || '', Number(item.quantity || 0), Number(item.rate || 0), Number(item.amount || 0), asJson(item)],
-          );
-        }
-      }
-    }
-
-    for (const item of asArray(db.universal?.menuItems)) {
-      await client.query(
-        `insert into cp_menu_items (state_id, id, english, kannada, title, category, meals, veg, raw)
-         values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb)`,
-        [pgStateId, item.id || '', item.english || '', item.kannada || '', item.title || '', item.category || '', asJson(asArray(item.meals)), item.veg === true, asJson(item)],
-      );
-    }
-    for (const item of asArray(db.universal?.rawMaterials)) {
-      await client.query(
-        `insert into cp_raw_materials (state_id, id, name, category, unit, raw)
-         values ($1,$2,$3,$4,$5,$6::jsonb)`,
-        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
-      );
-    }
-    for (const item of asArray(db.universal?.produceItems)) {
-      await client.query(
-        `insert into cp_produce_items (state_id, id, name, category, unit, raw)
-         values ($1,$2,$3,$4,$5,$6::jsonb)`,
-        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
-      );
-    }
-    for (const item of asArray(db.universal?.vesselItems)) {
-      await client.query(
-        `insert into cp_vessel_items (state_id, id, name, category, unit, raw)
-         values ($1,$2,$3,$4,$5,$6::jsonb)`,
-        [pgStateId, item.id || '', item.name || '', item.category || '', item.unit || '', asJson(item)],
-      );
-    }
-
-    await client.query('commit');
-  } catch (error) {
-    await client.query('rollback').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
+function requireSupabaseConfigured() {
+  if (!supabase) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Supabase storage is mandatory.');
   }
 }
 
-function schedulePostgresSave(db) {
-  if (!pgPool) return;
-  const snapshot = JSON.parse(JSON.stringify(db));
-  pendingPostgresWrite = pendingPostgresWrite
-    .catch(() => {})
-    .then(() => savePostgresDb(snapshot))
-    .catch((error) => console.error('PostgreSQL sync failed:', error.message));
+async function supabaseRequest(builder) {
+  const { data, error, count } = await builder;
+  if (error) throw error;
+  return { data, count };
 }
 
-async function flushPostgresWrites() {
-  await pendingPostgresWrite.catch(() => {});
+async function loadSupabaseDb() {
+  if (!supabase) return null;
+  const { data } = await supabaseRequest(
+    supabase.from('caterpro_state').select('data').eq('id', supabaseStateId).maybeSingle(),
+  );
+  if (!data?.data) return null;
+  const db = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
+  ensureUniversal(db);
+  return db;
+}
+
+async function saveSupabaseDb(db) {
+  if (!supabase) return;
+  await supabaseRequest(
+    supabase.from('caterpro_state').upsert({
+      id: supabaseStateId,
+      data: db,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' }),
+  );
+  await syncSupabaseTables(db);
+}
+
+const supabaseTables = [
+  'cp_manual_invoice_items',
+  'cp_manual_invoices',
+  'cp_requirement_lists',
+  'cp_event_assignments',
+  'cp_event_payments',
+  'cp_menu_slots',
+  'cp_event_dates',
+  'cp_attendance',
+  'cp_events',
+  'cp_custom_menus',
+  'cp_additional_services',
+  'cp_employees',
+  'cp_clients',
+  'cp_business_profiles',
+  'cp_users',
+  'cp_menu_items',
+  'cp_raw_materials',
+  'cp_produce_items',
+  'cp_vessel_items',
+];
+
+const supabaseTableConflicts = {
+  cp_users: 'state_id,id',
+  cp_business_profiles: 'state_id,user_id',
+  cp_clients: 'state_id,user_id,id',
+  cp_employees: 'state_id,user_id,id',
+  cp_events: 'state_id,user_id,id',
+  cp_event_dates: 'state_id,user_id,event_id,id',
+  cp_menu_slots: 'state_id,user_id,event_id,date_id,id',
+  cp_event_payments: 'state_id,user_id,event_id,id',
+  cp_event_assignments: 'state_id,user_id,event_id,employee_id',
+  cp_attendance: 'state_id,user_id,event_id,employee_id,attendance_date',
+  cp_additional_services: 'state_id,user_id,id',
+  cp_custom_menus: 'state_id,user_id,id',
+  cp_requirement_lists: 'state_id,user_id,id',
+  cp_manual_invoices: 'state_id,user_id,id',
+  cp_manual_invoice_items: 'state_id,user_id,invoice_id,id',
+  cp_menu_items: 'state_id,id',
+  cp_raw_materials: 'state_id,id',
+  cp_produce_items: 'state_id,id',
+  cp_vessel_items: 'state_id,id',
+};
+
+function emptySupabaseRows() {
+  return Object.fromEntries(supabaseTables.map((table) => [table, []]));
+}
+
+function buildSupabaseRows(db) {
+  const rows = emptySupabaseRows();
+  for (const user of asArray(db.users)) {
+    const userId = user.id || '';
+    rows.cp_users.push({ state_id: supabaseStateId, id: userId, name: user.name || '', email: user.email || '', role: user.role || '', raw: user });
+    const userData = ensureUserDataShape(db.userData?.[userId] || emptyUserData());
+    const profile = userData.businessProfile || emptyBusinessProfile();
+    rows.cp_business_profiles.push({
+      state_id: supabaseStateId,
+      user_id: userId,
+      business_name: profile.businessName || '',
+      service_type: profile.serviceType || '',
+      gstin: profile.gstin || '',
+      gst_type: profile.gstType || '',
+      gst_rate: Number(profile.gstRate || 0),
+      phone: profile.phone || '',
+      email: profile.email || '',
+      raw: profile,
+    });
+    for (const item of asArray(userData.clients)) {
+      rows.cp_clients.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', mobile: item.mobile || '', city: item.city || item.address || '', raw: item });
+    }
+    for (const item of asArray(userData.employees)) {
+      rows.cp_employees.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', mobile: item.mobile || '', designation: item.designation || '', pay_per_day: Number(item.payPerDay || 0), pay_per_hour: Number(item.payPerHour || 0), raw: item });
+    }
+    for (const item of asArray(userData.additionalServices)) {
+      rows.cp_additional_services.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', unit: item.unit || '', price: Number(item.price || 0), raw: item });
+    }
+    for (const item of asArray(userData.customMenus)) {
+      rows.cp_custom_menus.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', type: item.type || '', item_ids: asArray(item.itemIds), raw: item });
+    }
+    for (const item of asArray(userData.requirementLists)) {
+      rows.cp_requirement_lists.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', type: item.type || '', title: item.title || '', item_count: asArray(item.items).length, raw: item });
+    }
+    for (const event of asArray(userData.events)) {
+      const eventId = event.id || '';
+      rows.cp_events.push({ state_id: supabaseStateId, user_id: userId, id: eventId, name: event.name || '', primary_client: event.primaryClient || '', mobile: event.mobile || '', venue: event.venue || '', status: event.status || '', notes: event.notes || '', add_ons: asArray(event.addOns), raw: event });
+      for (const date of asArray(event.dates)) {
+        const dateId = date.id || date.date || '';
+        rows.cp_event_dates.push({ state_id: supabaseStateId, user_id: userId, event_id: eventId, id: dateId, event_date: date.date || '', label: date.label || '', additional_services: asArray(date.additionalServices), raw: date });
+        for (const slot of asArray(date.menuSlots)) {
+          rows.cp_menu_slots.push({ state_id: supabaseStateId, user_id: userId, event_id: eventId, date_id: dateId, id: slot.id || `${slot.type || 'slot'}-${dateId}`, type: slot.type || '', delivery_time: slot.time || '', pax: Number(slot.pax || 0), price_per_pax: Number(slot.pricePerPax || 0), enabled: slot.enabled !== false, menu_item_ids: asArray(slot.menuItemIds), additional_services: asArray(slot.additionalServices), raw: slot });
+        }
+      }
+      for (const payment of asArray(event.payments)) {
+        rows.cp_event_payments.push({ state_id: supabaseStateId, user_id: userId, event_id: eventId, id: payment.id || '', amount: Number(payment.amount || 0), payment_date: payment.date || '', mode: payment.mode || '', reference: payment.reference || '', settled: payment.settled === true, raw: payment });
+      }
+      for (const assignment of asArray(event.employeeAssignments)) {
+        rows.cp_event_assignments.push({ state_id: supabaseStateId, user_id: userId, event_id: eventId, employee_id: assignment.employeeId || assignment.id || '', name: assignment.name || assignment.employeeName || '', designation: assignment.designation || '', pay_per_day: Number(assignment.payPerDay || 0), pay_per_hour: Number(assignment.payPerHour || 0), raw: assignment });
+      }
+    }
+    for (const item of asArray(userData.attendance)) {
+      rows.cp_attendance.push({ state_id: supabaseStateId, user_id: userId, event_id: item.eventId || '', employee_id: item.employeeId || '', attendance_date: item.date || '', status: item.status || '', hours: Number(item.hours || 0), pay_per_day: Number(item.payPerDay || 0), pay_per_hour: Number(item.payPerHour || 0), raw: item });
+    }
+    for (const invoice of asArray(userData.manualInvoices)) {
+      const invoiceId = invoice.id || '';
+      rows.cp_manual_invoices.push({ state_id: supabaseStateId, user_id: userId, id: invoiceId, invoice_number: invoice.invoiceNumber || '', client_name: invoice.clientName || '', mobile: invoice.mobile || '', event_name: invoice.eventName || '', event_date: invoice.eventDate || '', invoice_date: invoice.invoiceDate || '', total: Number(invoice.total || 0), pending: Number(invoice.pending || 0), raw: invoice });
+      for (const item of asArray(invoice.items)) {
+        rows.cp_manual_invoice_items.push({ state_id: supabaseStateId, user_id: userId, invoice_id: invoiceId, id: item.id || item.title || '', title: item.title || '', quantity: Number(item.quantity || 0), rate: Number(item.rate || 0), amount: Number(item.amount || 0), raw: item });
+      }
+    }
+  }
+  for (const item of asArray(db.universal?.menuItems)) {
+    rows.cp_menu_items.push({ state_id: supabaseStateId, id: item.id || '', english: item.english || '', kannada: item.kannada || '', title: item.title || '', category: item.category || '', meals: asArray(item.meals), veg: item.veg === true, raw: item });
+  }
+  for (const item of asArray(db.universal?.rawMaterials)) {
+    rows.cp_raw_materials.push({ state_id: supabaseStateId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
+  }
+  for (const item of asArray(db.universal?.produceItems)) {
+    rows.cp_produce_items.push({ state_id: supabaseStateId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
+  }
+  for (const item of asArray(db.universal?.vesselItems)) {
+    rows.cp_vessel_items.push({ state_id: supabaseStateId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
+  }
+  return rows;
+}
+
+async function upsertSupabaseRows(table, rows) {
+  if (rows.length === 0) return;
+  for (let index = 0; index < rows.length; index += 500) {
+    await supabaseRequest(
+      supabase.from(table).upsert(rows.slice(index, index + 500), { onConflict: supabaseTableConflicts[table] }),
+    );
+  }
+}
+
+async function syncSupabaseTables(db) {
+  if (!supabase) return;
+  const rowsByTable = buildSupabaseRows(db);
+  for (const table of supabaseTables) {
+    await supabaseRequest(supabase.from(table).delete().eq('state_id', supabaseStateId));
+  }
+  for (const table of [...supabaseTables].reverse()) {
+    await upsertSupabaseRows(table, rowsByTable[table]);
+  }
+}
+
+function scheduleSupabaseSave(db) {
+  if (!supabase) return;
+  const snapshot = JSON.parse(JSON.stringify(db));
+  pendingSupabaseWrite = pendingSupabaseWrite
+    .catch(() => {})
+    .then(() => saveSupabaseDb(snapshot))
+    .catch((error) => console.error('Supabase sync failed:', error.message));
+}
+
+async function flushSupabaseWrites() {
+  await pendingSupabaseWrite.catch(() => {});
 }
 
 async function initializeStorage() {
   const localDb = readLocalDb();
-  if (!pgPool) {
+  if (!supabase) {
     if (allowJsonStorage) {
       runtimeDb = localDb;
       console.log('CaterPro storage: local db.json');
       return;
     }
-    throw new Error('DATABASE_URL is required. PostgreSQL storage is mandatory.');
+    requireSupabaseConfigured();
   }
-  const postgresDb = await loadPostgresDb();
-  if (postgresDb) {
-    postgresDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, postgresDb.universal || {});
-    runtimeDb = postgresDb;
-    await savePostgresDb(runtimeDb);
-    console.log(`CaterPro storage: loaded PostgreSQL state "${pgStateId}"`);
+  const supabaseDb = await loadSupabaseDb();
+  if (supabaseDb) {
+    supabaseDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, supabaseDb.universal || {});
+    runtimeDb = supabaseDb;
+    await saveSupabaseDb(runtimeDb);
+    console.log(`CaterPro storage: loaded Supabase state "${supabaseStateId}"`);
     return;
   }
   runtimeDb = localDb;
-  await savePostgresDb(runtimeDb);
-  console.log(`CaterPro storage: seeded PostgreSQL state "${pgStateId}" from db.json`);
+  await saveSupabaseDb(runtimeDb);
+  console.log(`CaterPro storage: seeded Supabase state "${supabaseStateId}" from db.json`);
 }
-
 function makeId(prefix) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -4015,36 +3683,48 @@ app.get('/api/documents/upcoming-menus', (req, res) => {
   return generateUpcomingMenusPdf({ res, db, events: db.userData[user.id].events, days, businessProfile: db.userData[user.id].businessProfile });
 });
 
+function storageCountsFor(db, userId) {
+  return {
+    users: db.users.length,
+    events: db.userData[userId].events.length,
+    menuItems: db.universal.menuItems.length,
+    rawMaterials: db.universal.rawMaterials.length,
+    produceItems: db.universal.produceItems.length,
+    vesselItems: db.universal.vesselItems.length,
+  };
+}
+
+async function supabaseTableCount(table) {
+  const { count } = await supabaseRequest(
+    supabase.from(table).select('*', { count: 'exact', head: true }).eq('state_id', supabaseStateId),
+  );
+  return count || 0;
+}
+
 app.get('/api/storage/status', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  let postgres = { enabled: Boolean(pgPool), connected: false, updatedAt: null };
-  if (pgPool) {
+  let supabaseStatus = { enabled: Boolean(supabase), connected: false, updatedAt: null };
+  if (supabase) {
     try {
-      await ensurePostgresStateTable();
-      const result = await pgPool.query('select updated_at from caterpro_state where id = $1', [pgStateId]);
-      postgres = {
+      const { data } = await supabaseRequest(
+        supabase.from('caterpro_state').select('updated_at').eq('id', supabaseStateId).maybeSingle(),
+      );
+      supabaseStatus = {
         enabled: true,
         connected: true,
-        stateId: pgStateId,
-        updatedAt: result.rows[0]?.updated_at || null,
+        stateId: supabaseStateId,
+        updatedAt: data?.updated_at || null,
       };
     } catch (error) {
-      postgres = { enabled: true, connected: false, stateId: pgStateId, error: error.message };
+      supabaseStatus = { enabled: true, connected: false, stateId: supabaseStateId, error: error.message };
     }
   }
   res.json({
-    storage: pgPool ? 'postgresql' : 'db.json',
-    postgres,
-    counts: {
-      users: db.users.length,
-      events: db.userData[user.id].events.length,
-      menuItems: db.universal.menuItems.length,
-      rawMaterials: db.universal.rawMaterials.length,
-      produceItems: db.universal.produceItems.length,
-      vesselItems: db.universal.vesselItems.length,
-    },
+    storage: supabase ? 'supabase' : 'db.json',
+    supabase: supabaseStatus,
+    counts: storageCountsFor(db, user.id),
   });
 });
 
@@ -4052,59 +3732,37 @@ app.get('/api/storage/tables', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
-    await syncRelationalTables(db);
-    const tables = [
-      'cp_users',
-      'cp_business_profiles',
-      'cp_clients',
-      'cp_employees',
-      'cp_events',
-      'cp_event_dates',
-      'cp_menu_slots',
-      'cp_event_payments',
-      'cp_event_assignments',
-      'cp_attendance',
-      'cp_additional_services',
-      'cp_custom_menus',
-      'cp_requirement_lists',
-      'cp_manual_invoices',
-      'cp_manual_invoice_items',
-      'cp_menu_items',
-      'cp_raw_materials',
-      'cp_produce_items',
-      'cp_vessel_items',
-    ];
+    await syncSupabaseTables(db);
     const counts = {};
-    for (const table of tables) {
-      const result = await pgPool.query(`select count(*)::int as count from ${table} where state_id = $1`, [pgStateId]);
-      counts[table] = result.rows[0].count;
+    for (const table of supabaseTables) {
+      counts[table] = await supabaseTableCount(table);
     }
-    res.json({ stateId: pgStateId, counts });
+    res.json({ stateId: supabaseStateId, counts });
   } catch (error) {
-    res.status(500).json({ message: 'Unable to inspect PostgreSQL tables', error: error.message });
+    res.status(500).json({ message: 'Unable to inspect Supabase tables', error: error.message });
   }
 });
 
-app.post('/api/storage/import-menu-items-from-db', async (req, res) => {
+app.post('/api/storage/import-menu-items-from-supabase', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
-    const result = await pgPool.query(
-      `select id, english, kannada, title, category, meals, veg, raw
-       from cp_menu_items
-       where state_id = $1
-       order by id`,
-      [pgStateId],
+    const { data: rows } = await supabaseRequest(
+      supabase
+        .from('cp_menu_items')
+        .select('id, english, kannada, title, category, meals, veg, raw')
+        .eq('state_id', supabaseStateId)
+        .order('id'),
     );
-    if (result.rows.length === 0) {
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: 'No menu items found in cp_menu_items' });
     }
     db.universal = db.universal || {};
-    db.universal.menuItems = result.rows.map((row) => {
+    db.universal.menuItems = rows.map((row) => {
       const raw = row.raw && typeof row.raw === 'object' ? row.raw : {};
       return {
         ...raw,
@@ -4118,72 +3776,68 @@ app.post('/api/storage/import-menu-items-from-db', async (req, res) => {
       };
     });
     writeDb(db);
-    await flushPostgresWrites();
+    await flushSupabaseWrites();
     res.json({
-      message: 'Menu items imported from PostgreSQL table',
+      message: 'Menu items imported from Supabase table',
       count: db.universal.menuItems.length,
     });
   } catch (error) {
-    res.status(500).json({ message: 'Unable to import menu items from PostgreSQL table', error: error.message });
+    res.status(500).json({ message: 'Unable to import menu items from Supabase table', error: error.message });
   }
 });
 
-app.post('/api/storage/push-local-to-postgres', async (req, res) => {
+async function pushLocalToSupabase(req, res) {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
-    await savePostgresDb(db);
+    await saveSupabaseDb(db);
     res.json({
-      message: 'Current backend state pushed to PostgreSQL',
-      stateId: pgStateId,
-      counts: {
-        events: db.userData[user.id].events.length,
-        menuItems: db.universal.menuItems.length,
-        rawMaterials: db.universal.rawMaterials.length,
-        produceItems: db.universal.produceItems.length,
-        vesselItems: db.universal.vesselItems.length,
-      },
+      message: 'Current backend state pushed to Supabase',
+      stateId: supabaseStateId,
+      counts: storageCountsFor(db, user.id),
     });
   } catch (error) {
-    res.status(500).json({ message: 'Unable to push to PostgreSQL', error: error.message });
+    res.status(500).json({ message: 'Unable to push to Supabase', error: error.message });
   }
-});
+}
 
-app.post('/api/storage/pull-postgres-to-local', async (req, res) => {
+async function pullSupabaseToLocal(req, res) {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
   if (!allowJsonStorage) {
     return res.status(410).json({
-      message: 'Local db.json pull is disabled. CaterPro is configured for PostgreSQL-only storage.',
+      message: 'Local db.json pull is disabled. CaterPro is configured for Supabase storage.',
     });
   }
-  if (!pgPool) return res.status(400).json({ message: 'DATABASE_URL is not configured' });
+  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
-    const postgresDb = await loadPostgresDb();
-    if (!postgresDb) return res.status(404).json({ message: 'No PostgreSQL state found' });
-    postgresDb.universal = mergeProtectedUniversalCatalog(db.universal || {}, postgresDb.universal || {});
-    writeDb(postgresDb);
-    await flushPostgresWrites();
-    const pulledUserData = postgresDb.userData[user.id] || emptyUserData();
+    const supabaseDb = await loadSupabaseDb();
+    if (!supabaseDb) return res.status(404).json({ message: 'No Supabase state found' });
+    supabaseDb.universal = mergeProtectedUniversalCatalog(db.universal || {}, supabaseDb.universal || {});
+    writeDb(supabaseDb);
+    await flushSupabaseWrites();
+    const pulledUserData = supabaseDb.userData[user.id] || emptyUserData();
     res.json({
-      message: 'PostgreSQL state pulled into local db.json',
-      stateId: pgStateId,
+      message: 'Supabase state pulled into local db.json',
+      stateId: supabaseStateId,
       counts: {
         events: pulledUserData.events.length,
-        menuItems: postgresDb.universal.menuItems.length,
-        rawMaterials: postgresDb.universal.rawMaterials.length,
-        produceItems: postgresDb.universal.produceItems.length,
-        vesselItems: postgresDb.universal.vesselItems.length,
+        menuItems: supabaseDb.universal.menuItems.length,
+        rawMaterials: supabaseDb.universal.rawMaterials.length,
+        produceItems: supabaseDb.universal.produceItems.length,
+        vesselItems: supabaseDb.universal.vesselItems.length,
       },
     });
   } catch (error) {
-    res.status(500).json({ message: 'Unable to pull from PostgreSQL', error: error.message });
+    res.status(500).json({ message: 'Unable to pull from Supabase', error: error.message });
   }
-});
+}
 
+app.post('/api/storage/push-local-to-supabase', pushLocalToSupabase);
+app.post('/api/storage/pull-supabase-to-local', pullSupabaseToLocal);
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 
 initializeStorage().then(() => {

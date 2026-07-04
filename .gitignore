@@ -13,6 +13,9 @@ caterpro_flutter/
 
 # Backend
 backend/node_modules/
+backend/.env
+backend/.env.*
+!backend/.env.example
 backend/api*.log
 backend/backend-run*.log
 

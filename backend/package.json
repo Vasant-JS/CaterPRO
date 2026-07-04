@@ -14,9 +14,9 @@
   "dependencies": {
     "@fontsource/noto-sans": "^5.2.10",
     "@fontsource/noto-sans-kannada": "^5.2.9",
+    "@supabase/supabase-js": "^2.87.1",
     "express": "^5.2.1",
     "pdfkit": "^0.18.0",
-    "pg": "^8.21.0",
     "swagger-ui-express": "^5.0.1"
   }
 }
