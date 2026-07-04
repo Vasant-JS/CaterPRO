@@ -9,7 +9,7 @@
     "check": "node --check server.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.2.10",
