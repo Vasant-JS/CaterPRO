@@ -458,14 +458,12 @@ class _AttendanceSheetDialogState extends State<AttendanceSheetDialog> {
       setState(() => recordsFuture = Future.value(freshRecords));
     }
     final uri = await widget.api.attendancePdfUri(month);
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (mounted) {
-      showCpSnack(
-          context,
-          launched
-              ? 'Attendance sheet download started'
-              : 'Unable to start download');
+      showDownloadSnack(context, uri,
+          title: 'Attendance sheet $month.pdf',
+          kind: 'report',
+          successMessage: 'Attendance sheet download started',
+          failureMessage: 'Unable to start download');
     }
   }
 
@@ -638,10 +636,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final gstin = TextEditingController(text: widget.profile.gstin);
   late String gstType = widget.profile.gstType == 'igst' ? 'igst' : 'cgst_sgst';
   late final gstRate = TextEditingController(
-      text: widget.profile.gstRate.toStringAsFixed(
-          widget.profile.gstRate.truncateToDouble() == widget.profile.gstRate
-              ? 0
-              : 2));
+      text: widget.profile.gstin.trim().isEmpty
+          ? ''
+          : widget.profile.gstRate.toStringAsFixed(
+              widget.profile.gstRate.truncateToDouble() ==
+                      widget.profile.gstRate
+                  ? 0
+                  : 2));
   late final pan = TextEditingController(text: widget.profile.pan);
   late final address = TextEditingController(text: widget.profile.address);
   late final phone = TextEditingController(text: widget.profile.phone);
@@ -655,6 +656,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late String qrBase64 = widget.profile.qrBase64;
   late String documentTemplate =
       normalizedDocumentTemplate(widget.profile.documentTemplate);
+  late bool gstRegistered = widget.profile.gstin.trim().isNotEmpty;
   bool saving = false;
   String? error;
 
@@ -671,9 +673,12 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     serviceType.text = profile.serviceType;
     gstin.text = profile.gstin;
     gstType = profile.gstType == 'igst' ? 'igst' : 'cgst_sgst';
-    gstRate.text = profile.gstRate.toStringAsFixed(
-        profile.gstRate.truncateToDouble() == profile.gstRate ? 0 : 2);
+    gstRate.text = profile.gstin.trim().isEmpty
+        ? ''
+        : profile.gstRate.toStringAsFixed(
+            profile.gstRate.truncateToDouble() == profile.gstRate ? 0 : 2);
     pan.text = profile.pan;
+    gstRegistered = profile.gstin.trim().isNotEmpty;
     address.text = profile.address;
     phone.text = profile.phone;
     email.text = profile.email;
@@ -709,9 +714,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   BusinessProfile currentProfile() => BusinessProfile(
         businessName: businessName.text.trim(),
         serviceType: serviceType.text.trim(),
-        gstin: gstin.text.trim(),
+        gstin: gstRegistered ? gstin.text.trim() : '',
         gstType: gstType,
-        gstRate: double.tryParse(gstRate.text.trim()) ?? 5,
+        gstRate: gstRegistered ? (double.tryParse(gstRate.text.trim()) ?? 5) : 0,
         pan: pan.text.trim(),
         address: address.text.trim(),
         phone: phone.text.trim().isEmpty ? '' : normalizeMobileText(phone.text),
@@ -823,20 +828,39 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 label: 'Business Name', controller: businessName),
             EditableInlineField(label: 'Service Type', controller: serviceType),
             const SectionTitle('Tax & Legal', Icons.gavel),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: gstRegistered,
+              activeColor: Theme.of(context).colorScheme.primary,
+              title: const Text('GST Registered',
+                  style: TextStyle(fontWeight: FontWeight.w900)),
+              onChanged: (value) {
+                setState(() {
+                  gstRegistered = value ?? false;
+                  if (!gstRegistered) {
+                    gstin.clear();
+                    gstRate.clear();
+                  } else if (gstRate.text.trim().isEmpty) {
+                    gstRate.text = '5';
+                  }
+                });
+              },
+            ),
             Row(children: [
               Expanded(
-                  child:
-                      EditableInlineField(label: 'GSTIN', controller: gstin)),
-              const SizedBox(width: 12),
+                  flex: 5,
+                  child: EditableInlineField(
+                      label: 'GSTIN',
+                      controller: gstin,
+                      enabled: gstRegistered)),
+              const SizedBox(width: 10),
               Expanded(
-                  child: EditableInlineField(label: 'PAN', controller: pan))
-            ]),
-            Row(children: [
-              Expanded(
+                  flex: 4,
                   child: Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: DropdownButtonFormField<String>(
                   initialValue: gstType,
+                  disabledHint: Text(gstType == 'igst' ? 'IGST' : 'CGST + SGST'),
                   decoration: InputDecoration(
                       labelText: 'GST Type',
                       border: OutlineInputBorder(
@@ -846,18 +870,23 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                         value: 'cgst_sgst', child: Text('CGST + SGST')),
                     DropdownMenuItem(value: 'igst', child: Text('IGST')),
                   ],
-                  onChanged: (value) =>
-                      setState(() => gstType = value ?? 'cgst_sgst'),
+                  onChanged: gstRegistered
+                      ? (value) =>
+                          setState(() => gstType = value ?? 'cgst_sgst')
+                      : null,
                 ),
               )),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
+                  flex: 3,
                   child: EditableInlineField(
                       label: 'GST %',
                       controller: gstRate,
+                      enabled: gstRegistered,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true)))
             ]),
+            EditableInlineField(label: 'PAN', controller: pan),
             const SectionTitle('Business Address', Icons.location_on),
             EditableInlineField(label: 'Full Address', controller: address),
             const SectionTitle('Contact Information', Icons.contact_phone),

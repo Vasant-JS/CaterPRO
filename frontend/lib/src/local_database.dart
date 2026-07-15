@@ -8,13 +8,16 @@ class LocalCaterProDb {
   static const stateId = 'default';
 
   Future<Database> get database async {
+    if (kIsWeb) {
+      throw UnsupportedError('Local SQLite cache is not available on web');
+    }
     final existing = _db;
     if (existing != null) return existing;
     final basePath = await getDatabasesPath();
     final dbPath = path_package.join(basePath, 'caterpro_local.db');
     return _db = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async => createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) async => createSchema(db),
     );
@@ -295,6 +298,19 @@ class LocalCaterProDb {
           primary key (state_id, id)
         )
         ''',
+        '''
+        create table if not exists cp_vessel_items (
+          state_id text not null,
+          id text not null,
+          name text,
+          category text,
+          unit text,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, id)
+        )
+        ''',
       ];
 
   Future<String> currentUserId() async {
@@ -315,6 +331,7 @@ class LocalCaterProDb {
     required Map<String, dynamic> universal,
     required bool synced,
   }) async {
+    if (kIsWeb) return;
     final db = await database;
     final userId = await currentUserId();
     final updatedAt = DateTime.now().toIso8601String();
@@ -325,15 +342,68 @@ class LocalCaterProDb {
         batch.delete(table, where: 'state_id = ?', whereArgs: [stateId]);
       }
       if (universal.containsKey('menuItems')) {
-        batch.delete('cp_menu_items', where: 'state_id = ?', whereArgs: [stateId]);
+        batch.delete('cp_menu_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
       }
       if (universal.containsKey('rawMaterials')) {
-        batch.delete('cp_raw_materials', where: 'state_id = ?', whereArgs: [stateId]);
+        batch.delete('cp_raw_materials',
+            where: 'state_id = ?', whereArgs: [stateId]);
       }
       if (universal.containsKey('produceItems')) {
-        batch.delete('cp_produce_items', where: 'state_id = ?', whereArgs: [stateId]);
+        batch.delete('cp_produce_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
+      }
+      if (universal.containsKey('vesselItems')) {
+        batch.delete('cp_vessel_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
       }
       upsertUserRows(batch, userId, userData, updatedAt, syncedValue);
+      upsertUniversalRows(batch, universal, updatedAt, syncedValue);
+      await batch.commit(noResult: true);
+    });
+  }
+
+  Future<bool> hasMasterData() async {
+    if (kIsWeb) return true;
+    final db = await database;
+    for (final table in [
+      'cp_menu_items',
+      'cp_produce_items',
+      'cp_vessel_items',
+    ]) {
+      final rows = await db.rawQuery(
+          'select count(*) as total from $table where state_id = ?', [stateId]);
+      if (((rows.first['total'] as int?) ?? 0) == 0) return false;
+    }
+    return true;
+  }
+
+  Future<void> saveMasterData({
+    required Map<String, dynamic> universal,
+    required bool synced,
+  }) async {
+    if (kIsWeb) return;
+    final db = await database;
+    final updatedAt = DateTime.now().toIso8601String();
+    final syncedValue = synced ? 1 : 0;
+    await db.transaction((txn) async {
+      final batch = txn.batch();
+      if (universal.containsKey('menuItems')) {
+        batch.delete('cp_menu_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
+      }
+      if (universal.containsKey('rawMaterials')) {
+        batch.delete('cp_raw_materials',
+            where: 'state_id = ?', whereArgs: [stateId]);
+      }
+      if (universal.containsKey('produceItems')) {
+        batch.delete('cp_produce_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
+      }
+      if (universal.containsKey('vesselItems')) {
+        batch.delete('cp_vessel_items',
+            where: 'state_id = ?', whereArgs: [stateId]);
+      }
       upsertUniversalRows(batch, universal, updatedAt, syncedValue);
       await batch.commit(noResult: true);
     });
@@ -374,14 +444,15 @@ class LocalCaterProDb {
         'cp_menu_items',
         'cp_raw_materials',
         'cp_produce_items',
+        'cp_vessel_items',
       ];
 
   void insert(Batch batch, String table, Map<String, Object?> values) {
     batch.insert(table, values, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  void upsertUserRows(
-      Batch batch, String userId, Map<String, dynamic> userData, String updatedAt, int synced) {
+  void upsertUserRows(Batch batch, String userId, Map<String, dynamic> userData,
+      String updatedAt, int synced) {
     final profile = Map<String, dynamic>.from(
         (userData['businessProfile'] as Map?) ?? const {});
     insert(batch, 'cp_users', {
@@ -429,8 +500,10 @@ class LocalCaterProDb {
         'name': item['name']?.toString() ?? '',
         'mobile': item['mobile']?.toString() ?? '',
         'designation': item['designation']?.toString() ?? '',
-        'pay_per_day': double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
-        'pay_per_hour': double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
+        'pay_per_day':
+            double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
+        'pay_per_hour':
+            double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
         'raw': encode(item),
         'synced': synced,
         'updated_at': updatedAt,
@@ -503,7 +576,8 @@ class LocalCaterProDb {
             'type': slot['type']?.toString() ?? '',
             'delivery_time': slot['time']?.toString() ?? '',
             'pax': int.tryParse(slot['pax']?.toString() ?? '') ?? 0,
-            'price_per_pax': int.tryParse(slot['pricePerPax']?.toString() ?? '') ?? 0,
+            'price_per_pax':
+                int.tryParse(slot['pricePerPax']?.toString() ?? '') ?? 0,
             'enabled': slot['enabled'] == false ? 0 : 1,
             'menu_item_ids': encode(slot['menuItemIds']),
             'additional_services': encode(slot['additionalServices']),
@@ -534,11 +608,14 @@ class LocalCaterProDb {
           'state_id': stateId,
           'user_id': userId,
           'event_id': eventId,
-          'employee_id': item['employeeId']?.toString() ?? item['id']?.toString() ?? '',
+          'employee_id':
+              item['employeeId']?.toString() ?? item['id']?.toString() ?? '',
           'name': item['name']?.toString() ?? '',
           'designation': item['designation']?.toString() ?? '',
-          'pay_per_day': double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
-          'pay_per_hour': double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
+          'pay_per_day':
+              double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
+          'pay_per_hour':
+              double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
           'raw': encode(item),
           'synced': synced,
           'updated_at': updatedAt,
@@ -554,8 +631,10 @@ class LocalCaterProDb {
         'attendance_date': item['date']?.toString() ?? '',
         'status': item['status']?.toString() ?? '',
         'hours': double.tryParse(item['hours']?.toString() ?? '') ?? 0,
-        'pay_per_day': double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
-        'pay_per_hour': double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
+        'pay_per_day':
+            double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
+        'pay_per_hour':
+            double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
         'raw': encode(item),
         'synced': synced,
         'updated_at': updatedAt,
@@ -597,8 +676,8 @@ class LocalCaterProDb {
     }
   }
 
-  void upsertUniversalRows(
-      Batch batch, Map<String, dynamic> universal, String updatedAt, int synced) {
+  void upsertUniversalRows(Batch batch, Map<String, dynamic> universal,
+      String updatedAt, int synced) {
     for (final item in mapList(universal['menuItems'])) {
       insert(batch, 'cp_menu_items', {
         'state_id': stateId,
@@ -638,24 +717,37 @@ class LocalCaterProDb {
         'updated_at': updatedAt,
       });
     }
+    for (final item in mapList(universal['vesselItems'])) {
+      insert(batch, 'cp_vessel_items', {
+        'state_id': stateId,
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        'category': item['category']?.toString() ?? '',
+        'unit': item['unit']?.toString() ?? '',
+        'raw': encode(item),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
+    }
   }
 
   Future<Map<String, dynamic>?> loadSnapshot() async {
+    if (kIsWeb) return null;
     final db = await database;
     final userId = await currentUserId();
     final events = await rawRows(db, 'cp_events', 'user_id = ?', [userId]);
-    final hasUniversal = await db.query('cp_menu_items',
-        where: 'state_id = ?', whereArgs: [stateId], limit: 1);
-    if (events.isEmpty && hasUniversal.isEmpty) return null;
+    if (!await hasSnapshotRows(db, userId)) return null;
     return {
       'userData': {
         'events': events,
         'clients': await rawRows(db, 'cp_clients', 'user_id = ?', [userId]),
         'employees': await rawRows(db, 'cp_employees', 'user_id = ?', [userId]),
-        'attendance': await rawRows(db, 'cp_attendance', 'user_id = ?', [userId]),
-        'additionalServices':
-            await rawRows(db, 'cp_additional_services', 'user_id = ?', [userId]),
-        'customMenus': await rawRows(db, 'cp_custom_menus', 'user_id = ?', [userId]),
+        'attendance':
+            await rawRows(db, 'cp_attendance', 'user_id = ?', [userId]),
+        'additionalServices': await rawRows(
+            db, 'cp_additional_services', 'user_id = ?', [userId]),
+        'customMenus':
+            await rawRows(db, 'cp_custom_menus', 'user_id = ?', [userId]),
         'manualInvoices':
             await rawRows(db, 'cp_manual_invoices', 'user_id = ?', [userId]),
         'businessProfile': await firstRaw(
@@ -670,6 +762,7 @@ class LocalCaterProDb {
         'menuItems': await rawRows(db, 'cp_menu_items', null, const []),
         'rawMaterials': await rawRows(db, 'cp_raw_materials', null, const []),
         'produceItems': await rawRows(db, 'cp_produce_items', null, const []),
+        'vesselItems': await rawRows(db, 'cp_vessel_items', null, const []),
       },
     };
   }
@@ -680,6 +773,26 @@ class LocalCaterProDb {
         where: where == null ? 'state_id = ?' : 'state_id = ? and $where',
         whereArgs: [stateId, ...whereArgs]);
     return rows.map(decodeRaw).toList();
+  }
+
+  Future<bool> hasSnapshotRows(Database db, String userId) async {
+    for (final table in userTables.where((table) => table != 'cp_users')) {
+      final rows = await db.rawQuery(
+          'select 1 from $table where state_id = ? and user_id = ? limit 1',
+          [stateId, userId]);
+      if (rows.isNotEmpty) return true;
+    }
+    for (final table in [
+      'cp_menu_items',
+      'cp_raw_materials',
+      'cp_produce_items',
+      'cp_vessel_items'
+    ]) {
+      final rows = await db.rawQuery(
+          'select 1 from $table where state_id = ? limit 1', [stateId]);
+      if (rows.isNotEmpty) return true;
+    }
+    return false;
   }
 
   Future<Map<String, dynamic>?> firstRaw(
@@ -693,6 +806,7 @@ class LocalCaterProDb {
   }
 
   Future<Map<String, int>> syncCounts() async {
+    if (kIsWeb) return {};
     final db = await database;
     final counts = <String, int>{};
     for (final table in localTables.reversed) {
@@ -702,6 +816,11 @@ class LocalCaterProDb {
       counts[table] = (rows.first['unsynced'] as int?) ?? 0;
     }
     return counts;
+  }
+
+  Future<bool> hasUnsyncedChanges() async {
+    final counts = await syncCounts();
+    return counts.values.any((count) => count > 0);
   }
 
   List<Map<String, dynamic>> mapList(Object? value) => ((value as List?) ?? [])

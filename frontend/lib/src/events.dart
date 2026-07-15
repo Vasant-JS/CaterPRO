@@ -5,13 +5,11 @@ class EventsScreen extends StatefulWidget {
       {super.key,
       required this.events,
       required this.loading,
-      required this.loadError,
       required this.openDetails,
       required this.openCreate,
       required this.refresh});
   final List<AppEvent> events;
   final bool loading;
-  final String? loadError;
   final ValueChanged<AppEvent> openDetails;
   final VoidCallback openCreate;
   final VoidCallback refresh;
@@ -239,7 +237,9 @@ class _EventsScreenState extends State<EventsScreen> {
             filterMenuItem('clear', Icons.filter_alt_off, 'Clear Filters'),
           ],
         ),
-        IconButton(onPressed: widget.openCreate, icon: const Icon(Icons.add)),
+        IconButton(
+            onPressed: widget.openCreate,
+            icon: const Icon(Icons.add, color: Cp.toolbarIcon)),
       ]),
       children: [
         TextField(
@@ -295,13 +295,6 @@ class _EventsScreenState extends State<EventsScreen> {
                     icon: Icons.close)),
         ]),
         const SizedBox(height: 16),
-        if (widget.loadError != null)
-          CpCard(
-              color: Cp.errorContainer,
-              child: Text(widget.loadError!,
-                  style: TextStyle(
-                      color: cpAdaptTextColor(context, Cp.error),
-                      fontWeight: FontWeight.w800))),
         if (widget.loading)
           const Center(
               child: Padding(
@@ -401,9 +394,15 @@ class EventListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pending = status != 'PAID';
+    final scheme = Theme.of(context).colorScheme;
     final titleColor =
         pending && !cpDark(context) ? Cp.primary : cpPrimary(context);
     final mutedColor = cpOnVariant(context);
+    final balanceColor = balance.startsWith('Paid')
+        ? cpAdaptTextColor(context, Cp.tertiary)
+        : pending
+            ? scheme.onErrorContainer
+            : cpAdaptTextColor(context, Cp.error);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
@@ -443,8 +442,7 @@ class EventListCard extends StatelessWidget {
                         fontWeight: FontWeight.w900)),
                 Text(balance,
                     style: TextStyle(
-                        color:
-                            balance.startsWith('Paid') ? Cp.tertiary : Cp.error,
+                        color: balanceColor,
                         fontWeight: FontWeight.w800,
                         fontSize: 12))
               ]),

@@ -4,16 +4,24 @@ class EventDetailsScreen extends StatelessWidget {
   const EventDetailsScreen(
       {super.key,
       required this.event,
+      required this.events,
       required this.api,
       required this.employees,
+      required this.businessProfile,
       required this.onEdit,
+      required this.onAddEvent,
       required this.onEventUpdated,
+      required this.onEventDeleted,
       required this.onClose});
   final AppEvent? event;
   final ApiService api;
+  final List<AppEvent> events;
   final List<Employee> employees;
+  final BusinessProfile businessProfile;
   final ValueChanged<AppEvent> onEdit;
+  final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final ValueChanged<String> onEventDeleted;
   final VoidCallback onClose;
 
   Future<void> handleAction(
@@ -45,28 +53,125 @@ class EventDetailsScreen extends StatelessWidget {
         await showMenuShareSheet(context, selectedEvent);
         break;
       case EventScreenAction.deleteEvent:
-        if (await confirmEventAction(context, 'Delete Event?',
-            'This will remove this event and all linked dates, menus, payments, and documents.')) {
-          if (!context.mounted) return;
-          showCpSnack(context, 'Event deleted');
-          onClose();
-        }
+        final confirmed = await confirmEventAction(context, 'Delete Event?',
+            'This will remove this event and all linked dates, menus, payments, and documents.');
+        if (!context.mounted || !confirmed) return;
+        await deleteEvent(context, selectedEvent);
         break;
       case EventScreenAction.deleteDate:
-        if (await confirmEventAction(context, 'Delete Date?',
-            'This will remove the selected event date and its menus.')) {
-          if (!context.mounted) return;
-          showCpSnack(context, 'Selected date deleted');
-        }
+        final date = await pickDateToDelete(context, selectedEvent);
+        if (!context.mounted || date == null) return;
+        final confirmed = await confirmEventAction(context, 'Delete Date?',
+            'This will remove ${date.label.isEmpty ? date.date : date.label} and its menus.');
+        if (!context.mounted || !confirmed) return;
+        await deleteDate(context, selectedEvent, date);
         break;
       case EventScreenAction.deleteMenu:
-        if (await confirmEventAction(context, 'Delete Menu?',
-            'This will remove the selected menu configuration for this event.')) {
-          if (!context.mounted) return;
-          showCpSnack(context, 'Selected menu deleted');
-        }
+        final menu = await pickMenuToDelete(context, selectedEvent);
+        if (!context.mounted || menu == null) return;
+        final confirmed = await confirmEventAction(context, 'Delete Menu?',
+            'This will remove ${menu.value.type} from ${menu.key.label.isEmpty ? menu.key.date : menu.key.label}.');
+        if (!context.mounted || !confirmed) return;
+        await deleteMenu(context, selectedEvent, menu.key, menu.value);
         break;
     }
+  }
+
+  Future<void> deleteEvent(BuildContext context, AppEvent event) async {
+    try {
+      showCpSnack(context, 'Deleting event...');
+      await api.deleteEvent(event.id);
+      onEventDeleted(event.id);
+      if (!context.mounted) return;
+      showCpSnack(context, 'Event deleted');
+      onClose();
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> deleteDate(
+      BuildContext context, AppEvent event, AppEventDate date) async {
+    try {
+      showCpSnack(context, 'Deleting date...');
+      final updated = await api.deleteEventDate(event.id, date.id);
+      onEventUpdated(updated);
+      if (!context.mounted) return;
+      showCpSnack(context, 'Date deleted');
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> deleteMenu(BuildContext context, AppEvent event,
+      AppEventDate date, AppMenuSlot menu) async {
+    try {
+      showCpSnack(context, 'Deleting menu...');
+      final updated = await api.deleteMenuSlot(event.id, date.id, menu.id);
+      onEventUpdated(updated);
+      if (!context.mounted) return;
+      showCpSnack(context, 'Menu deleted');
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<AppEventDate?> pickDateToDelete(
+      BuildContext context, AppEvent event) async {
+    if (event.dates.isEmpty) {
+      showCpSnack(context, 'No dates available to delete');
+      return null;
+    }
+    if (event.dates.length == 1) return event.dates.first;
+    return showDialog<AppEventDate>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Select Date',
+            style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+        children: [
+          for (final date in event.dates)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, date),
+              child: Text(date.label.isEmpty ? date.date : date.label,
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<MapEntry<AppEventDate, AppMenuSlot>?> pickMenuToDelete(
+      BuildContext context, AppEvent event) async {
+    final menus = <MapEntry<AppEventDate, AppMenuSlot>>[];
+    for (final date in event.dates) {
+      for (final slot in date.menuSlots) {
+        menus.add(MapEntry(date, slot));
+      }
+    }
+    if (menus.isEmpty) {
+      showCpSnack(context, 'No menus available to delete');
+      return null;
+    }
+    if (menus.length == 1) return menus.first;
+    return showDialog<MapEntry<AppEventDate, AppMenuSlot>>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('Select Menu',
+            style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+        children: [
+          for (final menu in menus)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, menu),
+              child: Text(
+                  '${menu.value.type} | ${menu.key.label.isEmpty ? menu.key.date : menu.key.label}',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> downloadDocument(
@@ -75,8 +180,6 @@ class EventDetailsScreen extends StatelessWidget {
     try {
       showCpSnack(context, 'Downloading...');
       final uri = await api.documentUri(event.id, type, dateId: dateId);
-      final launched = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (!context.mounted) return;
       final label = switch (type) {
         'invoice' => 'Invoice',
@@ -85,8 +188,11 @@ class EventDetailsScreen extends StatelessWidget {
         'all-menus' => 'All days menu',
         _ => 'Document',
       };
-      showCpSnack(context,
-          launched ? '$label download started' : 'Unable to start download');
+      showDownloadSnack(context, uri,
+          title: downloadTitleForEvent(event, type, dateId: dateId),
+          kind: type == 'menu' || type == 'all-menus' ? 'menu' : 'pdf',
+          successMessage: '$label download started',
+          failureMessage: 'Unable to start download');
     } catch (e) {
       if (!context.mounted) return;
       showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -98,7 +204,7 @@ class EventDetailsScreen extends StatelessWidget {
       final uri = await api.documentUri(event.id, 'all-menus');
       if (!context.mounted) return;
       final link = uri.toString();
-      final message = 'CaterPro menu for ${event.name}: $link';
+      final message = buildMenuWhatsAppMessage(event);
       showModalBottomSheet<void>(
         context: context,
         backgroundColor: Colors.transparent,
@@ -131,19 +237,15 @@ class EventDetailsScreen extends StatelessWidget {
                           color: Cp.onVariant, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 14),
                   ShareMenuTile(
-                    icon: Icons.chat,
+                    icon: const WhatsAppIcon(size: 22),
                     label: 'WhatsApp',
                     onTap: () async {
                       Navigator.pop(sheetContext);
-                      await launchUrl(
-                          Uri.parse(
-                              'https://wa.me/?text=${Uri.encodeComponent(message)}'),
-                          mode: LaunchMode.externalApplication,
-                          webOnlyWindowName: '_blank');
+                      await shareMenuOnWhatsApp(context, event, message);
                     },
                   ),
                   ShareMenuTile(
-                    icon: Icons.email,
+                    icon: const Icon(Icons.email, color: Cp.primary),
                     label: 'Email',
                     onTap: () async {
                       Navigator.pop(sheetContext);
@@ -156,7 +258,7 @@ class EventDetailsScreen extends StatelessWidget {
                     },
                   ),
                   ShareMenuTile(
-                    icon: Icons.sms,
+                    icon: const Icon(Icons.sms, color: Cp.primary),
                     label: 'SMS',
                     onTap: () async {
                       Navigator.pop(sheetContext);
@@ -168,7 +270,7 @@ class EventDetailsScreen extends StatelessWidget {
                     },
                   ),
                   ShareMenuTile(
-                    icon: Icons.link,
+                    icon: const Icon(Icons.link, color: Cp.primary),
                     label: 'Copy Link',
                     onTap: () async {
                       await Clipboard.setData(ClipboardData(text: link));
@@ -179,13 +281,17 @@ class EventDetailsScreen extends StatelessWidget {
                     },
                   ),
                   ShareMenuTile(
-                    icon: Icons.picture_as_pdf,
+                    icon: const Icon(Icons.picture_as_pdf, color: Cp.primary),
                     label: 'Download PDF',
                     onTap: () async {
                       Navigator.pop(sheetContext);
-                      await launchUrl(uri,
-                          mode: LaunchMode.externalApplication,
-                          webOnlyWindowName: '_blank');
+                      if (context.mounted) {
+                        showDownloadSnack(context, uri,
+                            title: downloadTitleForEvent(event, 'all-menus'),
+                            kind: 'menu',
+                            successMessage: 'Menu download started',
+                            failureMessage: 'Unable to start download');
+                      }
                     },
                   ),
                 ]),
@@ -212,6 +318,26 @@ class EventDetailsScreen extends StatelessWidget {
     if (!context.mounted) return;
     showCpSnack(context,
         launched ? 'Event info ready to share' : 'Unable to open WhatsApp');
+  }
+
+  Future<void> shareMenuOnWhatsApp(
+      BuildContext context, AppEvent event, String message) async {
+    final mobile = normalizeMobileText(event.mobile);
+    final target = mobile.length == 10 ? '91$mobile' : mobile;
+    final uri = Uri.parse(target.isEmpty
+        ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
+        : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
+    showCpSnack(context, 'Opening WhatsApp...');
+    final launched = await launchUrl(uri,
+        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    showCpSnack(
+        context, launched ? 'Menu ready to share' : 'Unable to open WhatsApp');
+  }
+
+  String buildMenuWhatsAppMessage(AppEvent event) {
+    return buildFormattedMenuShareMessage(event,
+        businessProfile: businessProfile);
   }
 
   String buildEventWhatsAppMessage(AppEvent event) {
@@ -248,10 +374,20 @@ class EventDetailsScreen extends StatelessWidget {
             lines.add(names.isEmpty
                 ? '  Menu: Not selected'
                 : '  Menu: ${names.join(', ')}');
+            if (slot.additionalServices.isNotEmpty) {
+              lines.add('  Services:');
+              for (final service in slot.additionalServices) {
+                lines.add('  - ${oneLineService(service)}');
+              }
+            }
+            if (slot.menuImages.isNotEmpty) {
+              lines.add(
+                  '  Images: ${slot.menuImages.length} menu image${slot.menuImages.length == 1 ? '' : 's'} attached');
+            }
           }
         }
         if (date.additionalServices.isNotEmpty) {
-          lines.add('  Services:');
+          lines.add('  Date services:');
           for (final service in date.additionalServices) {
             lines.add('  - ${oneLineService(service)}');
           }
@@ -307,101 +443,234 @@ class EventDetailsScreen extends StatelessWidget {
   }
 
   String whatsAppMoney(int amount) =>
-      money(amount).replaceFirst(RegExp(r'^\s*₹'), 'Rs. ');
+      money(amount).replaceFirst(RegExp(r'^\s*[^\d-]+'), 'Rs. ');
 
   @override
-  Widget build(BuildContext context) => ScreenFrame(
-        topBar: TopBar(
-          title: event?.name.isEmpty == false ? event!.name : 'Event Details',
-          avatar: false,
-          leading: IconButton(
-              onPressed: onClose,
-              icon: const Icon(Icons.arrow_back, color: Cp.primary)),
-          actions: [
-            if (event != null)
-              IconButton(
-                  onPressed: () => onEdit(event!),
-                  icon: const Icon(Icons.edit, color: Cp.primary),
-                  tooltip: 'Edit event'),
-            PopupMenuButton<EventScreenAction>(
-              icon: const Icon(Icons.more_vert, color: Cp.onVariant),
-              tooltip: 'Event menu',
-              onSelected: (action) => handleAction(context, action),
-              itemBuilder: (context) => [
-                for (final action in eventScreenActions) ...[
-                  if (action.value == EventScreenAction.deleteEvent)
-                    const PopupMenuDivider(),
-                  PopupMenuItem<EventScreenAction>(
-                    value: action.value,
-                    child: Row(
-                      children: [
-                        Icon(action.icon,
-                            color: action.destructive ? Cp.error : Cp.primary),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            action.label,
-                            style: TextStyle(
-                                color: action.destructive
-                                    ? Cp.error
-                                    : Cp.onSurface,
-                                fontWeight: FontWeight.w800),
-                          ),
+  Widget build(BuildContext context) {
+    final primary = cpPrimary(context);
+    final onVariant = cpOnVariant(context);
+    final onSurface = cpOnSurface(context);
+    final error = Theme.of(context).colorScheme.error;
+    return ScreenFrame(
+      topBar: TopBar(
+        title: event?.name.isEmpty == false ? event!.name : 'Event Details',
+        avatar: false,
+        leading: IconButton(
+            onPressed: onClose, icon: Icon(Icons.arrow_back, color: primary)),
+        actions: [
+          if (event != null)
+            IconButton(
+                onPressed: () => onEdit(event!),
+                icon: Icon(Icons.edit, color: primary),
+                tooltip: 'Edit event'),
+          PopupMenuButton<EventScreenAction>(
+            icon: Icon(Icons.more_vert, color: onVariant),
+            color: cpCard(context),
+            surfaceTintColor: Colors.transparent,
+            tooltip: 'Event menu',
+            onSelected: (action) => handleAction(context, action),
+            itemBuilder: (context) => [
+              for (final action in eventScreenActions) ...[
+                if (action.value == EventScreenAction.deleteEvent)
+                  const PopupMenuDivider(),
+                PopupMenuItem<EventScreenAction>(
+                  value: action.value,
+                  child: Row(
+                    children: [
+                      Icon(action.icon,
+                          color: action.destructive ? error : primary),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          action.label,
+                          style: TextStyle(
+                              color: action.destructive ? error : onSurface,
+                              fontWeight: FontWeight.w800),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ],
-            ),
-          ],
-        ),
-        children: event == null
-            ? const [
-                EmptyStateCard(
-                    title: 'Select an event',
-                    message:
-                        'Open an event from the event list to view details, payments, invoices, and quotations.')
-              ]
-            : [
-                EventDetailsContent(
-                    event: event!,
-                    api: api,
-                    employees: employees,
-                    onEventUpdated: onEventUpdated)
-              ],
-      );
+            ],
+          ),
+        ],
+      ),
+      children: event == null
+          ? const [
+              EmptyStateCard(
+                  title: 'Select an event',
+                  message:
+                      'Open an event from the event list to view details, payments, invoices, and quotations.')
+            ]
+          : [
+              EventDetailsContent(
+                  event: event!,
+                  events: events,
+                  api: api,
+                  employees: employees,
+                  businessProfile: businessProfile,
+                  onAddEvent: onAddEvent,
+                  onEventUpdated: onEventUpdated)
+            ],
+    );
+  }
 }
 
 class EventDetailsContent extends StatefulWidget {
   const EventDetailsContent(
       {super.key,
       required this.event,
+      required this.events,
       required this.api,
       required this.employees,
+      required this.businessProfile,
+      required this.onAddEvent,
       required this.onEventUpdated});
   final AppEvent event;
+  final List<AppEvent> events;
   final ApiService api;
   final List<Employee> employees;
+  final BusinessProfile businessProfile;
+  final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
 
   @override
   State<EventDetailsContent> createState() => _EventDetailsContentState();
 }
 
+String buildFormattedMenuShareMessage(AppEvent event,
+    {AppEventDate? onlyDate,
+    BusinessProfile businessProfile = const BusinessProfile()}) {
+  final lines = <String>[
+    '*${event.name.isEmpty ? 'Event Menu' : event.name}*',
+    '*Menu Details*',
+    '------------------------------',
+  ];
+
+  if (event.primaryClient.trim().isNotEmpty) {
+    lines.add('*Client:* ${event.primaryClient.trim()}');
+  }
+  if (event.venue.trim().isNotEmpty) {
+    lines.add('*Venue:* ${event.venue.trim()}');
+  }
+
+  final dates = onlyDate == null
+      ? ([...event.dates]..sort((a, b) => a.date.compareTo(b.date)))
+      : [onlyDate];
+  if (dates.isEmpty) {
+    lines
+      ..add('')
+      ..add('No menu dates configured.');
+    return lines.join('\n');
+  }
+
+  for (final date in dates) {
+    final slots = date.menuSlots.where((slot) => slot.enabled).toList();
+    lines
+      ..add('')
+      ..add('*${readableDateLabel(date.date)}*');
+    if (date.label.trim().isNotEmpty) {
+      lines.add('_${date.label.trim()}_');
+    }
+
+    if (slots.isEmpty) {
+      lines.add('- No menu configured');
+    } else {
+      for (final slot in slots) {
+        final itemNames = slot.menuItemIds
+            .map((id) => menuItemById(id))
+            .whereType<MenuMasterItem>()
+            .map((item) => item.title)
+            .toList();
+        final slotMeta = [
+          if (slot.time.trim().isNotEmpty) slot.time.trim(),
+          if (slot.pax > 0) '${slot.pax} members',
+        ].join(' | ');
+        lines
+          ..add('')
+          ..add('*${slot.type}${slotMeta.isEmpty ? '' : ' - $slotMeta'}*');
+
+        if (itemNames.isEmpty) {
+          lines.add('- Menu items not selected');
+        } else {
+          for (final name in itemNames) {
+            lines.add('- $name');
+          }
+        }
+      }
+    }
+  }
+
+  final businessName = businessProfile.businessName.trim().isEmpty
+      ? 'CaterPro'
+      : businessProfile.businessName.trim();
+  lines
+    ..add('')
+    ..add('Thank you for your business')
+    ..add('Regards:')
+    ..add(businessName);
+  return lines.join('\n');
+}
+
+String menuShareOneLineService(Map<String, dynamic> service) {
+  final name = service['name']?.toString() ?? 'Service';
+  final quantity = service['quantity']?.toString() ?? '';
+  final unit = service['unit']?.toString() ?? '';
+  final price = (service['price'] as num?)?.toInt() ?? 0;
+  final parts = <String>[];
+  if (quantity.trim().isNotEmpty && quantity != '0') {
+    parts.add('$quantity $unit'.trim());
+  }
+  if (price > 0) {
+    parts.add(money(price).replaceFirst(RegExp(r'^\s*[^\d-]+'), 'Rs. '));
+  }
+  return parts.isEmpty ? name : '$name (${parts.join(', ')})';
+}
+
 class _EventDetailsContentState extends State<EventDetailsContent> {
   int selectedTab = 0;
   static const tabs = ['Overview', 'Dates & Menus', 'Payments', 'Team'];
   static const tabIcons = [
-    Icons.notes,
+    Icons.dashboard_outlined,
     Icons.restaurant_menu,
-    Icons.payments,
-    Icons.groups
+    Icons.account_balance_wallet_outlined,
+    Icons.group_outlined
   ];
+
+  Future<void> callClient(BuildContext context, String mobile) async {
+    final clean = normalizeMobileText(mobile);
+    if (clean.isEmpty) {
+      showCpSnack(context, 'Client mobile number is not available');
+      return;
+    }
+    final launched = await launchUrl(Uri(scheme: 'tel', path: clean),
+        mode: LaunchMode.externalApplication);
+    if (!context.mounted) return;
+    if (!launched) showCpSnack(context, 'Unable to start call');
+  }
+
+  Future<void> openClientWhatsApp(BuildContext context, String mobile) async {
+    final clean = normalizeMobileText(mobile);
+    if (clean.isEmpty) {
+      showCpSnack(context, 'Client mobile number is not available');
+      return;
+    }
+    final target = clean.length == 10 ? '91$clean' : clean;
+    final launched = await launchUrl(Uri.parse('https://wa.me/$target'),
+        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    if (!launched) showCpSnack(context, 'Unable to open WhatsApp');
+  }
 
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
+    final scheme = Theme.of(context).colorScheme;
+    final primary = cpPrimary(context);
+    final onSurface = cpOnSurface(context);
+    final onVariant = cpOnVariant(context);
+    final outline = cpOutline(context);
     final total = eventTotal(event);
     final paid = eventPaid(event);
     final balance = eventBalance(event);
@@ -416,22 +685,40 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                const Text('Primary Contact',
+                Text('Primary Contact',
                     style: TextStyle(
-                        color: Cp.outline,
+                        color: outline,
                         fontSize: 10,
                         fontWeight: FontWeight.w900)),
                 Text(
                     event.primaryClient.isEmpty
                         ? event.mobile
                         : event.primaryClient,
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: primary,
                         fontSize: 22,
                         fontWeight: FontWeight.w900)),
-                Text(event.mobile,
-                    style: const TextStyle(
-                        color: Cp.onVariant, fontWeight: FontWeight.w700))
+                Row(children: [
+                  Flexible(
+                    child: Text(event.mobile,
+                        style: TextStyle(
+                            color: onVariant, fontWeight: FontWeight.w700)),
+                  ),
+                  if (event.mobile.trim().isNotEmpty) ...[
+                    const SizedBox(width: 6),
+                    IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Call client',
+                        onPressed: () => callClient(context, event.mobile),
+                        icon: Icon(Icons.call, size: 18, color: primary)),
+                    IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'WhatsApp client',
+                        onPressed: () =>
+                            openClientWhatsApp(context, event.mobile),
+                        icon: const WhatsAppIcon(size: 20)),
+                  ]
+                ])
               ])),
           if (eventIsIncomplete(event))
             const Pill('DRAFT',
@@ -443,21 +730,22 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
               event.dates.map((date) => date.date).join(', ')),
           InfoTile(Icons.location_on, 'Venue',
               event.venue.isEmpty ? 'Not set' : event.venue),
-          const InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise'),
+          InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise',
+              color: primary),
           InfoTile(Icons.pending_actions, 'Balance Due', money(balance),
               color: Cp.error)
         ]),
         const SizedBox(height: 18),
-        const Text('Payment Progress',
-            style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w700)),
+        Text('Payment Progress',
+            style: TextStyle(color: onVariant, fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         ClipRRect(
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 12,
-                color: Cp.primaryContainer,
-                backgroundColor: Cp.surfaceHigh)),
+                color: scheme.primary,
+                backgroundColor: scheme.surfaceContainerHighest)),
       ])),
       const SizedBox(height: 16),
       SingleChildScrollView(
@@ -471,12 +759,20 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
                 message: tabs[index],
                 child: ChoiceChip(
                   selected: selected,
+                  showCheckmark: false,
                   avatar: Icon(tabIcons[index],
-                      size: 18, color: selected ? Colors.white : Cp.primary),
-                  label: selected ? Text(tabs[index]) : const SizedBox.shrink(),
-                  selectedColor: Cp.primaryContainer,
-                  labelStyle: const TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.w800),
+                      size: 18,
+                      color: selected ? scheme.onPrimaryContainer : primary),
+                  label: Text(tabs[index]),
+                  selectedColor: scheme.primaryContainer,
+                  backgroundColor: scheme.surfaceContainerLow,
+                  side: BorderSide(
+                      color: selected
+                          ? scheme.primaryContainer
+                          : scheme.outlineVariant),
+                  labelStyle: TextStyle(
+                      color: selected ? scheme.onPrimaryContainer : onSurface,
+                      fontWeight: FontWeight.w800),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   visualDensity: VisualDensity.compact,
                   onSelected: (_) => setState(() => selectedTab = index),
@@ -491,7 +787,10 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
           tab: selectedTab,
           event: event,
           api: widget.api,
+          events: widget.events,
           employees: widget.employees,
+          businessProfile: widget.businessProfile,
+          onAddEvent: widget.onAddEvent,
           onEventUpdated: widget.onEventUpdated),
     ]);
   }
@@ -503,13 +802,34 @@ class EventDetailsTabContent extends StatelessWidget {
       required this.tab,
       required this.event,
       required this.api,
+      required this.events,
       required this.employees,
+      required this.businessProfile,
+      required this.onAddEvent,
       required this.onEventUpdated});
   final int tab;
   final AppEvent event;
   final ApiService api;
+  final List<AppEvent> events;
   final List<Employee> employees;
+  final BusinessProfile businessProfile;
+  final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+
+  Future<void> shareMenuDateOnWhatsApp(
+      BuildContext context, AppEvent event, String message) async {
+    final mobile = normalizeMobileText(event.mobile);
+    final target = mobile.length == 10 ? '91$mobile' : mobile;
+    final uri = Uri.parse(target.isEmpty
+        ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
+        : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
+    showCpSnack(context, 'Opening WhatsApp...');
+    final launched = await launchUrl(uri,
+        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    if (!context.mounted) return;
+    showCpSnack(
+        context, launched ? 'Menu ready to share' : 'Unable to open WhatsApp');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -524,20 +844,24 @@ class EventDetailsTabContent extends StatelessWidget {
                 children: event.dates
                     .map((date) => EventDateMenuCard(
                         date: date,
+                        onShareWhatsApp: () async {
+                          await shareMenuDateOnWhatsApp(
+                              context,
+                              event,
+                              buildFormattedMenuShareMessage(event,
+                                  onlyDate: date,
+                                  businessProfile: businessProfile));
+                        },
                         onDownload: () async {
                           final uri = await api.documentUri(event.id, 'menu',
                               dateId: date.id);
                           if (context.mounted) {
-                            final launched = await launchUrl(uri,
-                                mode: LaunchMode.externalApplication,
-                                webOnlyWindowName: '_blank');
-                            if (context.mounted) {
-                              showCpSnack(
-                                  context,
-                                  launched
-                                      ? 'Menu download started'
-                                      : 'Unable to start download');
-                            }
+                            showDownloadSnack(context, uri,
+                                title: downloadTitleForEvent(event, 'menu',
+                                    dateId: date.id),
+                                kind: 'menu',
+                                successMessage: 'Menu download started',
+                                failureMessage: 'Unable to start download');
                           }
                         }))
                     .toList());
@@ -576,7 +900,7 @@ class EventDetailsTabContent extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                           child: Text(
-                              '${money(payment.amount)} • ${payment.mode}\n${payment.date}${payment.reference.isEmpty ? '' : ' • ${payment.reference}'}',
+                              '${money(payment.amount)} | ${payment.mode}\n${payment.date}${payment.reference.isEmpty ? '' : ' | ${payment.reference}'}',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w800))),
                       if (payment.settled)
@@ -738,7 +1062,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w800)),
                               subtitle: Text(
-                                  '${employee.designation} • ${money(employee.payPerDay)}/day • ${money(employee.payPerHour)}/hr'),
+                                  '${employee.designation} | ${money(employee.payPerDay)}/day | ${money(employee.payPerHour)}/hr'),
                               onChanged: (_) => setDialogState(() => checked
                                   ? draft.remove(employee.id)
                                   : draft.add(employee.id)),
@@ -894,7 +1218,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                                                 fontSize: 17,
                                                 fontWeight: FontWeight.w900)),
                                         Text(
-                                            '${employee.designation} • ${money(employee.payPerDay)}/day • ${money(employee.payPerHour)}/hr',
+                                            '${employee.designation} | ${money(employee.payPerDay)}/day | ${money(employee.payPerHour)}/hr',
                                             style: const TextStyle(
                                                 color: Cp.onVariant,
                                                 fontWeight: FontWeight.w700)),
@@ -928,7 +1252,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
                                       };
                                       final label = record == null
                                           ? 'Mark ${readableDateLabel(date)}'
-                                          : '${readableDateLabel(date)} • ${record.status == 'present' ? 'Present full day' : record.status}${record.status == 'partial' ? ' ${record.hours}h' : ''}';
+                                          : '${readableDateLabel(date)} | ${record.status == 'present' ? 'Present full day' : record.status}${record.status == 'partial' ? ' ${record.hours}h' : ''}';
                                       return ActionChip(
                                         avatar: Icon(icon,
                                             size: 18, color: iconColor),
@@ -1015,7 +1339,7 @@ class _AttendanceEditorDialogState extends State<AttendanceEditorDialog> {
             const Text('Change Attendance'),
             const SizedBox(height: 6),
             Text(
-              '${widget.employee.name} • ${readableDateLabel(widget.date)}',
+              '${widget.employee.name} | ${readableDateLabel(widget.date)}',
               style: const TextStyle(
                   color: Cp.onVariant,
                   fontSize: 16,
@@ -1074,14 +1398,16 @@ class MaterialDocumentsSection extends StatelessWidget {
 
   Future<void> openEditor(BuildContext context, String type,
       {EventMaterialDocument? document}) async {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => MaterialDocumentDialog(
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => MaterialDocumentDialog(
           event: event,
           api: api,
           type: type,
           document: document,
-          onSaved: onEventUpdated),
+          onSaved: onEventUpdated,
+        ),
+      ),
     );
   }
 
@@ -1089,41 +1415,42 @@ class MaterialDocumentsSection extends StatelessWidget {
       BuildContext context, EventMaterialDocument document) async {
     showCpSnack(context, 'Downloading material PDF...');
     final uri = await api.materialDocumentPdfUri(event.id, document.id);
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (context.mounted) {
-      showCpSnack(
-          context,
-          launched
-              ? 'Material PDF download started'
-              : 'Unable to start download');
+      showDownloadSnack(context, uri,
+          title:
+              '${document.title.isEmpty ? document.typeLabel : document.title}.pdf',
+          kind: 'pdf',
+          successMessage: 'Material PDF download started',
+          failureMessage: 'Unable to start download');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final primary = cpPrimary(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       CpCard(
-          color: Cp.primaryContainer,
+          color: scheme.primaryContainer,
           child: Text(
               'Event Notes\n${event.notes.isEmpty ? 'No notes added.' : event.notes}',
-              style: const TextStyle(
-                  color: Colors.white,
+              style: TextStyle(
+                  color: scheme.onPrimaryContainer,
                   height: 1.45,
                   fontWeight: FontWeight.w700))),
       const SizedBox(height: 14),
       Row(children: [
-        const Expanded(
+        Expanded(
             child: Text('Event Material Documents',
                 style: TextStyle(
-                    color: Cp.primary,
+                    color: primary,
                     fontSize: 20,
                     fontWeight: FontWeight.w900))),
         Pill('${event.materialDocuments.length} lists'),
         const SizedBox(width: 8),
         PopupMenuButton<String>(
           tooltip: 'Create material document',
-          icon: const Icon(Icons.add_circle, color: Cp.primary),
+          icon: const Icon(Icons.add_circle, color: Cp.toolbarIcon),
           onSelected: (type) => openEditor(context, type),
           itemBuilder: (context) => const [
             PopupMenuItem(
@@ -1139,6 +1466,13 @@ class MaterialDocumentsSection extends StatelessWidget {
                   Icon(Icons.eco, color: Cp.primary),
                   SizedBox(width: 10),
                   Text('Vegetables & Fruits List')
+                ])),
+            PopupMenuItem(
+                value: 'vessels',
+                child: Row(children: [
+                  Icon(Icons.restaurant, color: Cp.primary),
+                  SizedBox(width: 10),
+                  Text('Vessels & Utensils List')
                 ])),
           ],
         ),
@@ -1159,8 +1493,10 @@ class MaterialDocumentsSection extends StatelessWidget {
                   Icon(
                       document.type == 'produce'
                           ? Icons.eco
-                          : Icons.inventory_2,
-                      color: Cp.primary),
+                          : document.type == 'vessels'
+                              ? Icons.restaurant
+                              : Icons.inventory_2,
+                      color: primary),
                   const SizedBox(width: 12),
                   Expanded(
                       child: Column(
@@ -1174,7 +1510,7 @@ class MaterialDocumentsSection extends StatelessWidget {
                                 color: Cp.primary,
                                 fontWeight: FontWeight.w900)),
                         Text(
-                            '${document.typeLabel} • ${document.items.length} items',
+                            '${document.typeLabel} | ${document.items.length} items',
                             style: const TextStyle(
                                 color: Cp.onVariant,
                                 fontWeight: FontWeight.w700)),
@@ -1213,14 +1549,18 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
   final queryController = TextEditingController();
   final items = <RawMaterialItem>[];
   final quantityControllers = <String, TextEditingController>{};
-  final unitControllers = <String, TextEditingController>{};
+  final selectedItemIds = <String>{};
   bool loading = true;
   bool saving = false;
   String query = '';
   String? error;
 
-  String get typeLabel =>
-      widget.type == 'produce' ? 'Vegetables & Fruits' : 'Raw Materials';
+  String get typeLabel => widget.type == 'produce'
+      ? 'Vegetables & Fruits'
+      : widget.type == 'vessels'
+          ? 'Vessels & Utensils'
+          : 'Raw Materials';
+  bool get isVessels => widget.type == 'vessels';
 
   @override
   void initState() {
@@ -1240,9 +1580,6 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
     for (final controller in quantityControllers.values) {
       controller.dispose();
     }
-    for (final controller in unitControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -1250,7 +1587,9 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
     try {
       final loaded = widget.type == 'produce'
           ? await widget.api.getProduceItems()
-          : await widget.api.getRawMaterials();
+          : widget.type == 'vessels'
+              ? await widget.api.getVesselItems()
+              : await widget.api.getRawMaterials();
       if (!mounted) return;
       setState(() {
         items
@@ -1258,12 +1597,15 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
           ..addAll(loaded);
         for (final item in items) {
           quantityControllers[item.id] = TextEditingController();
-          unitControllers[item.id] = TextEditingController();
         }
         for (final line
             in widget.document?.items ?? const <EventMaterialLine>[]) {
-          quantityControllers[line.itemId]?.text = line.quantity;
-          unitControllers[line.itemId]?.text = line.unit;
+          final value = [line.quantity, line.unit]
+              .map((part) => part.trim())
+              .where((part) => part.isNotEmpty)
+              .join(' ');
+          quantityControllers[line.itemId]?.text = value;
+          if (isVessels) selectedItemIds.add(line.itemId);
         }
       });
     } catch (e) {
@@ -1282,10 +1624,14 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
       return normalized.isEmpty || text.contains(normalized);
     }).toList();
     filtered.sort((a, b) {
-      final aSelected =
-          (quantityControllers[a.id]?.text.trim().isNotEmpty ?? false) ? 0 : 1;
-      final bSelected =
-          (quantityControllers[b.id]?.text.trim().isNotEmpty ?? false) ? 0 : 1;
+      final aSelected = selectedItemIds.contains(a.id) ||
+              (quantityControllers[a.id]?.text.trim().isNotEmpty ?? false)
+          ? 0
+          : 1;
+      final bSelected = selectedItemIds.contains(b.id) ||
+              (quantityControllers[b.id]?.text.trim().isNotEmpty ?? false)
+          ? 0
+          : 1;
       if (aSelected != bSelected) return aSelected.compareTo(bSelected);
       return a.name.compareTo(b.name);
     });
@@ -1296,16 +1642,19 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
     final lines = <EventMaterialLine>[];
     for (final item in items) {
       final quantity = quantityControllers[item.id]?.text.trim() ?? '';
-      if (quantity.isEmpty) continue;
+      final selected = selectedItemIds.contains(item.id);
+      if (quantity.isEmpty && !selected) continue;
       lines.add(EventMaterialLine(
           itemId: item.id,
           name: item.name,
           category: item.category,
           quantity: quantity,
-          unit: unitControllers[item.id]?.text.trim() ?? ''));
+          unit: ''));
     }
     if (lines.isEmpty) {
-      setState(() => error = 'Enter quantity/count for at least one item.');
+      setState(() => error = isVessels
+          ? 'Select or enter quantity for at least one item.'
+          : 'Enter quantity for at least one item.');
       return;
     }
     setState(() {
@@ -1333,34 +1682,30 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => Dialog(
-        insetPadding: const EdgeInsets.all(18),
-        backgroundColor: Cp.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-              maxWidth: 820,
-              maxHeight: MediaQuery.of(context).size.height * .86),
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: cpSurface(context),
+        body: Column(
+          children: [
+            TopBar(
+              title: widget.document == null
+                  ? 'Create $typeLabel List'
+                  : 'Edit $typeLabel List',
+              avatar: false,
+              leading: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.arrow_back, color: Cp.primary),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : save,
+                  child: Text(saving ? 'Saving...' : 'Save'),
+                ),
+              ],
+            ),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
                 children: [
-                  Row(children: [
-                    Expanded(
-                        child: Text(
-                            widget.document == null
-                                ? 'Create $typeLabel List'
-                                : 'Edit $typeLabel List',
-                            style: const TextStyle(
-                                color: Cp.primary,
-                                fontSize: 22,
-                                fontWeight: FontWeight.w900))),
-                    IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(Icons.close))
-                  ]),
-                  const SizedBox(height: 10),
                   EditableInlineField(
                       label: 'Document Title', controller: titleController),
                   TextField(
@@ -1378,83 +1723,119 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
                         child: Text(error!,
                             style: const TextStyle(
                                 color: Cp.error, fontWeight: FontWeight.w800))),
-                  const SizedBox(height: 12),
-                  Expanded(
-                    child: loading
-                        ? const Center(
-                            child: CircularProgressIndicator(color: Cp.primary))
-                        : ListView.separated(
-                            itemCount: visibleItems.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 8),
-                            itemBuilder: (context, index) {
-                              final item = visibleItems[index];
-                              return CpCard(
-                                padding: const EdgeInsets.all(12),
-                                child: Row(children: [
-                                  Expanded(
-                                      flex: 3,
-                                      child: Text(item.name,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w800,
-                                              color: Cp.primary))),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                      child: TextField(
-                                          controller:
-                                              quantityControllers[item.id],
-                                          keyboardType: TextInputType.number,
-                                          inputFormatters: [
-                                            FilteringTextInputFormatter
-                                                .digitsOnly
-                                          ],
-                                          decoration: const InputDecoration(
-                                              labelText: 'Count/Qty',
-                                              isDense: true),
-                                          onChanged: (_) => setState(() {}))),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                      child: TextField(
-                                          controller: unitControllers[item.id],
-                                          decoration: const InputDecoration(
-                                              labelText: 'Unit',
-                                              isDense: true))),
-                                ]),
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                      height: 52,
-                      child: FilledButton.icon(
-                          onPressed: saving ? null : save,
-                          style: FilledButton.styleFrom(
-                              backgroundColor: Cp.primaryContainer),
-                          icon: saving
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                      strokeWidth: 2, color: Colors.white))
-                              : const Icon(Icons.save),
-                          label: Text(saving ? 'Saving...' : 'Save List',
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w900)))),
-                ]),
+                  const SizedBox(height: 10),
+                  if (loading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 80),
+                      child: Center(
+                          child: CircularProgressIndicator(color: Cp.primary)),
+                    )
+                  else
+                    ...visibleItems.map(materialItemTile),
+                ],
+              ),
+            ),
+          ],
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            child: SizedBox(
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: saving ? null : save,
+                style: FilledButton.styleFrom(
+                    backgroundColor: Cp.primaryContainer),
+                icon: saving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save),
+                label: Text(saving ? 'Saving...' : 'Save List',
+                    style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ),
           ),
         ),
       );
+
+  Widget materialItemTile(RawMaterialItem item) {
+    final selected = selectedItemIds.contains(item.id);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: cpAdaptSurfaceColor(context, Cp.card),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: cpOutlineVariant(context)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+          child: Row(children: [
+            if (isVessels)
+              Checkbox(
+                value: selected,
+                visualDensity: VisualDensity.compact,
+                onChanged: (value) => setState(() {
+                  if (value == true) {
+                    selectedItemIds.add(item.id);
+                  } else {
+                    selectedItemIds.remove(item.id);
+                  }
+                }),
+              ),
+            Expanded(
+              child: Text(item.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      color: Cp.primary, fontWeight: FontWeight.w800)),
+            ),
+            const SizedBox(width: 10),
+            SizedBox(
+              width: 118,
+              child: TextField(
+                controller: quantityControllers[item.id],
+                textInputAction: TextInputAction.next,
+                decoration: InputDecoration(
+                  labelText: isVessels ? 'Qty' : 'Qty',
+                  hintText: isVessels ? '10' : '1kg',
+                  isDense: true,
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                ),
+                onChanged: (value) {
+                  if (isVessels && value.trim().isNotEmpty) {
+                    selectedItemIds.add(item.id);
+                  }
+                  setState(() {});
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 class EventDateMenuCard extends StatelessWidget {
   const EventDateMenuCard(
-      {super.key, required this.date, required this.onDownload});
+      {super.key,
+      required this.date,
+      required this.onShareWhatsApp,
+      required this.onDownload});
   final AppEventDate date;
+  final VoidCallback onShareWhatsApp;
   final VoidCallback onDownload;
 
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: CpCard(
           child: Row(
@@ -1464,12 +1845,12 @@ class EventDateMenuCard extends StatelessWidget {
                 height: 58,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                    color: Cp.primaryFixed,
+                    color: scheme.primaryContainer,
                     borderRadius: BorderRadius.circular(10)),
                 child: Text(date.date.split('-').skip(1).join('\n'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: scheme.onPrimaryContainer,
                         fontWeight: FontWeight.w900,
                         height: 1.1)),
               ),
@@ -1479,8 +1860,8 @@ class EventDateMenuCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(date.label.isEmpty ? date.date : date.label,
-                        style: const TextStyle(
-                            color: Cp.primary,
+                        style: TextStyle(
+                            color: cpPrimary(context),
                             fontSize: 17,
                             fontWeight: FontWeight.w900)),
                     const SizedBox(height: 2),
@@ -1489,22 +1870,31 @@ class EventDateMenuCard extends StatelessWidget {
                             ? 'No menu slots'
                             : date.menuSlots
                                 .map((slot) =>
-                                    '${slot.type} • ${slot.pax} Members • ${money(slot.pricePerPax)}/member')
+                                    '${slot.type} | ${slot.pax} Members | ${money(slot.pricePerPax)}/member')
                                 .join('\n'),
-                        style: const TextStyle(
-                            color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                        style: TextStyle(
+                            color: cpOnVariant(context),
+                            fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
-              IconButton(
-                onPressed: onDownload,
-                icon: const Icon(Icons.picture_as_pdf, color: Cp.primary),
-                tooltip: 'Download menu PDF',
-              ),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                IconButton(
+                  onPressed: onShareWhatsApp,
+                  icon: const WhatsAppIcon(size: 24),
+                  tooltip: 'Share menu on WhatsApp',
+                ),
+                IconButton(
+                  onPressed: onDownload,
+                  icon: Icon(Icons.picture_as_pdf, color: cpPrimary(context)),
+                  tooltip: 'Download menu PDF',
+                ),
+              ]),
             ],
           ),
         ),
       );
+  }
 }
 
 class DocumentRow extends StatelessWidget {
@@ -1538,23 +1928,31 @@ class InfoTile extends StatelessWidget {
   final String label, value;
   final Color color;
   @override
-  Widget build(BuildContext context) => SizedBox(
-      width: 150,
-      child: Row(children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(width: 8),
-        Expanded(
-            child:
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 10,
-                  color: Cp.outline,
-                  fontWeight: FontWeight.w900)),
-          Text(value,
-              style: TextStyle(
-                  color: color == Cp.error ? color : Cp.onSurface,
-                  fontWeight: FontWeight.w800))
-        ]))
-      ]));
+  Widget build(BuildContext context) {
+    final actualColor = color == Cp.error
+        ? Theme.of(context).colorScheme.error
+        : cpAdaptTextColor(context, color);
+    return SizedBox(
+        width: 150,
+        child: Row(children: [
+          Icon(icon, color: actualColor, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: cpOutline(context),
+                        fontWeight: FontWeight.w900)),
+                Text(value,
+                    style: TextStyle(
+                        color: color == Cp.error
+                            ? actualColor
+                            : cpOnSurface(context),
+                        fontWeight: FontWeight.w800))
+              ]))
+        ]));
+  }
 }

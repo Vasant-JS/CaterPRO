@@ -963,6 +963,17 @@ function upsertById(list, item) {
   return item;
 }
 
+function nextCatalogId(list, prefix) {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`, 'i');
+  let maxNumber = 0;
+  for (const item of asArray(list)) {
+    const match = String(item?.id || '').trim().match(pattern);
+    const value = Number.parseInt(match?.[1] || '', 10);
+    if (Number.isFinite(value) && value > maxNumber) maxNumber = value;
+  }
+  return `${prefix}-${String(maxNumber + 1).padStart(3, '0')}`;
+}
+
 function eventFromBody(body, existing = {}) {
   return normalizeEventShape({
     ...existing,
@@ -1455,10 +1466,10 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     doc.rect(36, 28, 523, 76).strokeColor(theme.ink).lineWidth(1).stroke();
     doc.moveTo(366, 28).lineTo(366, 104).strokeColor(theme.ink).lineWidth(0.7).stroke();
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(16).text(businessName, 52, 40, { width: 290 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(businessProfile.address || 'Catering event management', 52, 62, { width: 290, height: 16 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 52, 62, { width: 290, height: 16 });
     if (contactLine) doc.text(contactLine, 52, 80, { width: 290 });
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(17).text(title, 388, 40, { width: 142, align: 'right' });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(number, 388, 64, { width: 142, align: 'right' });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 388, 64, { width: 142, align: 'right' });
     if (taxLine) doc.text(taxLine, 388, 80, { width: 142, align: 'right' });
     return;
   }
@@ -1470,10 +1481,10 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
       doc.fillColor('white').font(fonts.bold).fontSize(12).text(businessName.slice(0, 2).toUpperCase(), 24, 50, { width: 42, align: 'center' });
     }
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(19).text(businessName, 106, 32, { width: 260 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(businessProfile.address || 'Catering event management', 106, 58, { width: 260, height: 16 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 106, 58, { width: 260, height: 16 });
     if (contactLine) doc.text(contactLine, 106, 78, { width: 260 });
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(23).text(title, 392, 34, { width: 148, align: 'right' });
-    doc.fillColor(theme.secondary).font(fonts.bold).fontSize(7.5).text(number, 392, 66, { width: 148, align: 'right' });
+    doc.fillColor(theme.secondary).font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text(number, 392, 66, { width: 148, align: 'right' });
     if (taxLine) doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(taxLine, 350, 84, { width: 190, align: 'right' });
     doc.moveTo(106, 108).lineTo(559, 108).strokeColor(theme.secondary).lineWidth(0.9).stroke();
     return;
@@ -1485,10 +1496,10 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     doc.fillColor('white').font(fonts.bold).fontSize(14).text(businessName.slice(0, 2).toUpperCase(), 59, 61, { width: 46, align: 'center' });
   }
   doc.fillColor('white').font(fonts.bold).fontSize(17).text(businessName, 116, 42, { width: 258 });
-  doc.font(fonts.regular).fontSize(7.5).text(businessProfile.address || 'Catering event management', 116, 64, { width: 258, height: 17 });
+  doc.font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 116, 64, { width: 258, height: 17 });
   if (contactLine) doc.text(contactLine, 116, 84, { width: 258 });
   doc.font(fonts.bold).fontSize(20).text(title, 390, 42, { width: 140, align: 'right' });
-  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(7.5).text(number, 390, 68, { width: 140, align: 'right' });
+  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 390, 68, { width: 140, align: 'right' });
   if (taxLine) doc.text(taxLine, 330, 84, { width: 200, align: 'right' });
 }
 
@@ -1513,7 +1524,7 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text('Bill To', boxX + 14, boxY + 15);
   doc.fillColor(theme.ink).font(fonts.bold).fontSize(10.5).text(event.primaryClient || 'Customer', boxX + 14, boxY + 33, { width: 220 });
   const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
-  doc.fillColor(theme.muted).font(fonts.regular).fontSize(8)
+  doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', boxX + 14, boxY + 51)
     .text(addressLine, boxX + 14, boxY + 66, { width: 220, height: 13 })
     .text(`Event: ${event.name || 'Untitled Event'}`, boxX + 14, boxY + 81, { width: 220 });
@@ -1522,7 +1533,7 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
   const detailX = boxX + boxW - 238;
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(`${title} Details`, detailX, boxY + 15, { width: 220, align: 'right' });
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(8)
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(`${title} No: ${number}`, detailX, boxY + 35, { width: 220, align: 'right' })
     .text(`${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`, detailX, boxY + 51, { width: 220, align: 'right' })
     .text(`Event Date: ${eventDates}`, detailX, boxY + 67, { width: 220, align: 'right' });
@@ -1554,7 +1565,7 @@ function tableHeader(doc, y, fonts, theme = documentTheme()) {
     doc.circle(layout.x + 16, y + 15, 4).fill(theme.secondary);
     doc.fillColor('white');
   }
-  doc.font(fonts.bold).fontSize(8 * Math.min(theme.scale || 1, 1.12))
+  doc.font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE)
     .text('Description', layout.descX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.descW })
     .text('Pax/Qty', layout.qtyX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.qtyW, align: 'right' })
     .text('Rate', layout.rateX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.rateW, align: 'right' })
@@ -1582,7 +1593,7 @@ function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = document
   } else if (theme.name === 'modern') {
     doc.roundedRect(layout.x, y - 4, layout.w, 25, 6).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
   }
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(7.8 * Math.min(theme.scale || 1, 1.08))
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(columns.description, layout.descX, y, { width: layout.descW, height: 16, ellipsis: true })
     .text(columns.qty, layout.qtyX, y, { width: layout.qtyW, align: 'right' })
     .text(columns.rate, layout.rateX, y, { width: layout.rateW, align: 'right' })
@@ -1598,7 +1609,7 @@ function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(8.5).text('TOTALS', 344, y + 6, { width: 190, align: 'center' });
     totalRows.forEach((row, index) => {
       const rowY = y + 26 + index * 15;
-      doc.fillColor(row[2]).font(row[3]).fontSize(8.3).text(row[0], 348, rowY, { width: 92 });
+      doc.fillColor(row[2]).font(row[3]).fontSize(PDF_BODY_FONT_SIZE).text(row[0], 348, rowY, { width: 92 });
       doc.text(row[1], 448, rowY, { width: 92, align: 'right' });
     });
     return;
@@ -1609,7 +1620,7 @@ function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
     doc.rect(312, y, 5, h).fill(theme.secondary);
     totalRows.forEach((row, index) => {
       const rowY = y + 10 + index * 15;
-      doc.fillColor(row[2]).font(row[3]).fontSize(index === totalRows.length - 1 ? 9 : 8).text(row[0], 330, rowY, { width: 95 });
+      doc.fillColor(row[2]).font(row[3]).fontSize(index === totalRows.length - 1 ? 9 : PDF_BODY_FONT_SIZE).text(row[0], 330, rowY, { width: 95 });
       doc.text(row[1], 444, rowY, { width: 92, align: 'right' });
     });
     return;
@@ -1620,7 +1631,7 @@ function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
   totalRows.forEach((row, index) => {
     const rowY = y + 13 + index * 15;
     const isLast = index === totalRows.length - 1;
-    doc.fillColor(isLast ? '#ffffff' : '#d9edf2').font(isLast ? fonts.bold : row[3]).fontSize(isLast ? 9 : 7.8).text(row[0], 334, rowY, { width: 96 });
+    doc.fillColor(isLast ? '#ffffff' : '#d9edf2').font(isLast ? fonts.bold : row[3]).fontSize(isLast ? 9 : PDF_BODY_FONT_SIZE).text(row[0], 334, rowY, { width: 96 });
     doc.text(row[1], 448, rowY, { width: 88, align: 'right' });
   });
 }
@@ -1637,7 +1648,7 @@ function drawPaymentDetails(doc, x, y, fonts, theme, businessProfile = emptyBusi
   const lines = bankDetailLines(businessProfile);
   if (lines.length > 0) {
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Bank Details', x, y, { width: 220 });
-    doc.fillColor(theme.ink).font(fonts.regular).fontSize(7.8)
+    doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
       .text(lines.join('\n'), x, y + 14, { width: 220, height: 34 });
   }
   if (businessProfile.qrBase64) {
@@ -1667,8 +1678,8 @@ function drawDocumentClosing(doc, y, {
   const totalsH = totalsPanelHeight(totalRows, theme);
 
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Amount in words', metrics.left, y + 2);
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(7.6).text(amountInWords(amountValue), metrics.left, y + 16, { width: 260, height: 24 });
-  if (notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.2).text(notes, metrics.left, y + 43, { width: 260, height: 32 });
+  doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(amountInWords(amountValue), metrics.left, y + 16, { width: 260, height: 24 });
+  if (notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(notes, metrics.left, y + 43, { width: 260, height: 32 });
 
   const lowerY = Math.max(y + 82, totalsY + totalsH + 18);
   drawPaymentDetails(doc, metrics.left, lowerY, fonts, theme, businessProfile);
@@ -1902,7 +1913,7 @@ function generateAttendancePdfOld({ res, records, employees, month, businessProf
   let y = 112;
   const header = () => {
     doc.roundedRect(32, y, 531, 24, 4).fill(theme.primary);
-    doc.fillColor('white').font(fonts.bold).fontSize(8)
+    doc.fillColor('white').font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE)
       .text('Employee', 42, y + 7, { width: 142 })
       .text('Present', 205, y + 7, { width: 48, align: 'right' })
       .text('Absent', 270, y + 7, { width: 48, align: 'right' })
@@ -1920,7 +1931,7 @@ function generateAttendancePdfOld({ res, records, employees, month, businessProf
       header();
     }
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(8.5).text(employee.name || '-', 42, y, { width: 142 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(7.5).text(employee.designation || '', 42, y + 11, { width: 142 });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(employee.designation || '', 42, y + 11, { width: 142 });
     doc.fillColor(theme.ink).font(fonts.regular).fontSize(8.5)
       .text(String(present || 0), 205, y, { width: 48, align: 'right' })
       .text(String(absent || 0), 270, y, { width: 48, align: 'right' })
@@ -1946,7 +1957,7 @@ function generateAttendancePdf({ res, records, employees, month, businessProfile
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.roundedRect(22, 18, 798, 42, 6).fill(theme.primary);
   doc.fillColor('white').font(fonts.bold).fontSize(16).text('Attendance Sheet', 36, 31);
-  doc.font(fonts.regular).fontSize(8).text(`${businessProfile.businessName || 'CaterPro'} - ${month}`, 610, 33, { width: 180, align: 'right' });
+  doc.font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${businessProfile.businessName || 'CaterPro'} - ${month}`, 610, 33, { width: 180, align: 'right' });
 
   const byEmployee = new Map();
   for (const employee of employees) byEmployee.set(employee.id, { employee, days: {}, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
@@ -2082,7 +2093,7 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
     pageNo += 1;
     doc.rect(0, 0, pageW, pageH).fill('#ffffff');
     doc.fillColor('#111827').font(fonts.bold).fontSize(18).text('Monthly Report', left, 24, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(`${monthLabel} - ${businessProfile.businessName || 'CaterPro'} - Page ${pageNo}`, right - 270, 29, { width: 270, align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${monthLabel} - ${businessProfile.businessName || 'CaterPro'} - Page ${pageNo}`, right - 270, 29, { width: 270, align: 'right' });
     doc.moveTo(left, 52).lineTo(right, 52).strokeColor('#d1d5db').lineWidth(0.6).stroke();
     y = 68;
   }
@@ -2097,7 +2108,7 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
   }
   function metric(x, w, title, value, note, color = '#06445d') {
     doc.roundedRect(x, y, w, 58, 5).fill('#f8fafc').strokeColor('#d9e2ec').lineWidth(0.5).stroke();
-    doc.fillColor('#6b7280').font(fonts.bold).fontSize(7.5).text(title, x + 8, y + 8, { width: w - 16 });
+    doc.fillColor('#6b7280').font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text(title, x + 8, y + 8, { width: w - 16 });
     doc.fillColor(color).font(fonts.bold).fontSize(13).text(value, x + 8, y + 25, { width: w - 16, ellipsis: true });
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(note, x + 8, y + 43, { width: w - 16, ellipsis: true });
   }
@@ -2171,11 +2182,11 @@ function menuDocumentTitle(event, date) {
 function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo) {
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('EVENT MENU', 42, 36, { width: 180 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(`${businessProfile.businessName || 'CaterPro'} | ${pageLabel} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
   doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
   doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(8)
+  doc.fillColor('#374151').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
     .text(`Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`, 330, 78, { width: 220, align: 'right' })
     .text(`Venue: ${event.venue || '-'}`, 330, 94, { width: 220, align: 'right' });
@@ -2187,7 +2198,7 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: 7.8, height: 11 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: PDF_BODY_FONT_SIZE, height: 12 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -2205,7 +2216,7 @@ function drawServiceSection(doc, date, y, fonts) {
     if (index > 0 && index % 2 === 0) y += 18;
     const quantity = serviceQuantityText(service);
     doc.rect(x, y + 2, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#202124').font(fonts.regular).fontSize(8).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
+    doc.fillColor('#202124').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
   });
   return y + 28;
 }
@@ -2237,7 +2248,7 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
     const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
     doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8).text(line, 364, y + 9, { width: 178, align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(line, 364, y + 9, { width: 178, align: 'right' });
     doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
     items.forEach((item, index) => {
       const col = index % 3;
@@ -2245,19 +2256,19 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
     });
     if (!items.length && (slot.menuImages || []).length) {
-      doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
         .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} attached at end of PDF.`, 56, y + 31, { width: 320 });
     }
     if (services.length) {
       const serviceY = y + 30 + itemRows * 14 + 7;
-      doc.fillColor('#4b5563').font(fonts.bold).fontSize(7.8).text('Services', 56, serviceY, { width: 70 });
+      doc.fillColor('#4b5563').font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
       services.forEach((service, index) => {
         const col = index % 2;
         const row = Math.floor(index / 2);
         const x = 112 + col * 238;
         const quantity = serviceQuantityText(service);
         doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-        doc.fillColor('#202124').font(fonts.regular).fontSize(7.8)
+        doc.fillColor('#202124').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
           .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
       });
     }
@@ -2284,7 +2295,7 @@ function drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo }) 
   const { date, slot, image } = attachment;
   const title = `${slot.type || 'Menu'} - ${prettyDate(date.date || '')}`;
   doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('UPLOADED MENU IMAGE', 42, 34, { width: 260 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(`${title}${image.name ? ` - ${image.name}` : ''}`, 42, 56, { width: 500, height: 22 });
   const buffer = imageBufferFromDataUrl(image.dataUrl);
   if (buffer) {
@@ -2402,11 +2413,11 @@ function generateMaterialDocumentPdf({ res, event = {}, materialDocument, busine
   function drawHeader(pageNo = 1) {
     doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
     doc.fillColor('#111827').font(fonts.bold).fontSize(16).text(title, pageX, 24, { width: 240 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(8)
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
       .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 360, 27, { width: 217, align: 'right' });
     doc.moveTo(pageX, 50).lineTo(pageX + pageW, 50).strokeColor('#9ca3af').lineWidth(0.7).stroke();
     doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Requirement List', pageX, 64, { width: 245 });
-    doc.fillColor('#374151').font(fonts.regular).fontSize(8)
+    doc.fillColor('#374151').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
       .text(event.id ? `Event: ${event.name || '-'}` : 'Created directly from dashboard', pageX, 80, { width: 260 })
       .text(event.id ? `Venue: ${event.venue || '-'}` : `Type: ${title}`, pageX, 94, { width: 260 })
       .text(`Document: ${materialDocument.title || title}`, 360, 64, { width: 217, align: 'right' })
@@ -2426,8 +2437,8 @@ function generateMaterialDocumentPdf({ res, event = {}, materialDocument, busine
 
   function drawMaterialCell(item, x, y, width) {
     const qtyText = [item.quantity, item.unit].filter(Boolean).join(' ');
-    drawSingleLineText(doc, repairMojibake(item.name || item.itemId), x + 10, y + 6, width - 74, fonts, { fontSize: 9.2, height: 14, color: '#111827' });
-    drawSingleLineText(doc, repairMojibake(qtyText), x + width - 60, y + 6, 50, fonts, { fontSize: 8.4, height: 14, color: '#111827', align: 'right' });
+    drawSingleLineText(doc, repairMojibake(item.name || item.itemId), x + 10, y + 6, width - 74, fonts, { fontSize: PDF_BODY_FONT_SIZE, height: 14, color: '#111827' });
+    drawSingleLineText(doc, repairMojibake(qtyText), x + width - 60, y + 6, 50, fonts, { fontSize: PDF_BODY_FONT_SIZE, height: 14, color: '#111827', align: 'right' });
   }
 
   function drawFooter(pageNo = 1) {
@@ -2533,7 +2544,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   const columns = 3;
   const colW = (page.width - margin * 2 - gap * (columns - 1)) / columns;
   const bottomY = page.height - margin - footerH;
-  const itemFontSize = 10;
+  const itemFontSize = PDF_BODY_FONT_SIZE;
   const itemLineGap = 0.8;
   let col = 0;
   let y = topY;
@@ -2544,7 +2555,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
     doc.addPage({ size: 'A4', layout: 'portrait', margin });
     pageNo += 1;
     doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('Menu Catalog', margin, 10, { width: 160, lineBreak: false });
-    doc.fillColor('#6b7280').font(fonts.regular).fontSize(7.2).text(
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(
       `${normalizedLanguage === 'both' ? 'Kannada + English' : normalizedLanguage} - ${items.length} items - CaterPro - Page ${pageNo}`,
       page.width - 270,
       15,
@@ -2818,6 +2829,119 @@ app.get('/api/bootstrap', (req, res) => {
   res.json({ universal: db.universal, userData: db.userData[user.id] });
 });
 
+function recordUpdatedAtValue(item) {
+  const value = Date.parse(item?.updatedAt || item?.updated_at || item?.createdAt || item?.created_at || '');
+  return Number.isFinite(value) ? value : 0;
+}
+
+const PDF_BODY_FONT_SIZE = 8.5;
+
+function recordKeyForSync(item, listKey) {
+  if (!item || typeof item !== 'object') return '';
+  if (listKey === 'eventDates') return item.date || item.id || '';
+  if (listKey === 'attendance') return [item.eventId, item.employeeId, item.date].map((value) => value || '').join('|');
+  if (listKey === 'selectedServices') return [item.serviceId || item.id || item.name, item.count || item.quantity || ''].map((value) => value || '').join('|');
+  if (listKey === 'materialItems') return [item.itemId || item.id || item.name, item.quantity || ''].map((value) => value || '').join('|');
+  return item.id || item.mobile || item.name || JSON.stringify(item);
+}
+
+function mergeSyncRecord(existing = {}, incoming = {}, listKey = '') {
+  const existingUpdatedAt = recordUpdatedAtValue(existing);
+  const incomingUpdatedAt = recordUpdatedAtValue(incoming);
+  const base = incomingUpdatedAt >= existingUpdatedAt ? { ...existing, ...incoming } : { ...incoming, ...existing };
+  if (listKey === 'events') {
+    base.dates = mergeSyncRecordList(existing.dates, incoming.dates, 'eventDates');
+    base.payments = mergeSyncRecordList(existing.payments, incoming.payments, 'payments');
+    base.materialDocuments = mergeSyncRecordList(existing.materialDocuments, incoming.materialDocuments, 'materialDocuments');
+    base.employeeAssignments = mergeSyncRecordList(existing.employeeAssignments, incoming.employeeAssignments, 'employeeAssignments');
+  } else if (listKey === 'eventDates') {
+    base.menuSlots = mergeSyncRecordList(existing.menuSlots, incoming.menuSlots, 'menuSlots');
+    base.additionalServices = mergeSyncRecordList(existing.additionalServices, incoming.additionalServices, 'selectedServices');
+  } else if (listKey === 'menuSlots') {
+    base.menuItemIds = [...new Set([...asArray(existing.menuItemIds), ...asArray(incoming.menuItemIds)].map(String).filter(Boolean))];
+    base.additionalServices = mergeSyncRecordList(existing.additionalServices, incoming.additionalServices, 'selectedServices');
+  } else if (listKey === 'materialDocuments') {
+    base.items = mergeSyncRecordList(existing.items, incoming.items, 'materialItems');
+  }
+  return base;
+}
+
+function mergeSyncRecordList(existing, incoming, listKey) {
+  const records = new Map();
+  for (const source of [asArray(existing), asArray(incoming)]) {
+    for (const item of source) {
+      if (!item || typeof item !== 'object') continue;
+      const key = recordKeyForSync(item, listKey);
+      if (!key) continue;
+      records.set(key, records.has(key) ? mergeSyncRecord(records.get(key), item, listKey) : item);
+    }
+  }
+  return [...records.values()];
+}
+
+function mergeUserDataForSync(existing = emptyUserData(), incoming = emptyUserData()) {
+  const current = ensureUserDataShape({ ...emptyUserData(), ...existing });
+  const next = ensureUserDataShape({ ...emptyUserData(), ...incoming });
+  return ensureUserDataShape({
+    ...current,
+    ...next,
+    events: mergeSyncRecordList(current.events, next.events, 'events'),
+    clients: mergeSyncRecordList(current.clients, next.clients, 'clients'),
+    employees: mergeSyncRecordList(current.employees, next.employees, 'employees'),
+    attendance: mergeSyncRecordList(current.attendance, next.attendance, 'attendance'),
+    additionalServices: mergeSyncRecordList(current.additionalServices, next.additionalServices, 'additionalServices'),
+    customMenus: mergeSyncRecordList(current.customMenus, next.customMenus, 'customMenus'),
+    requirementLists: mergeSyncRecordList(current.requirementLists, next.requirementLists, 'requirementLists'),
+    payments: mergeSyncRecordList(current.payments, next.payments, 'payments'),
+    manualInvoices: mergeSyncRecordList(current.manualInvoices, next.manualInvoices, 'manualInvoices'),
+    businessProfile: mergeSyncRecord(current.businessProfile || {}, next.businessProfile || {}, 'businessProfile'),
+  });
+}
+
+function backupUserDataForSync(existing = emptyUserData(), incoming = {}) {
+  const current = ensureUserDataShape({ ...emptyUserData(), ...existing });
+  const next = incoming && typeof incoming === 'object' ? incoming : {};
+  const merged = { ...current };
+  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'requirementLists', 'payments', 'manualInvoices']) {
+    if (Array.isArray(next[key])) merged[key] = next[key];
+  }
+  if (next.businessProfile && typeof next.businessProfile === 'object') {
+    merged.businessProfile = { ...emptyBusinessProfile(), ...next.businessProfile };
+  }
+  return ensureUserDataShape(merged);
+}
+
+function syncSnapshotForUser(db, userId) {
+  ensureUniversal(db);
+  db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
+  return {
+    stateId: supabaseStateId,
+    serverUpdatedAt: new Date().toISOString(),
+    universal: db.universal,
+    userData: db.userData[userId],
+  };
+}
+
+app.get('/api/sync/snapshot', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(syncSnapshotForUser(db, user.id));
+});
+
+app.post('/api/sync/snapshot', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const incomingUserData = req.body?.userData && typeof req.body.userData === 'object' ? req.body.userData : {};
+  const incomingUniversal = req.body?.universal && typeof req.body.universal === 'object' ? req.body.universal : {};
+  db.userData[user.id] = backupUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
+  db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
+  ensureUniversal(db);
+  writeDb(db);
+  res.json(syncSnapshotForUser(db, user.id));
+});
+
 app.post('/api/storage/repair-normalize', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
@@ -2994,20 +3118,27 @@ app.put('/api/clients/:id', (req, res) => {
   if (!client.name || !client.mobile) return res.status(400).json({ message: 'Client name and mobile number are required' });
   if (client.mobile.length !== 10) return res.status(400).json({ message: 'Mobile number must be 10 digits' });
   upsertById(db.userData[user.id].clients, client);
-  if (previousMobile && previousMobile !== client.mobile) {
-    for (const event of db.userData[user.id].events || []) {
-      if (normalizeMobile(event.mobile) === previousMobile) {
-        event.mobile = client.mobile;
-        if (!event.primaryClient || event.primaryClient === previousName) event.primaryClient = client.name;
-        event.updatedAt = new Date().toISOString();
-      }
+  const clientMobile = normalizeMobile(client.mobile);
+  for (const event of db.userData[user.id].events || []) {
+    const eventMobile = normalizeMobile(event.mobile);
+    const linkedByMobile = (previousMobile && eventMobile === previousMobile) || (clientMobile && eventMobile === clientMobile);
+    const linkedByPreviousName = previousName && String(event.primaryClient || '').trim() === previousName.trim();
+    if (linkedByMobile || linkedByPreviousName) {
+      event.mobile = client.mobile;
+      if (client.name) event.primaryClient = client.name;
+      event.updatedAt = new Date().toISOString();
     }
-    for (const invoice of db.userData[user.id].manualInvoices || []) {
-      if (normalizeMobile(invoice.mobile) === previousMobile) {
-        invoice.mobile = client.mobile;
-        if (!invoice.clientName || invoice.clientName === previousName) invoice.clientName = client.name;
-        invoice.updatedAt = new Date().toISOString();
-      }
+  }
+  for (const invoice of db.userData[user.id].manualInvoices || []) {
+    const invoiceMobile = normalizeMobile(invoice.mobile);
+    const linkedByMobile = (previousMobile && invoiceMobile === previousMobile) || (clientMobile && invoiceMobile === clientMobile);
+    const linkedByPreviousName = previousName && String(invoice.clientName || '').trim() === previousName.trim();
+    if (linkedByMobile || linkedByPreviousName) {
+      invoice.mobile = client.mobile;
+      if (client.name) invoice.clientName = client.name;
+      if (client.address || client.city) invoice.clientAddress = client.address || client.city;
+      if (client.gst) invoice.clientGst = client.gst;
+      invoice.updatedAt = new Date().toISOString();
     }
   }
   writeDb(db);
@@ -3297,8 +3428,10 @@ app.get('/api/menu-catalog.pdf', handleMenuCatalogPdf);
 app.post('/api/menu-items', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
+  const requestedId = String(req.body.id || '').trim();
+  const idExists = requestedId && db.universal.menuItems.some((entry) => entry.id === requestedId);
   const item = {
-    id: req.body.id || makeId('mnu'),
+    id: requestedId && !idExists ? requestedId : nextCatalogId(db.universal.menuItems, 'MNU'),
     english: req.body.english || '',
     kannada: req.body.kannada || '',
     title: req.body.title || `${req.body.kannada || ''}/${req.body.english || ''}`,
@@ -3838,6 +3971,36 @@ async function pullSupabaseToLocal(req, res) {
 
 app.post('/api/storage/push-local-to-supabase', pushLocalToSupabase);
 app.post('/api/storage/pull-supabase-to-local', pullSupabaseToLocal);
+
+const webBuildPath = path.join(__dirname, '..', 'frontend', 'build', 'web');
+const webMimeTypes = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
+};
+
+function serveBuiltWebApp(req, res, next) {
+  if (req.path.startsWith('/api') || req.path === '/health') return next();
+  if (!fs.existsSync(path.join(webBuildPath, 'index.html'))) return next();
+  const requestPath = decodeURIComponent((req.path || '/').split('?')[0]);
+  const safePath = path.normalize(requestPath).replace(/^(\.\.[/\\])+/, '').replace(/^[/\\]+/, '');
+  let filePath = path.join(webBuildPath, safePath || 'index.html');
+  if (!filePath.startsWith(webBuildPath)) filePath = path.join(webBuildPath, 'index.html');
+  if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+    filePath = path.join(webBuildPath, 'index.html');
+  }
+  const ext = path.extname(filePath).toLowerCase();
+  res.setHeader('Content-Type', webMimeTypes[ext] || 'application/octet-stream');
+  fs.createReadStream(filePath).on('error', next).pipe(res);
+}
+
+app.use(serveBuiltWebApp);
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 
 initializeStorage().then(() => {

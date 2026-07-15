@@ -6,21 +6,25 @@ class DashboardScreen extends StatelessWidget {
       required this.api,
       required this.events,
       required this.loading,
-      required this.loadError,
       required this.openCreate,
+      required this.openEvents,
       required this.openClients,
       required this.openBilling,
       required this.openInvoice,
+      required this.openCustomMenus,
+      required this.openLists,
       required this.openDetails,
       required this.refresh});
   final ApiService api;
   final List<AppEvent> events;
   final bool loading;
-  final String? loadError;
   final VoidCallback openCreate;
+  final VoidCallback openEvents;
   final VoidCallback openClients;
   final VoidCallback openBilling;
   final VoidCallback openInvoice;
+  final VoidCallback openCustomMenus;
+  final VoidCallback openLists;
   final ValueChanged<AppEvent> openDetails;
   final VoidCallback refresh;
 
@@ -111,14 +115,12 @@ class DashboardScreen extends StatelessWidget {
       final monthKey =
           '${month.year}-${month.month.toString().padLeft(2, '0')}';
       final uri = await api.monthlyReportPdfUri(monthKey);
-      final launched = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (!context.mounted) return;
-      showCpSnack(
-          context,
-          launched
-              ? 'Monthly report download started'
-              : 'Unable to download report');
+      showDownloadSnack(context, uri,
+          title: 'Monthly report $monthKey.pdf',
+          kind: 'report',
+          successMessage: 'Monthly report download started',
+          failureMessage: 'Unable to download report');
     } catch (error) {
       if (context.mounted) {
         showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
@@ -136,14 +138,12 @@ class DashboardScreen extends StatelessWidget {
         return;
       }
       final uri = await api.upcomingMenusUri(days: 3);
-      final launched = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (context.mounted) {
-        showCpSnack(
-            context,
-            launched
-                ? 'Upcoming menus download started'
-                : 'Unable to start menu download');
+        showDownloadSnack(context, uri,
+            title: 'Upcoming menus.pdf',
+            kind: 'menu',
+            successMessage: 'Upcoming menus download started',
+            failureMessage: 'Unable to start menu download');
       }
     } catch (error) {
       if (context.mounted) {
@@ -157,19 +157,7 @@ class DashboardScreen extends StatelessWidget {
     final now = DateTime.now();
     final month = DateTime(now.year, now.month);
     final revenue = monthlyRevenue(month);
-    final completedRevenue = monthlyCompletedRevenue(month);
     final pending = monthlyDue(month);
-    final completedDue = monthlyCompletedDue(month);
-    final profitLoss = completedRevenue - completedDue;
-    final todayEvents = events
-        .where((event) => event.dates.any((date) {
-              final parsed = parseIsoDate(date.date);
-              return parsed != null &&
-                  parsed.year == now.year &&
-                  parsed.month == now.month &&
-                  parsed.day == now.day;
-            }))
-        .toList();
     final overdueEvents =
         events.where((event) => eventBalance(event) > 0).length;
     final upcomingEvents =
@@ -191,15 +179,6 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       children: [
-        if (loadError != null && loadError!.trim().isNotEmpty) ...[
-          CpCard(
-              color: Cp.errorContainer,
-              child: Text(loadError!,
-                  style: TextStyle(
-                      color: cpAdaptTextColor(context, Cp.error),
-                      fontWeight: FontWeight.w800))),
-          const SizedBox(height: 12),
-        ],
         Row(children: [
           Text('LIVE METRICS',
               style: TextStyle(
@@ -233,30 +212,11 @@ class DashboardScreen extends StatelessWidget {
                   primary: true),
               DashboardMetricTile(
                   width: 154,
-                  label: 'Profit / Loss',
-                  value: money(profitLoss),
-                  note: completedDue > 0
-                      ? '${money(completedDue)} due'
-                      : 'Completed events',
-                  icon: profitLoss >= 0
-                      ? Icons.arrow_upward
-                      : Icons.arrow_downward,
-                  valueColor:
-                      profitLoss >= 0 ? Cp.tertiaryContainer : Cp.error),
-              DashboardMetricTile(
-                  width: 154,
-                  label: 'Unpaid Invoices',
+                  label: 'Unpaid Events',
                   value: money(pending),
                   note: '$overdueEvents pending',
                   icon: Icons.receipt_long,
                   valueColor: Cp.error),
-              DashboardMetricTile(
-                  width: 154,
-                  label: "Today's Events",
-                  value: '${todayEvents.length}',
-                  note: '${events.length} total events',
-                  icon: Icons.today,
-                  valueColor: Cp.primary),
             ],
           ),
         ),
@@ -264,14 +224,26 @@ class DashboardScreen extends StatelessWidget {
         CpCard(
           color: Cp.surfaceLow,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: GridView(
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              mainAxisSpacing: 14,
+              crossAxisSpacing: 8,
+              mainAxisExtent: 72,
+            ),
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               DashboardActionButton(
-                  icon: Icons.add_circle_outline,
-                  label: 'New Event',
+                  icon: Icons.calendar_month,
+                  label: 'Events',
                   color: Cp.primaryContainer,
-                  onTap: openCreate),
+                  onTap: openEvents),
+              DashboardActionButton(
+                  icon: Icons.fact_check,
+                  label: 'Ready Menu',
+                  color: Cp.surfaceHigh,
+                  onTap: openCustomMenus),
               DashboardActionButton(
                   icon: Icons.payments,
                   label: 'Payment',
@@ -279,7 +251,7 @@ class DashboardScreen extends StatelessWidget {
                   onTap: openBilling),
               DashboardActionButton(
                   icon: Icons.person_add_alt,
-                  label: 'Add Client',
+                  label: 'Clients',
                   color: Cp.surfaceHigh,
                   onTap: openClients),
               DashboardActionButton(
@@ -287,6 +259,11 @@ class DashboardScreen extends StatelessWidget {
                   label: 'Invoice',
                   color: Cp.surfaceHigh,
                   onTap: openInvoice),
+              DashboardActionButton(
+                  icon: Icons.checklist,
+                  label: 'Lists',
+                  color: Cp.surfaceHigh,
+                  onTap: openLists),
             ],
           ),
         ),
@@ -541,12 +518,13 @@ class DashboardActionButton extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => InkWell(
+  Widget build(BuildContext context) {
+    final iconColor = cpDark(context) ? Cp.primary : cpPrimary(context);
+    return InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
-        child: SizedBox(
-          width: 70,
-          child: Column(children: [
+        child: Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
                 width: 48,
                 height: 48,
@@ -556,7 +534,7 @@ class DashboardActionButton extends StatelessWidget {
                     boxShadow: const [
                       BoxShadow(color: Color(0x12000000), blurRadius: 10)
                     ]),
-                child: Icon(icon, color: cpPrimary(context), size: 23)),
+                child: Icon(icon, color: iconColor, size: 23)),
             const SizedBox(height: 6),
             Text(label,
                 maxLines: 1,
@@ -569,6 +547,7 @@ class DashboardActionButton extends StatelessWidget {
           ]),
         ),
       );
+  }
 }
 
 class RevenueTrendCard extends StatelessWidget {

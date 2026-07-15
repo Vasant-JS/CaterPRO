@@ -1,5 +1,31 @@
 part of '../main.dart';
 
+class _MasterDataDownloadStatus {
+  const _MasterDataDownloadStatus({
+    required this.message,
+    required this.downloading,
+    required this.canRetry,
+  }) : error = null;
+
+  const _MasterDataDownloadStatus.downloading()
+      : message =
+            'Setting up menu items and inventory master data. Please wait.',
+        downloading = true,
+        canRetry = false,
+        error = null;
+
+  const _MasterDataDownloadStatus.error(String errorText)
+      : message = 'Unable to download master data.',
+        downloading = false,
+        canRetry = true,
+        error = errorText;
+
+  final String message;
+  final bool downloading;
+  final bool canRetry;
+  final String? error;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -27,14 +53,18 @@ class _AppShellState extends State<AppShell> {
   Timer? autoSyncTimer;
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
-  static const _userDataCachePrefix = 'caterpro.userDataCache.v2.';
 
   @override
   void initState() {
     super.initState();
-    refreshEvents();
-    autoSyncTimer = Timer.periodic(
-        const Duration(minutes: 1), (_) => refreshEvents(silent: true));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(const Duration(milliseconds: 900), () {
+        if (mounted) unawaited(startupRefresh());
+      });
+    });
+    autoSyncTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!loading) unawaited(refreshEvents(silent: true));
+    });
   }
 
   @override
@@ -43,44 +73,16 @@ class _AppShellState extends State<AppShell> {
     super.dispose();
   }
 
-  Future<String> userDataCacheKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userId = prefs.getString('auth.userId') ??
-        prefs.getString('auth.email') ??
-        prefs.getString('auth.token') ??
-        'default';
-    return '$_userDataCachePrefix$userId';
-  }
-
-  Future<Map<String, dynamic>> loadCachedUserData() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(await userDataCacheKey());
-    if (raw == null || raw.isEmpty) return {};
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is Map) return Map<String, dynamic>.from(decoded);
-    } catch (_) {
-      // Ignore corrupt local cache; fresh backend data will replace it.
-    }
-    return {};
-  }
-
-  Future<void> saveCachedUserData(Map<String, dynamic> userData) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(await userDataCacheKey(), jsonEncode(userData));
-  }
-
   Future<void> cacheCurrentUserData(
       {Map<String, dynamic>? base, bool synced = false}) {
     final snapshot = currentUserDataJson(base: base);
-    return Future.wait([
-      saveCachedUserData(snapshot),
-      LocalCaterProDb.instance.saveSnapshot(
-        userData: snapshot,
-        universal: currentUniversalJson(),
-        synced: synced,
-      ),
-    ]).then((_) {
+    return LocalCaterProDb.instance
+        .saveSnapshot(
+      userData: snapshot,
+      universal: currentUniversalJson(),
+      synced: synced,
+    )
+        .then((_) {
       localSyncPending = !synced;
     });
   }
@@ -102,6 +104,219 @@ class _AppShellState extends State<AppShell> {
         'menuItems':
             MenuMasterScreen.menuItems.map((item) => item.toJson()).toList(),
       };
+
+  String localId(String prefix) =>
+      '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
+
+  AppEvent localEventFromDraft(EventDraft draft) {
+    final eventId =
+        (draft.id ?? '').trim().isEmpty ? localId('evt') : draft.id!.trim();
+    draft.id = eventId;
+    final existing = events.where((event) => event.id == eventId).firstOrNull;
+    return AppEvent.fromJson({
+      if (existing != null) ...existing.toJson(),
+      ...draft.toJson(),
+      'id': eventId,
+    });
+  }
+
+  AppClient localClient(AppClient client) {
+    final now = DateTime.now().toIso8601String();
+    return client.copyWith(
+      id: client.id.trim().isEmpty ? localId('client') : client.id.trim(),
+      mobile: normalizeMobileText(client.mobile),
+      createdAt: client.createdAt.isEmpty ? now : client.createdAt,
+      updatedAt: now,
+    );
+  }
+
+  Employee localEmployee(Employee employee) => employee.copyWith(
+        id: employee.id.trim().isEmpty ? localId('emp') : employee.id.trim(),
+        mobile: normalizeMobileText(employee.mobile),
+      );
+
+  ManualInvoice localManualInvoice(ManualInvoice invoice) {
+    final id = invoice.id.trim().isEmpty ? localId('minv') : invoice.id.trim();
+    return ManualInvoice(
+      id: id,
+      clientName: invoice.clientName,
+      mobile: normalizeMobileText(invoice.mobile),
+      clientAddress: invoice.clientAddress,
+      clientGst: invoice.clientGst,
+      eventName: invoice.eventName,
+      venue: invoice.venue,
+      eventDate: invoice.eventDate,
+      invoiceDate: invoice.invoiceDate,
+      invoiceNumber: invoice.invoiceNumber.trim().isEmpty
+          ? 'INV-${id.split('_').last}'
+          : invoice.invoiceNumber,
+      notes: invoice.notes,
+      items: invoice.items,
+      subtotal: invoice.subtotal,
+      total: invoice.total,
+      advance: invoice.advance,
+      settlement: invoice.settlement,
+      pending: invoice.pending,
+    );
+  }
+
+  void backupCurrentSnapshotQuietly() {
+    unawaited(cacheCurrentUserData()
+        .then((_) => pushCurrentSnapshot())
+        .catchError((_) {}));
+  }
+
+  Future<void> startupRefresh() async {
+    final ready = await ensureMasterDataReady();
+    if (!mounted || !ready) return;
+    await refreshEvents();
+  }
+
+  Future<bool> ensureMasterDataReady() async {
+    if (await LocalCaterProDb.instance.hasMasterData()) return true;
+    if (!mounted) return false;
+
+    final status = ValueNotifier<_MasterDataDownloadStatus>(
+      const _MasterDataDownloadStatus.downloading(),
+    );
+    var retrySignal = Completer<void>();
+
+    unawaited(showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: ValueListenableBuilder<_MasterDataDownloadStatus>(
+            valueListenable: status,
+            builder: (context, value, _) {
+              return AlertDialog(
+                title: const Text('Downloading master data'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (value.downloading)
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 3),
+                          )
+                        else
+                          Icon(Icons.error_outline,
+                              color: Theme.of(context).colorScheme.error),
+                        const SizedBox(width: 14),
+                        Expanded(child: Text(value.message)),
+                      ],
+                    ),
+                    if (value.error != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        value.error!,
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error),
+                      ),
+                    ],
+                  ],
+                ),
+                actions: [
+                  if (value.canRetry)
+                    FilledButton.icon(
+                      onPressed: () {
+                        status.value =
+                            const _MasterDataDownloadStatus.downloading();
+                        if (!retrySignal.isCompleted) retrySignal.complete();
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                ],
+              );
+            },
+          ),
+        );
+      },
+    ));
+
+    while (mounted) {
+      try {
+        final loadedMenuItems = await api.getMenuItems();
+        final rawMaterials = await api.getRawMaterials();
+        final produceItems = await api.getProduceItems();
+        final vesselItems = await api.getVesselItems();
+        final universal = {
+          'menuItems': loadedMenuItems.map((item) => item.toJson()).toList(),
+          'rawMaterials': rawMaterials.map((item) => item.toJson()).toList(),
+          'produceItems': produceItems.map((item) => item.toJson()).toList(),
+          'vesselItems': vesselItems.map((item) => item.toJson()).toList(),
+        };
+        final missing = [
+          if (loadedMenuItems.isEmpty) 'menu items',
+          if (produceItems.isEmpty) 'vegetables and fruits',
+          if (vesselItems.isEmpty) 'vessels and utensils',
+        ];
+        if (missing.isNotEmpty) {
+          throw Exception('Master data missing: ${missing.join(', ')}');
+        }
+        await LocalCaterProDb.instance.saveMasterData(
+          universal: universal,
+          synced: true,
+        );
+        if (!mounted) return false;
+        setState(() {
+          MenuMasterScreen.menuItems
+            ..clear()
+            ..addAll(loadedMenuItems);
+        });
+        Navigator.of(context, rootNavigator: true).pop();
+        return true;
+      } catch (error) {
+        if (!mounted) return false;
+        status.value = _MasterDataDownloadStatus.error(
+          error.toString().replaceFirst('Exception: ', ''),
+        );
+        retrySignal = Completer<void>();
+        await retrySignal.future;
+      }
+    }
+    return false;
+  }
+
+  Map<String, dynamic> mergeUniversalData(
+      Map<String, dynamic> server, Map<String, dynamic> local,
+      {required bool preferLocal}) {
+    final preferred = preferLocal ? local : server;
+    final fallback = preferLocal ? server : local;
+    return {
+      ...fallback,
+      ...preferred,
+      'menuItems': preferLocal
+          ? mergeRecordLists(
+              fallback['menuItems'],
+              preferred['menuItems'],
+              key: 'menuItems',
+            )
+          : jsonMapList(preferred['menuItems']),
+      'rawMaterials': mergeRecordLists(
+        fallback['rawMaterials'],
+        preferred['rawMaterials'],
+        key: 'rawMaterials',
+      ),
+      'produceItems': mergeRecordLists(
+        fallback['produceItems'],
+        preferred['produceItems'],
+        key: 'produceItems',
+      ),
+      'vesselItems': mergeRecordLists(
+        fallback['vesselItems'],
+        preferred['vesselItems'],
+        key: 'vesselItems',
+      ),
+    };
+  }
 
   Map<String, dynamic> mergeUserData(
       Map<String, dynamic> server, Map<String, dynamic> cached) {
@@ -142,8 +357,9 @@ class _AppShellState extends State<AppShell> {
     normalized['payments'] = dedupeJsonList(event['payments'], key: 'payments');
     normalized['materialDocuments'] =
         dedupeJsonList(event['materialDocuments'], key: 'materialDocuments');
-    normalized['employeeAssignments'] =
-        dedupeJsonList(event['employeeAssignments'], key: 'employeeAssignments');
+    normalized['employeeAssignments'] = dedupeJsonList(
+        event['employeeAssignments'],
+        key: 'employeeAssignments');
     return normalized;
   }
 
@@ -170,9 +386,10 @@ class _AppShellState extends State<AppShell> {
           ...existing,
           ...normalized,
           'id': existing['date'] ?? existing['id'] ?? normalized['id'],
-          'menuSlots': dedupeJsonList(
-              [...jsonMapList(existing['menuSlots']), ...jsonMapList(normalized['menuSlots'])],
-              key: 'menuSlots'),
+          'menuSlots': dedupeJsonList([
+            ...jsonMapList(existing['menuSlots']),
+            ...jsonMapList(normalized['menuSlots'])
+          ], key: 'menuSlots'),
           'additionalServices': dedupeJsonList([
             ...jsonMapList(existing['additionalServices']),
             ...jsonMapList(normalized['additionalServices'])
@@ -183,7 +400,8 @@ class _AppShellState extends State<AppShell> {
     return byDate.values.toList();
   }
 
-  List<Map<String, dynamic>> dedupeJsonList(Object? value, {required String key}) {
+  List<Map<String, dynamic>> dedupeJsonList(Object? value,
+      {required String key}) {
     final byKey = <String, Map<String, dynamic>>{};
     for (final item in jsonMapList(value)) {
       byKey[recordKey(item, key)] = item;
@@ -219,8 +437,9 @@ class _AppShellState extends State<AppShell> {
     if (key == 'events') {
       merged['dates'] =
           mergeRecordLists(cached['dates'], server['dates'], key: 'eventDates');
-      merged['payments'] = mergeRecordLists(cached['payments'],
-          server['payments'], key: 'payments');
+      merged['payments'] = mergeRecordLists(
+          cached['payments'], server['payments'],
+          key: 'payments');
       merged['materialDocuments'] = mergeRecordLists(
           cached['materialDocuments'], server['materialDocuments'],
           key: 'materialDocuments');
@@ -228,8 +447,9 @@ class _AppShellState extends State<AppShell> {
           cached['employeeAssignments'], server['employeeAssignments'],
           key: 'employeeAssignments');
     } else if (key == 'eventDates') {
-      merged['menuSlots'] = mergeRecordLists(cached['menuSlots'],
-          server['menuSlots'], key: 'menuSlots');
+      merged['menuSlots'] = mergeRecordLists(
+          cached['menuSlots'], server['menuSlots'],
+          key: 'menuSlots');
       merged['additionalServices'] = mergeRecordLists(
           cached['additionalServices'], server['additionalServices'],
           key: 'selectedServices');
@@ -240,8 +460,8 @@ class _AppShellState extends State<AppShell> {
           cached['additionalServices'], server['additionalServices'],
           key: 'selectedServices');
     } else if (key == 'materialDocuments') {
-      merged['items'] =
-          mergeRecordLists(cached['items'], server['items'], key: 'materialItems');
+      merged['items'] = mergeRecordLists(cached['items'], server['items'],
+          key: 'materialItems');
     }
     return merged;
   }
@@ -299,6 +519,99 @@ class _AppShellState extends State<AppShell> {
     return jsonEncode(item);
   }
 
+  Future<void> applySnapshot({
+    required Map<String, dynamic> userData,
+    required Map<String, dynamic> universal,
+    required bool synced,
+    String? error,
+    bool updateLastSynced = false,
+    bool persist = true,
+  }) async {
+    final normalized = normalizeUserData(userData);
+    final loaded = decodeJsonList(normalized['events'], AppEvent.fromJson);
+    final loadedClients =
+        decodeJsonList(normalized['clients'], AppClient.fromJson);
+    final loadedEmployees =
+        decodeJsonList(normalized['employees'], Employee.fromJson);
+    final loadedManualInvoices =
+        decodeJsonList(normalized['manualInvoices'], ManualInvoice.fromJson);
+    final menuItems =
+        decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
+    final additionalServices = decodeJsonList(
+        normalized['additionalServices'], AdditionalServiceItem.fromJson);
+    final loadedCustomMenus =
+        decodeJsonList(normalized['customMenus'], CustomMenu.fromJson);
+    final loadedBusinessProfile = BusinessProfile.fromJson(
+        Map<String, dynamic>.from(
+            (normalized['businessProfile'] as Map?) ?? const {}));
+    if (!mounted) return;
+    setState(() {
+      events
+        ..clear()
+        ..addAll(loaded);
+      clients
+        ..clear()
+        ..addAll(loadedClients);
+      employees
+        ..clear()
+        ..addAll(loadedEmployees);
+      manualInvoices
+        ..clear()
+        ..addAll(loadedManualInvoices);
+      MenuMasterScreen.menuItems
+        ..clear()
+        ..addAll(menuItems);
+      services
+        ..clear()
+        ..addAll(additionalServices);
+      customMenus
+        ..clear()
+        ..addAll(loadedCustomMenus);
+      businessProfile = loadedBusinessProfile;
+      localSyncPending = !synced;
+      loadError = error;
+      if (updateLastSynced) lastSyncedAt = DateTime.now();
+    });
+    if (persist) {
+      await LocalCaterProDb.instance.saveSnapshot(
+        userData: normalized,
+        universal: universal,
+        synced: synced,
+      );
+    }
+  }
+
+  Future<void> pushCurrentSnapshot() async {
+    final response = await api.pushSyncSnapshot(
+      userData: currentUserDataJson(),
+      universal: currentUniversalJson(),
+    );
+    final universal =
+        Map<String, dynamic>.from((response['universal'] as Map?) ?? const {});
+    final userData =
+        Map<String, dynamic>.from((response['userData'] as Map?) ?? const {});
+    await applySnapshot(
+      userData: userData,
+      universal: universal,
+      synced: true,
+      updateLastSynced: true,
+    );
+  }
+
+  Future<void> cacheAndPushCurrentSnapshot() async {
+    await cacheCurrentUserData();
+    try {
+      await pushCurrentSnapshot();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          localSyncPending = true;
+          loadError = null;
+        });
+      }
+    }
+  }
+
   Future<void> refreshEvents({bool silent = false}) async {
     if (!silent) {
       setState(() {
@@ -306,115 +619,73 @@ class _AppShellState extends State<AppShell> {
         loadError = null;
       });
     }
+    Map<String, dynamic>? localUserData;
+    Map<String, dynamic>? localUniversal;
+    var localDirty = false;
+    final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
+    if (localSnapshot != null) {
+      localUserData =
+          Map<String, dynamic>.from(localSnapshot['userData'] as Map);
+      localUniversal =
+          Map<String, dynamic>.from(localSnapshot['universal'] as Map);
+      localDirty = await LocalCaterProDb.instance.hasUnsyncedChanges();
+      await applySnapshot(
+        userData: localUserData,
+        universal: localUniversal,
+        synced: !localDirty,
+        error: null,
+        persist: false,
+      );
+    }
     try {
-      final bootstrap = await api.bootstrap();
-      final universal = (bootstrap['universal'] as Map?) ?? {};
-      final serverUserData = Map<String, dynamic>.from(
-          (bootstrap['userData'] as Map?) ?? const {});
-      final userData = normalizeUserData(serverUserData);
-      final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
-      final loadedClients =
-          decodeJsonList(userData['clients'], AppClient.fromJson);
-      final loadedEmployees =
-          decodeJsonList(userData['employees'], Employee.fromJson);
-      final loadedManualInvoices =
-          decodeJsonList(userData['manualInvoices'], ManualInvoice.fromJson);
-      final menuItems =
-          decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
-      final additionalServices = decodeJsonList(
-          userData['additionalServices'], AdditionalServiceItem.fromJson);
-      final loadedCustomMenus =
-          decodeJsonList(userData['customMenus'], CustomMenu.fromJson);
-      final loadedBusinessProfile = BusinessProfile.fromJson(
-          Map<String, dynamic>.from(
-              (userData['businessProfile'] as Map?) ?? const {}));
-      if (!mounted) return;
-      setState(() {
-        events
-          ..clear()
-          ..addAll(loaded);
-        clients
-          ..clear()
-          ..addAll(loadedClients);
-        employees
-          ..clear()
-          ..addAll(loadedEmployees);
-        manualInvoices
-          ..clear()
-          ..addAll(loadedManualInvoices);
-        MenuMasterScreen.menuItems
-          ..clear()
-          ..addAll(menuItems);
-        services
-          ..clear()
-          ..addAll(additionalServices);
-        customMenus
-          ..clear()
-          ..addAll(loadedCustomMenus);
-        businessProfile = loadedBusinessProfile;
-        lastSyncedAt = DateTime.now();
-        loadError = null;
-      });
-      await saveCachedUserData(userData);
-      await LocalCaterProDb.instance.saveSnapshot(
-          userData: userData, universal: Map<String, dynamic>.from(universal), synced: true);
-      localSyncPending = false;
-    } catch (e) {
-      final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
-      if (localSnapshot != null) {
-        final universal =
-            Map<String, dynamic>.from(localSnapshot['universal'] as Map);
-        final userData =
-            Map<String, dynamic>.from(localSnapshot['userData'] as Map);
-        final loaded = decodeJsonList(userData['events'], AppEvent.fromJson);
-        final loadedClients =
-            decodeJsonList(userData['clients'], AppClient.fromJson);
-        final loadedEmployees =
-            decodeJsonList(userData['employees'], Employee.fromJson);
-        final loadedManualInvoices =
-            decodeJsonList(userData['manualInvoices'], ManualInvoice.fromJson);
-        final menuItems =
-            decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
-        final additionalServices = decodeJsonList(
-            userData['additionalServices'], AdditionalServiceItem.fromJson);
-        final loadedCustomMenus =
-            decodeJsonList(userData['customMenus'], CustomMenu.fromJson);
-        final loadedBusinessProfile = BusinessProfile.fromJson(
-            Map<String, dynamic>.from(
-                (userData['businessProfile'] as Map?) ?? const {}));
-        if (!mounted) return;
-        setState(() {
-          events
-            ..clear()
-            ..addAll(loaded);
-          clients
-            ..clear()
-            ..addAll(loadedClients);
-          employees
-            ..clear()
-            ..addAll(loadedEmployees);
-          manualInvoices
-            ..clear()
-            ..addAll(loadedManualInvoices);
-          MenuMasterScreen.menuItems
-            ..clear()
-            ..addAll(menuItems);
-          services
-            ..clear()
-            ..addAll(additionalServices);
-          customMenus
-            ..clear()
-            ..addAll(loadedCustomMenus);
-          businessProfile = loadedBusinessProfile;
-          localSyncPending = true;
-          loadError = 'Offline mode: showing local SQLite data';
-        });
+      final snapshot = await api.getSyncSnapshot();
+      final serverUniversal = Map<String, dynamic>.from(
+          (snapshot['universal'] as Map?) ?? const {});
+      final serverUserData = normalizeUserData(Map<String, dynamic>.from(
+          (snapshot['userData'] as Map?) ?? const {}));
+      if (localUserData == null || localUniversal == null) {
+        await applySnapshot(
+          userData: serverUserData,
+          universal: serverUniversal,
+          synced: true,
+          updateLastSynced: true,
+        );
         return;
       }
+      if (!localDirty) {
+        await applySnapshot(
+          userData: serverUserData,
+          universal: serverUniversal,
+          synced: true,
+          updateLastSynced: true,
+        );
+        return;
+      }
+      final mergedUserData = normalizeUserData(localDirty
+          ? mergeUserData(localUserData, serverUserData)
+          : mergeUserData(serverUserData, localUserData));
+      final mergedUniversal = mergeUniversalData(
+        serverUniversal,
+        localUniversal,
+        preferLocal: localDirty,
+      );
+      final pushed = await api.pushSyncSnapshot(
+        userData: mergedUserData,
+        universal: mergedUniversal,
+      );
+      await applySnapshot(
+        userData:
+            Map<String, dynamic>.from((pushed['userData'] as Map?) ?? const {}),
+        universal: Map<String, dynamic>.from(
+            (pushed['universal'] as Map?) ?? const {}),
+        synced: true,
+        updateLastSynced: true,
+      );
+    } catch (e) {
       if (!mounted) return;
-      final message = friendlyNetworkMessage(e);
       setState(() {
-        if (!silent || events.isEmpty) loadError = message;
+        if (localSnapshot != null) localSyncPending = true;
+        loadError = null;
       });
     } finally {
       if (mounted) setState(() => loading = false);
@@ -424,7 +695,7 @@ class _AppShellState extends State<AppShell> {
   Future<void> createEvent(EventDraft draft) async {
     showCpSnack(context,
         (draft.id ?? '').isEmpty ? 'Creating event...' : 'Updating event...');
-    final event = await api.saveEventDraft(draft, eventId: draft.id);
+    final event = localEventFromDraft(draft);
     setState(() {
       final index = events.indexWhere((item) => item.id == event.id);
       if (index == -1) {
@@ -436,12 +707,12 @@ class _AppShellState extends State<AppShell> {
       tab = 1;
       editingEvent = null;
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveManualInvoice(ManualInvoice invoice) async {
     showCpSnack(context, 'Saving invoice...');
-    final saved = await api.saveManualInvoice(invoice);
+    final saved = localManualInvoice(invoice);
     setState(() {
       final index = manualInvoices.indexWhere((item) => item.id == saved.id);
       if (index == -1) {
@@ -451,14 +722,21 @@ class _AppShellState extends State<AppShell> {
       }
       tab = 3;
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveClient(AppClient client) async {
     showCpSnack(
         context, client.id.isEmpty ? 'Saving client...' : 'Updating client...');
-    final saved = await api.saveClient(
-        client.copyWith(mobile: normalizeMobileText(client.mobile)));
+    final previousClient = client.id.isEmpty
+        ? null
+        : clients
+            .where((item) => item.id == client.id)
+            .cast<AppClient?>()
+            .firstOrNull;
+    final previousMobile = normalizeMobileText(previousClient?.mobile ?? '');
+    final previousName = previousClient?.name ?? '';
+    final saved = localClient(client);
     setState(() {
       final index = clients.indexWhere((item) =>
           item.id == saved.id ||
@@ -468,25 +746,59 @@ class _AppShellState extends State<AppShell> {
       } else {
         clients[index] = saved;
       }
+      final savedMobile = normalizeMobileText(saved.mobile);
+      for (var index = 0; index < events.length; index++) {
+        final event = events[index];
+        final eventMobile = normalizeMobileText(event.mobile);
+        final linkedByMobile =
+            (previousMobile.isNotEmpty && eventMobile == previousMobile) ||
+                (savedMobile.isNotEmpty && eventMobile == savedMobile);
+        final linkedByPreviousName = previousName.trim().isNotEmpty &&
+            event.primaryClient.trim() == previousName.trim();
+        if (!linkedByMobile && !linkedByPreviousName) continue;
+        final json = event.toJson();
+        json['mobile'] = saved.mobile;
+        if (saved.name.isNotEmpty) json['primaryClient'] = saved.name;
+        json['updatedAt'] = saved.updatedAt;
+        events[index] = AppEvent.fromJson(json);
+      }
+      for (var index = 0; index < manualInvoices.length; index++) {
+        final invoice = manualInvoices[index];
+        final invoiceMobile = normalizeMobileText(invoice.mobile);
+        final linkedByMobile =
+            (previousMobile.isNotEmpty && invoiceMobile == previousMobile) ||
+                (savedMobile.isNotEmpty && invoiceMobile == savedMobile);
+        final linkedByPreviousName = previousName.trim().isNotEmpty &&
+            invoice.clientName.trim() == previousName.trim();
+        if (!linkedByMobile && !linkedByPreviousName) continue;
+        final json = invoice.toJson();
+        json['mobile'] = saved.mobile;
+        if (saved.name.isNotEmpty) json['clientName'] = saved.name;
+        if (saved.address.isNotEmpty || saved.city.isNotEmpty) {
+          json['clientAddress'] =
+              saved.address.isNotEmpty ? saved.address : saved.city;
+        }
+        if (saved.gst.isNotEmpty) json['clientGst'] = saved.gst;
+        json['updatedAt'] = saved.updatedAt;
+        manualInvoices[index] = ManualInvoice.fromJson(json);
+      }
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> deleteClient(AppClient client) async {
     showCpSnack(context, 'Deleting client...');
-    if (client.id.isNotEmpty) await api.deleteClient(client.id);
     setState(() => clients.removeWhere((item) =>
         item.id == client.id ||
         normalizeMobileText(item.mobile) ==
             normalizeMobileText(client.mobile)));
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveEmployee(Employee employee) async {
     showCpSnack(context,
         employee.id.isEmpty ? 'Saving employee...' : 'Updating employee...');
-    final saved = await api.saveEmployee(
-        employee.copyWith(mobile: normalizeMobileText(employee.mobile)));
+    final saved = localEmployee(employee);
     setState(() {
       final index = employees.indexWhere((item) =>
           item.id == saved.id ||
@@ -497,17 +809,16 @@ class _AppShellState extends State<AppShell> {
         employees[index] = saved;
       }
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> deleteEmployee(Employee employee) async {
     showCpSnack(context, 'Deleting employee...');
-    if (employee.id.isNotEmpty) await api.deleteEmployee(employee.id);
     setState(() => employees.removeWhere((item) =>
         item.id == employee.id ||
         normalizeMobileText(item.mobile) ==
             normalizeMobileText(employee.mobile)));
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> openManualInvoiceForm() async {
@@ -535,7 +846,7 @@ class _AppShellState extends State<AppShell> {
       }
       selectedEventId = event.id;
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   void removeSelectedEvent(String eventId) {
@@ -543,7 +854,7 @@ class _AppShellState extends State<AppShell> {
       events.removeWhere((event) => event.id == eventId);
       if (selectedEventId == eventId) selectedEventId = null;
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   void openCreateEvent() {
@@ -553,6 +864,15 @@ class _AppShellState extends State<AppShell> {
       selectedEventId = null;
       createSession++;
       tab = 5;
+    });
+  }
+
+  void openEventsTab() {
+    setState(() {
+      parentTab = 0;
+      selectedEventId = null;
+      editingEvent = null;
+      tab = 1;
     });
   }
 
@@ -580,7 +900,7 @@ class _AppShellState extends State<AppShell> {
     if (current == 5 || current == 6) {
       return parentTab == current ? 1 : parentTab;
     }
-    if ({7, 8, 9, 10, 11, 12, 13, 15, 16, 17}.contains(current)) {
+    if ({7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 21, 22}.contains(current)) {
       return 4;
     }
     if (current != 0) return parentTab == current ? 0 : parentTab;
@@ -640,7 +960,14 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> saveCustomMenu(CustomMenu menu) async {
     showCpSnack(context, 'Saving custom menu...');
-    final saved = await api.saveCustomMenu(menu);
+    final saved = menu.id.trim().isEmpty
+        ? CustomMenu(
+            id: localId('cmenu'),
+            name: menu.name,
+            type: menu.type,
+            itemIds: menu.itemIds,
+          )
+        : menu;
     setState(() {
       final index = customMenus.indexWhere((item) => item.id == saved.id);
       if (index == -1) {
@@ -649,21 +976,19 @@ class _AppShellState extends State<AppShell> {
         customMenus[index] = saved;
       }
     });
-    unawaited(cacheCurrentUserData(synced: true));
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveBusinessProfile(BusinessProfile profile) async {
     showCpSnack(context, 'Updating business profile...');
-    final saved = await api.saveBusinessProfile(profile);
-    setState(() => businessProfile = saved);
-    unawaited(cacheCurrentUserData(synced: true));
+    setState(() => businessProfile = profile);
+    backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveInvoiceSettings(BusinessProfile profile) async {
     showCpSnack(context, 'Updating invoice settings...');
-    final saved = await api.saveBusinessProfile(profile);
-    setState(() => businessProfile = saved);
-    unawaited(cacheCurrentUserData(synced: true));
+    setState(() => businessProfile = profile);
+    backupCurrentSnapshotQuietly();
   }
 
   void addSystemNotification({
@@ -691,20 +1016,20 @@ class _AppShellState extends State<AppShell> {
   Future<void> exportData() async {
     showCpSnack(context, 'Preparing export...');
     final uri = await api.backupExportUri();
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+    const title = 'CaterPro backup.json';
+    if (mounted) {
+      showDownloadSnack(context, uri,
+          title: title,
+          kind: 'backup',
+          successMessage: 'Backup download started',
+          failureMessage: 'Unable to save backup');
+    }
     addSystemNotification(
-        title: launched ? 'Data export started' : 'Data export failed',
-        message: launched
-            ? 'CaterPro backup download was started.'
-            : 'Could not open the backup download link.',
+        title: 'Data export started',
+        message: 'CaterPro backup is being saved to device downloads.',
         kind: 'export',
         icon: Icons.download,
-        color: launched ? Cp.primary : Cp.error);
-    if (mounted) {
-      showCpSnack(context,
-          launched ? 'Backup export started' : 'Unable to start export');
-    }
+        color: Cp.primary);
   }
 
   Future<void> importData() async {
@@ -822,17 +1147,18 @@ class _AppShellState extends State<AppShell> {
             api: api,
             events: events,
             loading: loading,
-            loadError: loadError,
             openCreate: openCreateEvent,
+            openEvents: openEventsTab,
             openClients: () => setState(() => tab = 2),
             openBilling: () => setState(() => tab = 3),
-            openInvoice: openManualInvoiceForm,
+            openInvoice: () => setState(() => tab = 3),
+            openCustomMenus: () => openChildTab(11),
+            openLists: () => openChildTab(21),
             openDetails: openEventDetails,
             refresh: refreshEvents),
         EventsScreen(
             events: events,
             loading: loading,
-            loadError: loadError,
             openDetails: openEventDetails,
             openCreate: openCreateEvent,
             refresh: refreshEvents),
@@ -858,10 +1184,14 @@ class _AppShellState extends State<AppShell> {
             openEmployees: () => openChildTab(9),
             openRawMaterials: () => openChildTab(10),
             openProduceItems: () => openChildTab(12),
+            openVesselItems: () => openChildTab(19),
+            openLists: () => openChildTab(21),
             openNotifications: openNotifications,
             openUserManagement: openUserManagement,
             openReports: () => openChildTab(17),
             openAppAppearance: openAppAppearance,
+            openEventDefaults: () => openChildTab(18),
+            openDownloads: () => openChildTab(20),
             onExportData: exportData,
             onImportData: importData,
             onBackupToGoogleDrive: backupToGoogleDrive,
@@ -887,8 +1217,11 @@ class _AppShellState extends State<AppShell> {
                 .where((event) => event.id == selectedEventId)
                 .firstOrNull,
             api: api,
+            events: events,
             employees: employees,
+            businessProfile: businessProfile,
             onEdit: openEditEvent,
+            onAddEvent: openCreateEvent,
             onEventUpdated: updateSelectedEvent,
             onEventDeleted: removeSelectedEvent,
             onClose: closeToParent),
@@ -900,7 +1233,6 @@ class _AppShellState extends State<AppShell> {
         EmployeeScreen(
             api: api,
             employees: employees,
-            events: events,
             onSave: saveEmployee,
             onDelete: deleteEmployee,
             onClose: closeToParent),
@@ -930,11 +1262,35 @@ class _AppShellState extends State<AppShell> {
             employees: employees,
             manualInvoices: manualInvoices,
             onClose: closeToParent),
+        EventDefaultsScreen(onClose: closeToParent),
+        VesselItemScreen(onClose: closeToParent),
+        DownloadsScreen(onClose: closeToParent),
+        ListsScreen(events: events, onClose: closeToParent),
       ];
 
   @override
   Widget build(BuildContext context) {
-    const drawerTabs = {0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13, 15, 16, 17};
+    const drawerTabs = {
+      0,
+      1,
+      2,
+      3,
+      4,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21
+    };
     final showDrawer = drawerTabs.contains(tab);
     final showMainFab = tab < 5;
     return PopScope(
@@ -964,13 +1320,16 @@ class _AppShellState extends State<AppShell> {
   Widget? _fabForTab() {
     final icons = [Icons.add, Icons.add, Icons.add, Icons.add, null];
     if (icons[tab] == null) return null;
+    final scheme = Theme.of(context).colorScheme;
     return FloatingActionButton(
-      backgroundColor: Cp.secondaryContainer,
-      foregroundColor: Color(0xff694000),
+      backgroundColor: scheme.secondaryContainer,
+      foregroundColor: scheme.onSecondaryContainer,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       onPressed: () {
         if (tab == 0 || tab == 1) {
           openCreateEvent();
+        } else if (tab == 2) {
+          showClientEditor(context, onSave: saveClient);
         } else if (tab == 3) {
           openManualInvoiceForm();
         } else {
@@ -990,22 +1349,39 @@ class CaterSideDrawer extends StatelessWidget {
   final ValueChanged<int> onChanged;
 
   static const items = [
-    (Icons.home_rounded, 'Dashboard'),
-    (Icons.calendar_month_rounded, 'Events'),
-    (Icons.group_rounded, 'Clients'),
-    (Icons.receipt_long_rounded, 'Billing'),
-    (Icons.settings_rounded, 'Settings'),
+    (0, Icons.home_rounded, 'Dashboard'),
+    (1, Icons.calendar_month_rounded, 'Events'),
+    (2, Icons.group_rounded, 'Clients'),
+    (3, Icons.receipt_long_rounded, 'Billing'),
+    (4, Icons.settings_rounded, 'Settings'),
   ];
 
   static const settingsSubItems = [
     (9, Icons.badge, 'Employees'),
     (17, Icons.analytics_outlined, 'Reports'),
+    (21, Icons.checklist, 'Lists'),
     (16, Icons.description, 'Invoice Settings'),
+    (18, Icons.tune, 'Event Defaults'),
     (13, Icons.notifications, 'Notifications'),
     (15, Icons.wb_sunny, 'App Appearance'),
   ];
 
-  static const settingsTabs = {4, 8, 9, 10, 11, 12, 13, 15, 16, 17};
+  static const settingsTabs = {
+    4,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -1055,9 +1431,10 @@ class CaterSideDrawer extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
                 children: [
                   ...List.generate(items.length, (i) {
-                    final selected =
-                        i == index || (i == 4 && settingsTabs.contains(index));
                     final item = items[i];
+                    final tabId = item.$1;
+                    final selected = tabId == index ||
+                        (tabId == 4 && settingsTabs.contains(index));
                     return Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Column(
@@ -1068,11 +1445,11 @@ class CaterSideDrawer extends StatelessWidget {
                             selectedTileColor: scheme.secondaryContainer,
                             shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(999)),
-                            leading: Icon(item.$1,
+                            leading: Icon(item.$2,
                                 color: selected
                                     ? scheme.onSecondaryContainer
                                     : scheme.onSurfaceVariant),
-                            title: Text(t(item.$2),
+                            title: Text(t(item.$3),
                                 style: TextStyle(
                                     color: selected
                                         ? scheme.onSecondaryContainer
@@ -1082,10 +1459,10 @@ class CaterSideDrawer extends StatelessWidget {
                                         : FontWeight.w700)),
                             onTap: () {
                               Navigator.pop(context);
-                              onChanged(i);
+                              onChanged(tabId);
                             },
                           ),
-                          if (i == 4 && settingsTabs.contains(index))
+                          if (tabId == 4 && settingsTabs.contains(index))
                             Padding(
                               padding: const EdgeInsets.fromLTRB(52, 4, 8, 2),
                               child: Column(
@@ -1237,25 +1614,47 @@ class CpCard extends StatelessWidget {
         : cpAdaptTextColor(context, borderColor!);
     final shadowAlpha =
         Theme.of(context).brightness == Brightness.dark ? .18 : .04;
-    final card = Container(
-      padding: padding,
-      decoration: BoxDecoration(
-        color: actualColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: actualBorder),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: shadowAlpha),
-              blurRadius: 12,
-              offset: const Offset(0, 4))
-        ],
+    final shape = RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(12),
+      side: BorderSide(color: actualBorder),
+    );
+    final card = Material(
+      color: actualColor,
+      shape: shape,
+      elevation: 0,
+      shadowColor: Colors.black.withValues(alpha: shadowAlpha),
+      child: Padding(
+        padding: padding,
+        child: IconTheme.merge(
+          data: IconThemeData(color: cpPrimary(context)),
+          child: DefaultTextStyle.merge(
+            style: TextStyle(color: cpOnSurface(context)),
+            child: child,
+          ),
+        ),
       ),
-      child: child,
     );
     return onTap == null
         ? card
-        : InkWell(
-            borderRadius: BorderRadius.circular(12), onTap: onTap, child: card);
+        : Material(
+            color: actualColor,
+            shape: shape,
+            elevation: 0,
+            shadowColor: Colors.black.withValues(alpha: shadowAlpha),
+            child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: onTap,
+                child: Padding(
+                  padding: padding,
+                  child: IconTheme.merge(
+                    data: IconThemeData(color: cpPrimary(context)),
+                    child: DefaultTextStyle.merge(
+                      style: TextStyle(color: cpOnSurface(context)),
+                      child: child,
+                    ),
+                  ),
+                )),
+          );
   }
 }
 
@@ -1272,8 +1671,18 @@ class Pill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final actualColor = cpAdaptSurfaceColor(context, color);
-    final actualTextColor = cpAdaptTextColor(context, textColor);
+    final actualTextColor = color == Cp.primaryContainer
+        ? scheme.onPrimaryContainer
+        : color == Cp.secondaryContainer
+            ? scheme.onSecondaryContainer
+            : color == Cp.tertiaryContainer || color == Cp.tertiaryFixed
+                ? scheme.onTertiaryContainer
+                : color == Cp.errorContainer ||
+                        color == const Color(0xffffebeb)
+                    ? scheme.onErrorContainer
+                    : cpAdaptTextColor(context, textColor);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -1297,14 +1706,57 @@ class Pill extends StatelessWidget {
 }
 
 void showCpSnack(BuildContext context, String message) {
+  final scheme = Theme.of(context).colorScheme;
   ScaffoldMessenger.of(context).hideCurrentSnackBar();
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),
       behavior: SnackBarBehavior.floating,
-      backgroundColor: Cp.primaryContainer,
+      backgroundColor: scheme.primaryContainer,
     ),
   );
+}
+
+void showDownloadSnack(BuildContext context, Uri uri,
+    {required String title,
+    String kind = 'file',
+    String successMessage = 'Download started',
+    String failureMessage = 'Unable to start download'}) {
+  final scheme = Theme.of(context).colorScheme;
+  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(successMessage),
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: scheme.primaryContainer,
+    ),
+  );
+  unawaited(() async {
+    try {
+      final localUri =
+          await saveDownloadToDevice(title: title, uri: uri, kind: kind);
+      if (!context.mounted) return;
+      final fileName = sanitizeDownloadFileName(title, kind);
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$fileName downloaded'),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: scheme.primaryContainer,
+          action: SnackBarAction(
+            label: 'Open',
+            textColor: scheme.onPrimaryContainer,
+            onPressed: () => unawaited(
+                openDownloadedFile(localUri, title: fileName, kind: kind)),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context,
+          '$failureMessage: ${e.toString().replaceFirst('Exception: ', '')}');
+    }
+  }());
 }
 
 enum EventScreenAction {

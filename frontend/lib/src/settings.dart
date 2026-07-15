@@ -52,11 +52,14 @@ class SettingsScreen extends StatelessWidget {
       required this.openEmployees,
       required this.openRawMaterials,
       required this.openProduceItems,
+      required this.openVesselItems,
+      required this.openLists,
       required this.openNotifications,
       required this.openUserManagement,
       required this.openReports,
       required this.openAppAppearance,
       required this.openEventDefaults,
+      required this.openDownloads,
       required this.onExportData,
       required this.onImportData,
       required this.onBackupToGoogleDrive,
@@ -73,11 +76,14 @@ class SettingsScreen extends StatelessWidget {
   final VoidCallback openEmployees;
   final VoidCallback openRawMaterials;
   final VoidCallback openProduceItems;
+  final VoidCallback openVesselItems;
+  final VoidCallback openLists;
   final VoidCallback openNotifications;
   final VoidCallback openUserManagement;
   final VoidCallback openReports;
   final VoidCallback openAppAppearance;
   final VoidCallback openEventDefaults;
+  final VoidCallback openDownloads;
   final Future<void> Function() onExportData;
   final Future<void> Function() onImportData;
   final Future<void> Function() onBackupToGoogleDrive;
@@ -280,7 +286,9 @@ class SettingsScreen extends StatelessWidget {
           (Icons.fact_check, 'Custom Menus'),
           (Icons.room_service, 'Additional Services'),
           (Icons.inventory_2, 'Raw Materials'),
-          (Icons.eco, 'Vegetables & Fruits')
+          (Icons.eco, 'Vegetables & Fruits'),
+          (Icons.soup_kitchen, 'Vessels & Utensils'),
+          (Icons.checklist, 'Lists')
         ], onItemTap: {
           'Menu Master': openMenu,
           'Custom Menus': openCustomMenus,
@@ -289,7 +297,9 @@ class SettingsScreen extends StatelessWidget {
               onSave: onSaveService,
               onDelete: onDeleteService),
           'Raw Materials': openRawMaterials,
-          'Vegetables & Fruits': openProduceItems
+          'Vegetables & Fruits': openProduceItems,
+          'Vessels & Utensils': openVesselItems,
+          'Lists': openLists
         }),
         SettingsGroup(title: t('Team'), items: [
           (Icons.badge, 'Employees'),
@@ -315,11 +325,13 @@ class SettingsScreen extends StatelessWidget {
           'Reset Password': () => unawaited(showResetPasswordDialog(context)),
         }),
         SettingsGroup(title: t('Data'), items: [
+          (Icons.folder_open, 'Downloads'),
           (Icons.file_download, 'Export Data'),
           (Icons.upload_file, 'Import Data'),
           (Icons.cloud_upload, 'Backup to Google Drive'),
           (Icons.sync, 'Sync Now'),
         ], onItemTap: {
+          'Downloads': openDownloads,
           'Export Data': () => unawaited(onExportData()),
           'Import Data': () => unawaited(onImportData()),
           'Backup to Google Drive': () => unawaited(onBackupToGoogleDrive()),
@@ -373,6 +385,7 @@ class EventDefaultsScreen extends StatefulWidget {
 class _EventDefaultsScreenState extends State<EventDefaultsScreen> {
   late Map<String, String> times;
   late Set<String> autoTypes;
+  late bool vegOnlyDefault;
 
   @override
   void initState() {
@@ -385,6 +398,7 @@ class _EventDefaultsScreenState extends State<EventDefaultsScreen> {
             '10:00 AM'
     };
     autoTypes = {...prefs.autoMenuTypes};
+    vegOnlyDefault = prefs.vegOnlyDefault;
   }
 
   TimeOfDay parseTime(String value) {
@@ -416,8 +430,10 @@ class _EventDefaultsScreenState extends State<EventDefaultsScreen> {
   }
 
   Future<void> save() async {
-    await appPreferences.save(appPreferences.value
-        .copyWith(defaultMenuTimes: times, autoMenuTypes: autoTypes));
+    await appPreferences.save(appPreferences.value.copyWith(
+        defaultMenuTimes: times,
+        autoMenuTypes: autoTypes,
+        vegOnlyDefault: vegOnlyDefault));
     if (!mounted) return;
     showCpSnack(context, 'Event defaults saved');
     widget.onClose();
@@ -439,6 +455,23 @@ class _EventDefaultsScreenState extends State<EventDefaultsScreen> {
                     style: TextStyle(fontWeight: FontWeight.w900)))
           ]),
       children: [
+        CpCard(
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: vegOnlyDefault,
+                activeThumbColor: Cp.primary,
+                title: const Text('Veg Only',
+                    style: TextStyle(
+                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                subtitle: Text(
+                    'New menu items default to vegetarian and non-veg options are hidden.',
+                    style: TextStyle(color: cpOnVariant(context))),
+                onChanged: (value) => setState(() => vegOnlyDefault = value)),
+          ]),
+        ),
+        const SizedBox(height: 12),
         CpCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -583,14 +616,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       showCpSnack(context, 'Preparing attendance report...');
       final uri = await widget.api.attendancePdfUri(monthKey);
-      final launched = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (!mounted) return;
-      showCpSnack(
-          context,
-          launched
-              ? 'Attendance report download started'
-              : 'Unable to download');
+      showDownloadSnack(context, uri,
+          title: 'Attendance report $monthKey.pdf',
+          kind: 'report',
+          successMessage: 'Attendance report download started',
+          failureMessage: 'Unable to download');
     } catch (e) {
       if (mounted) {
         showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -602,14 +633,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     try {
       showCpSnack(context, 'Preparing monthly report...');
       final uri = await widget.api.monthlyReportPdfUri(monthKey);
-      final launched = await launchUrl(uri,
-          mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       if (!mounted) return;
-      showCpSnack(
-          context,
-          launched
-              ? 'Monthly report download started'
-              : 'Unable to download report');
+      showDownloadSnack(context, uri,
+          title: 'Monthly report $monthKey.pdf',
+          kind: 'report',
+          successMessage: 'Monthly report download started',
+          failureMessage: 'Unable to download report');
     } catch (e) {
       if (mounted) {
         showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -994,6 +1023,378 @@ class SettingsGroup extends StatelessWidget {
   }
 }
 
+class DownloadsScreen extends StatefulWidget {
+  const DownloadsScreen({super.key, required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  State<DownloadsScreen> createState() => _DownloadsScreenState();
+}
+
+class _DownloadsScreenState extends State<DownloadsScreen> {
+  final selectedIds = <String>{};
+
+  String timeLabel(DateTime value) {
+    final date =
+        '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
+    final time =
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    return '$date $time';
+  }
+
+  IconData iconFor(String kind) => switch (kind) {
+        'pdf' => Icons.picture_as_pdf,
+        'backup' => Icons.archive,
+        'report' => Icons.analytics_outlined,
+        'menu' => Icons.restaurant_menu,
+        'invoice' => Icons.receipt_long,
+        _ => Icons.insert_drive_file,
+      };
+
+  List<DownloadEntry> selectedEntries(List<DownloadEntry> items) =>
+      items.where((item) => selectedIds.contains(item.id)).toList();
+
+  void toggleSelected(String id) {
+    setState(() => selectedIds.contains(id)
+        ? selectedIds.remove(id)
+        : selectedIds.add(id));
+  }
+
+  Future<void> openEntry(BuildContext context, DownloadEntry entry) async {
+    final uri = Uri.tryParse(entry.url);
+    if (uri == null) {
+      showCpSnack(context, 'File link is not valid');
+      return;
+    }
+    final launched =
+        await openDownloadedFile(uri, title: entry.title, kind: entry.kind);
+    if (!context.mounted) return;
+    showCpSnack(context, launched ? 'Opening file...' : 'Unable to open file');
+  }
+
+  Future<void> deleteEntries(BuildContext context, Set<String> ids) async {
+    if (ids.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(ids.length == 1 ? 'Delete download?' : 'Delete downloads?',
+            style: const TextStyle(
+                color: Cp.primary, fontWeight: FontWeight.w900)),
+        content: Text(ids.length == 1
+            ? 'Remove this file from downloads history?'
+            : 'Remove ${ids.length} files from downloads history?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                  backgroundColor: Cp.error, foregroundColor: Colors.white),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await downloadHistory.removeWhere(ids);
+    if (!mounted) return;
+    setState(() => selectedIds.removeAll(ids));
+    showCpSnack(this.context, 'Download history updated');
+  }
+
+  Future<void> clearAll(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear downloads?',
+            style: TextStyle(color: Cp.primary, fontWeight: FontWeight.w900)),
+        content: const Text('Remove all files from downloads history?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                  backgroundColor: Cp.error, foregroundColor: Colors.white),
+              child: const Text('Clear')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await downloadHistory.clear();
+    if (!mounted) return;
+    setState(selectedIds.clear);
+  }
+
+  Future<void> shareEntries(
+      BuildContext context, List<DownloadEntry> entries) async {
+    if (entries.isEmpty) return;
+    final links =
+        entries.map((entry) => '${entry.title}\n${entry.url}').join('\n\n');
+    final first = entries.first;
+    final title = entries.length == 1 ? first.title : '${entries.length} files';
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          decoration: const BoxDecoration(
+              color: Cp.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                    child: Container(
+                        width: 52,
+                        height: 5,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                            color: Cp.outlineVariant,
+                            borderRadius: BorderRadius.circular(99)))),
+                const Text('Share Download',
+                    style: TextStyle(
+                        color: Cp.primary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900)),
+                Text(title,
+                    style: const TextStyle(
+                        color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 14),
+                if (entries.length == 1)
+                  ShareMenuTile(
+                      icon: const Icon(Icons.open_in_new, color: Cp.primary),
+                      label: 'Open',
+                      onTap: () {
+                        Navigator.pop(sheetContext);
+                        unawaited(openEntry(context, first));
+                      }),
+                ShareMenuTile(
+                  icon: const Icon(Icons.chat, color: Cp.primary),
+                  label: 'WhatsApp',
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await launchUrl(
+                        Uri.parse(
+                            'https://wa.me/?text=${Uri.encodeComponent(links)}'),
+                        mode: LaunchMode.externalApplication,
+                        webOnlyWindowName: '_blank');
+                  },
+                ),
+                ShareMenuTile(
+                  icon: const Icon(Icons.email, color: Cp.primary),
+                  label: 'Email',
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await launchUrl(
+                        Uri(scheme: 'mailto', queryParameters: {
+                          'subject': 'CaterPro download - $title',
+                          'body': links
+                        }),
+                        mode: LaunchMode.externalApplication);
+                  },
+                ),
+                ShareMenuTile(
+                  icon: const Icon(Icons.sms, color: Cp.primary),
+                  label: 'SMS',
+                  onTap: () async {
+                    Navigator.pop(sheetContext);
+                    await launchUrl(
+                        Uri(scheme: 'sms', queryParameters: {'body': links}),
+                        mode: LaunchMode.externalApplication);
+                  },
+                ),
+                ShareMenuTile(
+                  icon: const Icon(Icons.link, color: Cp.primary),
+                  label: 'Copy Link',
+                  onTap: () async {
+                    await Clipboard.setData(ClipboardData(text: links));
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    if (context.mounted) showCpSnack(context, 'Link copied');
+                  },
+                ),
+                ShareMenuTile(
+                    icon: const Icon(Icons.delete_outline, color: Cp.error),
+                    label: entries.length == 1 ? 'Delete' : 'Delete selected',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      unawaited(deleteEntries(
+                          context, entries.map((entry) => entry.id).toSet()));
+                    }),
+              ]),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => ScreenFrame(
+        topBar: TopBar(
+            title: 'Downloads',
+            subtitle:
+                selectedIds.isEmpty ? null : '${selectedIds.length} selected',
+            avatar: false,
+            leading: IconButton(
+                onPressed: selectedIds.isEmpty
+                    ? widget.onClose
+                    : () => setState(selectedIds.clear),
+                icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+            actions: [
+              AnimatedBuilder(
+                  animation: downloadHistory,
+                  builder: (context, _) {
+                    final items = downloadHistory.items;
+                    final selected = selectedEntries(items);
+                    if (selectedIds.isNotEmpty) {
+                      return Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(
+                            tooltip: 'Share selected',
+                            onPressed: selected.isEmpty
+                                ? null
+                                : () =>
+                                    unawaited(shareEntries(context, selected)),
+                            icon: const Icon(Icons.share, color: Cp.primary)),
+                        IconButton(
+                            tooltip: 'Delete selected',
+                            onPressed: selected.isEmpty
+                                ? null
+                                : () => unawaited(deleteEntries(context,
+                                    selected.map((entry) => entry.id).toSet())),
+                            icon: const Icon(Icons.delete_outline,
+                                color: Cp.error)),
+                      ]);
+                    }
+                    return IconButton(
+                        tooltip: 'Clear downloads',
+                        onPressed: items.isEmpty
+                            ? null
+                            : () => unawaited(clearAll(context)),
+                        icon:
+                            const Icon(Icons.delete_sweep, color: Cp.primary));
+                  })
+            ]),
+        children: [
+          AnimatedBuilder(
+              animation: downloadHistory,
+              builder: (context, _) {
+                final items = downloadHistory.items;
+                selectedIds
+                    .removeWhere((id) => !items.any((item) => item.id == id));
+                if (items.isEmpty) {
+                  return const EmptyStateCard(
+                      title: 'No downloads yet',
+                      message:
+                          'Downloaded PDFs, reports, menus, invoices, and backups will appear here.');
+                }
+                return CpCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                      children: List.generate(items.length, (index) {
+                    final item = items[index];
+                    final selected = selectedIds.contains(item.id);
+                    return Column(children: [
+                      ListTile(
+                        selected: selected,
+                        selectedTileColor: Cp.primaryFixed,
+                        onLongPress: () => toggleSelected(item.id),
+                        onTap: selectedIds.isEmpty
+                            ? () => unawaited(openEntry(context, item))
+                            : () => toggleSelected(item.id),
+                        leading: Icon(iconFor(item.kind), color: Cp.primary),
+                        title: Text(item.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w800)),
+                        subtitle: Text(timeLabel(item.createdAt),
+                            style: TextStyle(
+                                color: cpOnVariant(context),
+                                fontWeight: FontWeight.w600)),
+                        trailing: selectedIds.isEmpty
+                            ? PopupMenuButton<String>(
+                                tooltip: 'Download actions',
+                                onSelected: (action) {
+                                  switch (action) {
+                                    case 'open':
+                                      unawaited(openEntry(context, item));
+                                      break;
+                                    case 'share':
+                                      unawaited(shareEntries(context, [item]));
+                                      break;
+                                    case 'select':
+                                      toggleSelected(item.id);
+                                      break;
+                                    case 'delete':
+                                      unawaited(
+                                          deleteEntries(context, {item.id}));
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (context) => const [
+                                  PopupMenuItem(
+                                      value: 'open',
+                                      child: Row(children: [
+                                        Icon(Icons.open_in_new,
+                                            color: Cp.primary),
+                                        SizedBox(width: 10),
+                                        Text('Open')
+                                      ])),
+                                  PopupMenuItem(
+                                      value: 'share',
+                                      child: Row(children: [
+                                        Icon(Icons.share, color: Cp.primary),
+                                        SizedBox(width: 10),
+                                        Text('Share')
+                                      ])),
+                                  PopupMenuItem(
+                                      value: 'select',
+                                      child: Row(children: [
+                                        Icon(Icons.check_box_outlined,
+                                            color: Cp.primary),
+                                        SizedBox(width: 10),
+                                        Text('Select')
+                                      ])),
+                                  PopupMenuDivider(),
+                                  PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(children: [
+                                        Icon(Icons.delete_outline,
+                                            color: Cp.error),
+                                        SizedBox(width: 10),
+                                        Text('Delete')
+                                      ])),
+                                ],
+                              )
+                            : Checkbox(
+                                value: selected,
+                                onChanged: (_) => toggleSelected(item.id)),
+                      ),
+                      if (index != items.length - 1)
+                        Divider(height: 1, color: cpOutline(context)),
+                    ]);
+                  })),
+                );
+              }),
+        ],
+      );
+}
+
+String downloadTitleForEvent(AppEvent event, String type, {String? dateId}) {
+  final base = event.name.isEmpty ? 'Event' : event.name;
+  return switch (type) {
+    'invoice' => '$base invoice.pdf',
+    'quotation' => '$base quotation.pdf',
+    'menu' => '$base menu${dateId == null ? '' : ' $dateId'}.pdf',
+    'all-menus' => '$base all menus.pdf',
+    _ => '$base document.pdf',
+  };
+}
+
 class NotificationsScreen extends StatelessWidget {
   const NotificationsScreen(
       {super.key,
@@ -1221,26 +1622,31 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
   late AppPreferences draft = appPreferences.value;
 
   Future<void> save(AppPreferences next) async {
-    setState(() => draft = next);
-    await appPreferences.save(next);
+    final normalized =
+        next.copyWith(theme: AppPreferences.normalizeTheme(next.theme));
+    setState(() => draft = normalized);
+    await appPreferences.save(normalized);
   }
 
   @override
-  Widget build(BuildContext context) => ScreenFrame(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final selectedTheme = AppPreferences.normalizeTheme(draft.theme);
+    return ScreenFrame(
         topBar: TopBar(
             title: tr('App Appearance', kn: 'ಅ್ಯಪ್ ರೂಪ', hi: 'ऐप दिखावट'),
             avatar: false,
             leading: IconButton(
                 onPressed: widget.onClose,
-                icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+                icon: Icon(Icons.arrow_back, color: scheme.primary))),
         children: [
           CpCard(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(tr('Text Size', kn: 'ಅಕ್ಷರ ಗಾತ್ರ', hi: 'टेक्स्ट आकार'),
-                    style: const TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                    style: TextStyle(
+                        color: scheme.primary, fontWeight: FontWeight.w900)),
                 Slider(
                     min: .85,
                     max: 1.25,
@@ -1257,9 +1663,9 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                const Text('Font',
+                Text('Font',
                     style: TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                        color: scheme.primary, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                     initialValue: draft.font,
@@ -1287,11 +1693,15 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(tr('Theme', kn: 'ಥೀಮ್', hi: 'थीम'),
-                    style: const TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                    style: TextStyle(
+                        color: scheme.primary, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
                 SegmentedButton<String>(
                   segments: const [
+                    ButtonSegment(
+                        value: 'system',
+                        icon: Icon(Icons.phone_android),
+                        label: Text('System')),
                     ButtonSegment(
                         value: 'light',
                         icon: Icon(Icons.light_mode),
@@ -1300,12 +1710,8 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
                         value: 'dark',
                         icon: Icon(Icons.dark_mode),
                         label: Text('Night')),
-                    ButtonSegment(
-                        value: 'system',
-                        icon: Icon(Icons.phone_android),
-                        label: Text('System')),
                   ],
-                  selected: {draft.theme},
+                  selected: {selectedTheme},
                   showSelectedIcon: false,
                   onSelectionChanged: (value) =>
                       save(draft.copyWith(theme: value.first)),
@@ -1317,8 +1723,8 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                 Text(tr('App Language', kn: 'ಅ್ಯಪ್ ಭಾಷೆ', hi: 'ऐप भाषा'),
-                    style: const TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                    style: TextStyle(
+                        color: scheme.primary, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                     initialValue: draft.languageCode,
@@ -1337,10 +1743,11 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
                     }),
                 const SizedBox(height: 8),
                 Text('Selected: ${draft.languageLabel}',
-                    style: const TextStyle(color: Cp.onVariant)),
+                    style: TextStyle(color: scheme.onSurfaceVariant)),
               ])),
         ],
       );
+  }
 }
 
 class InvoiceSettingsScreen extends StatefulWidget {
@@ -1985,10 +2392,12 @@ class EditableInlineField extends StatelessWidget {
       {super.key,
       required this.label,
       required this.controller,
+      this.enabled = true,
       this.keyboardType,
       this.inputFormatters});
   final String label;
   final TextEditingController controller;
+  final bool enabled;
   final TextInputType? keyboardType;
   final List<TextInputFormatter>? inputFormatters;
 
@@ -1997,6 +2406,7 @@ class EditableInlineField extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 12),
         child: TextField(
           controller: controller,
+          enabled: enabled,
           keyboardType: keyboardType,
           inputFormatters: inputFormatters,
           decoration: InputDecoration(

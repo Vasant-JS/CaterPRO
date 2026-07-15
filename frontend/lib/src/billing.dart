@@ -33,14 +33,13 @@ class _BillingScreenState extends State<BillingScreen> {
       BuildContext context, AppEvent event, String type) async {
     showCpSnack(context, 'Downloading...');
     final uri = await widget.api.documentUri(event.id, type);
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (!context.mounted) return;
-    showCpSnack(
-        context,
-        launched
-            ? '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started'
-            : 'Unable to start download');
+    showDownloadSnack(context, uri,
+        title: downloadTitleForEvent(event, type),
+        kind: 'invoice',
+        successMessage:
+            '${type == 'invoice' ? 'Invoice' : 'Quotation'} download started',
+        failureMessage: 'Unable to start download');
   }
 
   void openDocumentDetails(AppEvent event, String type, {AppPayment? payment}) {
@@ -58,11 +57,12 @@ class _BillingScreenState extends State<BillingScreen> {
       BuildContext context, ManualInvoice invoice) async {
     showCpSnack(context, 'Downloading invoice...');
     final uri = await widget.api.manualInvoicePdfUri(invoice.id);
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (!context.mounted) return;
-    showCpSnack(context,
-        launched ? 'Invoice download started' : 'Unable to start download');
+    showDownloadSnack(context, uri,
+        title: '${invoice.eventName} invoice.pdf',
+        kind: 'invoice',
+        successMessage: 'Invoice download started',
+        failureMessage: 'Unable to start download');
   }
 
   void openManualInvoiceDetails(ManualInvoice invoice) {
@@ -80,7 +80,7 @@ class _BillingScreenState extends State<BillingScreen> {
       selectedColor: selectedColor,
       labelStyle: TextStyle(
           color: selected
-              ? (cpDark(context) ? const Color(0xff00263d) : Colors.white)
+              ? (cpDark(context) ? const Color(0xff6fa0be) : Colors.white)
               : cpOnVariant(context),
           fontWeight: FontWeight.w900),
       label: Text('$label ($count)'),
@@ -103,7 +103,7 @@ class _BillingScreenState extends State<BillingScreen> {
           actions: [
             IconButton(
                 onPressed: openAddInvoice,
-                icon: const Icon(Icons.add, color: Cp.primary),
+                icon: const Icon(Icons.add, color: Cp.toolbarIcon),
                 tooltip: 'Add invoice')
           ]),
       children: [
@@ -486,8 +486,9 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Cp.background,
+      backgroundColor: cpSurface(context),
       body: Form(
         key: formKey,
         child: ScreenFrame(
@@ -496,7 +497,7 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
               avatar: false,
               leading: IconButton(
                   onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+                  icon: Icon(Icons.arrow_back, color: cpPrimary(context)))),
           bottomPadding: 110,
           children: [
             CpCard(
@@ -573,15 +574,16 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(children: [
-                      const Expanded(
+                      Expanded(
                           child: Text('Invoice Items',
                               style: TextStyle(
-                                  color: Cp.primary,
+                                  color: cpPrimary(context),
                                   fontSize: 18,
                                   fontWeight: FontWeight.w900))),
                       IconButton(
                           onPressed: addItem,
-                          icon: const Icon(Icons.add_circle, color: Cp.primary))
+                          icon: Icon(Icons.add_circle,
+                              color: cpPrimary(context)))
                     ]),
                     const SizedBox(height: 8),
                     ...List.generate(items.length, (index) {
@@ -704,12 +706,19 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          color: Cp.surface,
+          color: cpSurface(context),
           child: SizedBox(
             height: 54,
             child: FilledButton.icon(
                 onPressed: saving ? null : save,
-                style: FilledButton.styleFrom(backgroundColor: Cp.primary),
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
+                  disabledBackgroundColor:
+                      scheme.primary.withValues(alpha: .38),
+                  disabledForegroundColor:
+                      scheme.onPrimary.withValues(alpha: .68),
+                ),
                 icon: saving
                     ? const SizedBox(
                         width: 18,
@@ -735,11 +744,12 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   Future<void> download(BuildContext context) async {
     showCpSnack(context, 'Downloading invoice...');
     final uri = await api.manualInvoicePdfUri(invoice.id);
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (context.mounted) {
-      showCpSnack(context,
-          launched ? 'Invoice download started' : 'Unable to start download');
+      showDownloadSnack(context, uri,
+          title: '${invoice.eventName} invoice.pdf',
+          kind: 'invoice',
+          successMessage: 'Invoice download started',
+          failureMessage: 'Unable to start download');
     }
   }
 
@@ -848,7 +858,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                   color: Cp.tertiaryContainer),
               AmountLine('Settlement', money(invoice.settlement),
                   color: Cp.tertiaryContainer),
-              const Divider(height: 18),
+              Divider(height: 18, color: cpOutlineVariant(context)),
               AmountLine('Pending', money(invoice.pending),
                   color: invoice.pending == 0 ? Cp.tertiaryContainer : Cp.error,
                   strong: true),
@@ -1052,14 +1062,14 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   Future<void> download(BuildContext context) async {
     showCpSnack(context, 'Downloading...');
     final uri = await documentUri();
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
     if (context.mounted) {
-      showCpSnack(
-          context,
-          launched
-              ? '${isInvoice ? 'Invoice' : 'Quotation'} download started'
-              : 'Unable to start download');
+      showDownloadSnack(context, uri,
+          title:
+              downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
+          kind: 'invoice',
+          successMessage:
+              '${isInvoice ? 'Invoice' : 'Quotation'} download started',
+          failureMessage: 'Unable to start download');
     }
   }
 
@@ -1100,15 +1110,16 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
         .expand((date) => date.menuSlots)
         .expand((slot) => slot.menuItemIds)
         .length;
+    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: Cp.background,
+      backgroundColor: cpSurface(context),
       body: ScreenFrame(
         topBar: TopBar(
             title: title,
             avatar: false,
             leading: IconButton(
                 onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.arrow_back, color: Cp.primary))),
+                icon: Icon(Icons.arrow_back, color: cpPrimary(context)))),
         bottomPadding: 98,
         children: [
           CpCard(
@@ -1125,11 +1136,12 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       size: 34)),
               const SizedBox(height: 12),
               Text(isInvoice ? 'Payment recorded' : 'Quotation ready',
-                  style: const TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w900)),
+                  style: TextStyle(
+                      color: cpOnVariant(context),
+                      fontWeight: FontWeight.w900)),
               Text(isInvoice ? money(currentPayment) : money(total),
-                  style: const TextStyle(
-                      color: Cp.onSurface,
+                  style: TextStyle(
+                      color: cpOnSurface(context),
                       fontSize: 30,
                       fontWeight: FontWeight.w900)),
             ]),
@@ -1150,9 +1162,10 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
               Text(
                   'Event Date: ${event.dates.isEmpty ? '-' : event.dates.map((date) => date.date).join(', ')}',
                   style: const TextStyle(fontWeight: FontWeight.w900)),
-              const Text('Terms: Due of Receipt',
+              Text('Terms: Due of Receipt',
                   style: TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                      color: cpOnVariant(context),
+                      fontWeight: FontWeight.w700)),
               const SizedBox(height: 14),
               Row(children: [
                 Expanded(
@@ -1166,7 +1179,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                         value: payment?.date ??
                             DateTime.now().toIso8601String().substring(0, 10))),
               ]),
-              const Divider(height: 24),
+              Divider(height: 24, color: cpOutlineVariant(context)),
               SmallInfoBlock(label: 'Event#', value: event.id.toUpperCase()),
             ]),
           ),
@@ -1184,8 +1197,9 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
               ]),
               const SizedBox(height: 8),
               Text('$menuCount menu slots • $menuItems selected items',
-                  style: const TextStyle(
-                      color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                  style: TextStyle(
+                      color: cpOnVariant(context),
+                      fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               ...event.dates.take(4).map((date) => Text(
                   '${date.date}: ${date.menuSlots.map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
@@ -1197,14 +1211,14 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
             color: const Color(0xfffff7ff),
             child: Column(children: [
               AmountLine('Subtotal', money(total)),
-              const Divider(height: 18),
+              Divider(height: 18, color: cpOutlineVariant(context)),
               AmountLine('Grand Total', money(total), strong: true),
               AmountLine('Advance / Paid Till Now', money(paid),
                   color: Cp.tertiaryContainer),
               if (isInvoice)
                 AmountLine('Payment Made', money(currentPayment),
                     color: Cp.tertiaryContainer),
-              const Divider(height: 18),
+              Divider(height: 18, color: cpOutlineVariant(context)),
               AmountLine('Pending', money(pending),
                   color: pending == 0 ? Cp.tertiaryContainer : Cp.error,
                   strong: true),
@@ -1215,16 +1229,17 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       bottomNavigationBar: SafeArea(
         top: false,
         child: Container(
-          color: Cp.surface,
+          color: cpSurface(context),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Row(children: [
             Expanded(
               child: FilledButton(
                 onPressed: pending == 0 ? null : () => requestPayment(context),
                 style: FilledButton.styleFrom(
-                    backgroundColor: Cp.secondaryContainer,
-                    foregroundColor: const Color(0xff694000),
-                    disabledBackgroundColor: Cp.surfaceHigh),
+                    backgroundColor: scheme.secondaryContainer,
+                    foregroundColor: scheme.onSecondaryContainer,
+                    disabledBackgroundColor: cpSurfaceHigh(context),
+                    disabledForegroundColor: cpOnVariant(context)),
                 child: Text(
                     pending == 0 ? 'Payment Complete' : 'Request Payment',
                     style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -1259,24 +1274,26 @@ class DetailNavTile extends StatelessWidget {
           color: const Color(0xfffff7ff),
           child: Row(children: [
             CircleAvatar(
-                backgroundColor: Cp.surfaceHigh,
+                backgroundColor: cpSurfaceHigh(context),
                 child: Text(iconText,
-                    style: const TextStyle(fontWeight: FontWeight.w900))),
+                    style: TextStyle(
+                        color: cpOnSurface(context),
+                        fontWeight: FontWeight.w900))),
             const SizedBox(width: 12),
             Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                   Text(label,
-                      style: const TextStyle(
-                          color: Cp.outline,
+                      style: TextStyle(
+                          color: cpOnVariant(context),
                           fontSize: 11,
                           fontWeight: FontWeight.w800)),
                   Text(value,
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.w800))
                 ])),
-            const Icon(Icons.chevron_right, color: Cp.onVariant),
+            Icon(Icons.chevron_right, color: cpOnVariant(context)),
           ]),
         ),
       );
@@ -1290,8 +1307,8 @@ class SmallInfoBlock extends StatelessWidget {
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
         Text(value,
-            style: const TextStyle(
-                color: Cp.onVariant, fontWeight: FontWeight.w700))
+            style: TextStyle(
+                color: cpOnVariant(context), fontWeight: FontWeight.w700))
       ]);
 }
 
@@ -1308,11 +1325,15 @@ class AmountLine extends StatelessWidget {
           Expanded(
               child: Text(label,
                   style: TextStyle(
-                      color: color ?? Cp.onVariant,
+                      color: color == null
+                          ? cpOnVariant(context)
+                          : cpAdaptTextColor(context, color!),
                       fontWeight: strong ? FontWeight.w900 : FontWeight.w700))),
           Text(value,
               style: TextStyle(
-                  color: color ?? Cp.onSurface,
+                  color: color == null
+                      ? cpOnSurface(context)
+                      : cpAdaptTextColor(context, color!),
                   fontWeight: strong ? FontWeight.w900 : FontWeight.w700)),
         ]),
       );
@@ -1481,13 +1502,14 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       top: false,
       child: Container(
         padding: EdgeInsets.fromLTRB(
             20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-        decoration: const BoxDecoration(
-            color: Cp.card,
+        decoration: BoxDecoration(
+            color: cpCard(context),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -1499,16 +1521,16 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
                     height: 6,
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                        color: Cp.outlineVariant,
+                        color: cpOutlineVariant(context),
                         borderRadius: BorderRadius.circular(99)))),
-            const Text('Record Payment',
+            Text('Record Payment',
                 style: TextStyle(
-                    color: Cp.primary,
+                    color: cpPrimary(context),
                     fontSize: 22,
                     fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const Text('Update the financial records for this event.',
-                style: TextStyle(color: Cp.onVariant)),
+            Text('Update the financial records for this event.',
+                style: TextStyle(color: cpOnVariant(context))),
             const SizedBox(height: 18),
             CpCard(
               color: Cp.surfaceLow,
@@ -1572,7 +1594,9 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
                       child: Pill(paymentModes[i],
                           color:
                               selected ? Cp.primaryContainer : Cp.surfaceHigh,
-                          textColor: selected ? Colors.white : Cp.onVariant,
+                          textColor: selected
+                              ? scheme.onPrimaryContainer
+                              : cpOnVariant(context),
                           icon: selected ? Icons.check : null),
                     ),
                   );
@@ -1583,7 +1607,7 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
               value: settled,
-              activeColor: Cp.primary,
+              activeColor: scheme.primary,
               onChanged: (value) => setState(() => settled = value ?? false),
               title: const Text('Mark balance as settled',
                   style: TextStyle(fontWeight: FontWeight.w900)),
@@ -1598,16 +1622,19 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
                 height: 54,
                 child: FilledButton.icon(
                     onPressed: savePayment,
-                    style: FilledButton.styleFrom(backgroundColor: Cp.primary),
+                    style: FilledButton.styleFrom(
+                        backgroundColor: scheme.primary,
+                        foregroundColor: scheme.onPrimary),
                     icon: const Icon(Icons.save),
                     label: const Text('Save Payment',
                         style: TextStyle(fontWeight: FontWeight.w900)))),
             Center(
                 child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text('Cancel',
+                    child: Text('Cancel',
                         style: TextStyle(
-                            color: Cp.primary, fontWeight: FontWeight.w800)))),
+                            color: cpPrimary(context),
+                            fontWeight: FontWeight.w800)))),
           ],
         ),
       ),
@@ -1636,7 +1663,7 @@ class PaymentInputBox extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
         decoration: BoxDecoration(
-            border: Border.all(color: Cp.outline),
+            border: Border.all(color: cpOutline(context)),
             borderRadius: BorderRadius.circular(12)),
         child: Row(
           children: [
@@ -1649,8 +1676,8 @@ class PaymentInputBox extends StatelessWidget {
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 decoration: InputDecoration(
                   labelText: label,
-                  labelStyle: const TextStyle(
-                      color: Cp.primary,
+                  labelStyle: TextStyle(
+                      color: cpPrimary(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w700),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -1663,7 +1690,7 @@ class PaymentInputBox extends StatelessWidget {
             if (icon != null)
               Padding(
                   padding: const EdgeInsets.only(left: 8),
-                  child: Icon(icon, color: Cp.outline)),
+                  child: Icon(icon, color: cpOutline(context))),
           ],
         ),
       ),

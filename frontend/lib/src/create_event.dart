@@ -100,9 +100,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       for (final slot in date.slots.where((item) => item.enabled)) {
         final pax = int.tryParse(slot.pax.trim()) ?? 0;
         if (pax <= 0) return '${slot.type} members must be more than zero.';
-        if (slot.pricePerPax <= 0) {
-          return '${slot.type} price per member must be more than zero.';
-        }
       }
     }
     return null;
@@ -152,6 +149,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return ScreenFrame(
       bottomPadding: 24,
       topBar: TopBar(
@@ -163,17 +161,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         avatar: false,
         leading: IconButton(
             onPressed: widget.onClose,
-            icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+            icon: Icon(Icons.arrow_back, color: cpPrimary(context))),
         actions: [
           if (autosaving)
-            const Padding(
-                padding: EdgeInsets.only(right: 14),
+            Padding(
+                padding: const EdgeInsets.only(right: 14),
                 child: Center(
                     child: SizedBox(
                         width: 18,
                         height: 18,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Cp.primary))))
+                            strokeWidth: 2, color: cpPrimary(context)))))
         ],
       ),
       children: [
@@ -233,7 +231,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                       ? null
                       : () => step == 3 ? save() : goNext(),
                   style: FilledButton.styleFrom(
-                      backgroundColor: Cp.primaryContainer),
+                      backgroundColor: scheme.primaryContainer,
+                      foregroundColor: scheme.onPrimaryContainer,
+                      disabledBackgroundColor:
+                          scheme.primaryContainer.withValues(alpha: .42),
+                      disabledForegroundColor:
+                          scheme.onPrimaryContainer.withValues(alpha: .65)),
                   label: Text(
                       saving
                           ? 'Saving...'
@@ -303,13 +306,13 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
     return Column(children: [
       CpCard(
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Row(children: [
-            Icon(Icons.assignment, color: Cp.primary),
-            SizedBox(width: 8),
+          Row(children: [
+            Icon(Icons.assignment, color: cpPrimary(context)),
+            const SizedBox(width: 8),
             Text('Event Fundamentals',
                 style: TextStyle(
                     fontSize: 20,
-                    color: Cp.primary,
+                    color: cpPrimary(context),
                     fontWeight: FontWeight.w800))
           ]),
           const SizedBox(height: 20),
@@ -334,14 +337,14 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Material(
-                color: Cp.surfaceLow,
+                color: cpSurfaceLow(context),
                 borderRadius: BorderRadius.circular(12),
                 child: Column(
                   children: matches
                       .map((customer) => ListTile(
                             dense: true,
                             leading:
-                                const Icon(Icons.person, color: Cp.primary),
+                                Icon(Icons.person, color: cpPrimary(context)),
                             title: Text(customer.name,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.w900)),
@@ -393,12 +396,14 @@ class CreateDatesStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Event Dates',
+      Text('Event Dates',
           style: TextStyle(
-              color: Cp.primary, fontSize: 24, fontWeight: FontWeight.w900)),
-      const Text(
+              color: cpPrimary(context),
+              fontSize: 24,
+              fontWeight: FontWeight.w900)),
+      Text(
           'Add every date in the event schedule. Members are configured later for each date and menu type.',
-          style: TextStyle(color: Cp.onVariant)),
+          style: TextStyle(color: cpOnVariant(context))),
       const SizedBox(height: 16),
       if (dates.isEmpty)
         const EmptyStateCard(
@@ -444,8 +449,8 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 28),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
+          decoration: BoxDecoration(
+              color: cpSurface(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -457,15 +462,15 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
-                const Text('Add Event Date',
+                Text('Add Event Date',
                     style: TextStyle(
-                        color: Cp.primary,
+                        color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
-                const Text('Select a date. Previous dates are disabled.',
-                    style: TextStyle(color: Cp.onVariant)),
+                Text('Select a date. Previous dates are disabled.',
+                    style: TextStyle(color: cpOnVariant(context))),
                 const SizedBox(height: 18),
                 InkWell(
                   borderRadius: BorderRadius.circular(12),
@@ -528,7 +533,9 @@ class DateScheduleCard extends StatelessWidget {
   final String month, day, title, summary;
   final VoidCallback? onDelete;
   @override
-  Widget build(BuildContext context) => Padding(
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: CpCard(
             child: Row(children: [
@@ -536,17 +543,17 @@ class DateScheduleCard extends StatelessWidget {
               width: 52,
               padding: const EdgeInsets.symmetric(vertical: 8),
               decoration: BoxDecoration(
-                  color: Cp.primaryFixed,
+                  color: scheme.primaryContainer,
                   borderRadius: BorderRadius.circular(10)),
               child: Column(children: [
                 Text(month,
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: scheme.onPrimaryContainer,
                         fontSize: 11,
                         fontWeight: FontWeight.w900)),
                 Text(day,
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: scheme.onPrimaryContainer,
                         fontSize: 22,
                         fontWeight: FontWeight.w900))
               ])),
@@ -559,8 +566,9 @@ class DateScheduleCard extends StatelessWidget {
                     style: const TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w900)),
                 Text(summary,
-                    style: const TextStyle(
-                        color: Cp.onVariant, fontWeight: FontWeight.w700))
+                    style: TextStyle(
+                        color: cpOnVariant(context),
+                        fontWeight: FontWeight.w700))
               ])),
           if (onDelete != null)
             IconButton(
@@ -568,6 +576,7 @@ class DateScheduleCard extends StatelessWidget {
                 icon: const Icon(Icons.delete, color: Cp.error))
         ])),
       );
+  }
 }
 
 class CreateMenuStep extends StatefulWidget {
@@ -600,6 +609,11 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
   @override
   Widget build(BuildContext context) {
     final config = currentConfig;
+    final scheme = Theme.of(context).colorScheme;
+    final primary = cpPrimary(context);
+    final onSurface = cpOnSurface(context);
+    final onVariant = cpOnVariant(context);
+    final outline = cpOutline(context);
     if (config == null) {
       return const EmptyStateCard(
           title: 'Add dates first',
@@ -614,9 +628,14 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           return ChoiceChip(
             selected: selected,
             label: Text(readableDateLabel(widget.dates[index].date)),
-            selectedColor: Cp.primaryContainer,
+            selectedColor: scheme.primaryContainer,
+            backgroundColor: scheme.surfaceContainerHigh,
+            side: BorderSide(
+                color:
+                    selected ? scheme.primaryContainer : scheme.outlineVariant),
+            showCheckmark: false,
             labelStyle: TextStyle(
-                color: selected ? Colors.white : Cp.onVariant,
+                color: selected ? scheme.onPrimaryContainer : onSurface,
                 fontWeight: FontWeight.w800),
             onSelected: (_) => setState(() => selectedDateIndex = index),
           );
@@ -626,24 +645,23 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
       if (config.slots.isEmpty)
         CpCard(
           color: Cp.surfaceLow,
-          child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Icon(Icons.event_note, color: Cp.outline),
-                SizedBox(height: 10),
-                Text('No menu configured for this date yet.',
-                    style: TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
-                Text(
-                    'Add only the menu types and services needed for this date.',
-                    style: TextStyle(color: Cp.onVariant)),
-              ]),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Icon(Icons.event_note, color: outline),
+            const SizedBox(height: 10),
+            Text('No menu configured for this date yet.',
+                style: TextStyle(color: primary, fontWeight: FontWeight.w900)),
+            Text('Add only the menu types and services needed for this date.',
+                style: TextStyle(color: onVariant)),
+          ]),
         )
       else
         ...config.slots.map((slot) => MealSlotCard(
               key: ValueKey('${config.label}-${slot.type}'),
               slot: slot,
               items: selectedMenuTitles(slot),
+              services: slot.additionalServices,
+              menuImages: slot.menuImages,
               onEnabledChanged: (value) {
                 setState(() => slot.enabled = value);
                 widget.onChanged();
@@ -657,6 +675,12 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                 widget.onChanged();
               },
               onEditMenu: () => openMenuPicker(slot),
+              onEditServices: () => openSlotServicePicker(slot),
+              onAddImage: () => addMenuImage(slot),
+              onRemoveImage: (image) {
+                setState(() => slot.menuImages.remove(image));
+                widget.onChanged();
+              },
               onDelete: () {
                 setState(() => config.slots.remove(slot));
                 widget.onChanged();
@@ -668,15 +692,15 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           icon: Icons.add_circle,
           onTap: openMealTypePicker),
       const SizedBox(height: 12),
-      const Text('Additional Services',
-          style: TextStyle(color: Cp.onVariant, fontWeight: FontWeight.w900)),
+      Text('Date-level Additional Services',
+          style: TextStyle(color: onVariant, fontWeight: FontWeight.w900)),
       const SizedBox(height: 8),
       if (config.additionalServices.isEmpty)
-        const Padding(
-            padding: EdgeInsets.only(bottom: 10),
+        Padding(
+            padding: const EdgeInsets.only(bottom: 10),
             child: Text('No additional services for this date.',
-                style: TextStyle(
-                    color: Cp.onVariant, fontStyle: FontStyle.italic)))
+                style:
+                    TextStyle(color: onVariant, fontStyle: FontStyle.italic)))
       else
         ...config.additionalServices.map((service) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -695,8 +719,9 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
             )),
       const SizedBox(height: 12),
       DashedAction(
-          label: 'Add Service',
+          label: 'Add Date Service',
           icon: Icons.add_circle,
+          count: config.additionalServices.length,
           onTap: openServicePicker),
     ]);
   }
@@ -724,6 +749,52 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
     );
   }
 
+  void openSlotServicePicker(MealSlotConfig slot) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => ServicePickerSheet(
+        services: widget.services,
+        selectedServices: slot.additionalServices,
+        onChanged: (selectedServices) {
+          setState(() {
+            slot.additionalServices
+              ..clear()
+              ..addAll(selectedServices);
+          });
+          widget.onChanged();
+        },
+      ),
+    );
+  }
+
+  Future<void> addMenuImage(MealSlotConfig slot) async {
+    if (slot.menuImages.length >= 2) {
+      showCpSnack(context, 'Maximum 2 images per menu type');
+      return;
+    }
+    final result =
+        await fp.FilePicker.pickFiles(type: fp.FileType.image, withData: true);
+    final file = result?.files.single;
+    final bytes = file?.bytes;
+    if (bytes == null || bytes.isEmpty) return;
+    final extension = (file!.extension ?? '').toLowerCase();
+    final mime = extension == 'jpg' || extension == 'jpeg'
+        ? 'image/jpeg'
+        : extension == 'webp'
+            ? 'image/webp'
+            : 'image/png';
+    setState(() {
+      slot.menuImages.add({
+        'id': DateTime.now().microsecondsSinceEpoch.toString(),
+        'name': file.name,
+        'dataUrl': 'data:$mime;base64,${base64Encode(bytes)}',
+      });
+    });
+    widget.onChanged();
+  }
+
   void openMealTypePicker() {
     const availableTypes = [
       ('Breakfast', '8:00 AM', 0),
@@ -744,8 +815,8 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
           constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * .78),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
+          decoration: BoxDecoration(
+              color: cpSurface(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -757,11 +828,11 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
                 Text('Add Menu Type for ${readableDateLabel(config.date)}',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 22,
                         fontWeight: FontWeight.w900)),
                 const SizedBox(height: 14),
@@ -789,7 +860,9 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                               },
                         child: Row(children: [
                           Icon(exists ? Icons.check_circle : Icons.add_circle,
-                              color: exists ? Cp.outline : Cp.primary),
+                              color: exists
+                                  ? cpOutline(context)
+                                  : cpPrimary(context)),
                           const SizedBox(width: 12),
                           Expanded(
                               child: Text(
@@ -797,8 +870,8 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                                   style: const TextStyle(
                                       fontWeight: FontWeight.w900))),
                           Text(type.$2,
-                              style: const TextStyle(
-                                  color: Cp.onVariant,
+                              style: TextStyle(
+                                  color: cpOnVariant(context),
                                   fontWeight: FontWeight.w700)),
                         ]),
                       );
@@ -855,8 +928,12 @@ class MealSlotConfig {
       required this.pax,
       required this.pricePerPax,
       Set<String>? selectedMenuIds,
+      List<Map<String, dynamic>>? additionalServices,
+      List<Map<String, dynamic>>? menuImages,
       this.enabled = true})
-      : selectedMenuIds = selectedMenuIds ?? <String>{};
+      : selectedMenuIds = selectedMenuIds ?? <String>{},
+        additionalServices = additionalServices ?? <Map<String, dynamic>>[],
+        menuImages = menuImages ?? <Map<String, dynamic>>[];
 
   String? id;
   final String type;
@@ -864,6 +941,8 @@ class MealSlotConfig {
   String pax;
   int pricePerPax;
   Set<String> selectedMenuIds;
+  final List<Map<String, dynamic>> additionalServices;
+  final List<Map<String, dynamic>> menuImages;
   bool enabled;
 
   factory MealSlotConfig.fromEventSlot(AppMenuSlot slot) {
@@ -874,6 +953,12 @@ class MealSlotConfig {
         pax: slot.pax.toString(),
         pricePerPax: slot.pricePerPax,
         selectedMenuIds: slot.menuItemIds.toSet(),
+        additionalServices: slot.additionalServices
+            .map((service) => Map<String, dynamic>.from(service))
+            .toList(),
+        menuImages: slot.menuImages
+            .map((image) => Map<String, dynamic>.from(image))
+            .toList(),
         enabled: slot.enabled);
   }
 
@@ -885,6 +970,8 @@ class MealSlotConfig {
         'pricePerPax': pricePerPax,
         'enabled': enabled,
         'menuItemIds': selectedMenuIds.toList(),
+        'additionalServices': additionalServices,
+        'menuImages': menuImages,
       };
 }
 
@@ -933,6 +1020,7 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final services = [...widget.services]..sort((a, b) {
         final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0)
             .compareTo(selectedIds.contains(a.id) ? 1 : 0);
@@ -946,8 +1034,8 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
         constraints:
             BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .75),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        decoration: const BoxDecoration(
-            color: Cp.surface,
+        decoration: BoxDecoration(
+            color: cpSurface(context),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -959,15 +1047,15 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                       height: 6,
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                          color: Cp.outlineVariant,
+                          color: cpOutlineVariant(context),
                           borderRadius: BorderRadius.circular(99)))),
-              const Text('Add Service',
+              Text('Add Service',
                   style: TextStyle(
-                      color: Cp.primary,
+                      color: cpPrimary(context),
                       fontSize: 24,
                       fontWeight: FontWeight.w900)),
-              const Text('Choose services from Settings > Additional Services.',
-                  style: TextStyle(color: Cp.onVariant)),
+              Text('Choose services from Settings > Additional Services.',
+                  style: TextStyle(color: cpOnVariant(context))),
               const SizedBox(height: 16),
               Flexible(
                 child: ListView.separated(
@@ -991,7 +1079,9 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                                     selected
                                         ? Icons.check_circle
                                         : Icons.circle_outlined,
-                                    color: selected ? Cp.primary : Cp.outline)),
+                                    color: selected
+                                        ? cpPrimary(context)
+                                        : cpOutline(context))),
                             const SizedBox(width: 12),
                             Expanded(
                                 child: Text(
@@ -1035,7 +1125,8 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                 height: 52,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                      backgroundColor: Cp.primaryContainer),
+                      backgroundColor: scheme.primaryContainer,
+                      foregroundColor: scheme.onPrimaryContainer),
                   onPressed: () {
                     for (final service in widget.services
                         .where((service) => selectedIds.contains(service.id))) {
@@ -1120,7 +1211,9 @@ class MenuPickerScreen extends StatefulWidget {
 }
 
 class _MenuPickerScreenState extends State<MenuPickerScreen> {
+  final api = ApiService();
   late Set<String> selectedIds;
+  final searchController = TextEditingController();
   String query = '';
 
   @override
@@ -1130,13 +1223,155 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
   }
 
   @override
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Set<String> get menuTypeMeals {
+    final meal = widget.meal.trim();
+    if (meal == 'Lunch' || meal == 'Dinner') return {'Lunch', 'Dinner'};
+    if (meal == 'Snack' || meal == 'Snacks') return {'Snack'};
+    if (meal == 'Other') return {'Others'};
+    return {meal};
+  }
+
+  bool itemMatchesMenuType(MenuMasterItem item) {
+    final itemMeals = item.meals
+        .split(',')
+        .map((meal) => meal.trim())
+        .where((meal) => meal.isNotEmpty)
+        .map((meal) => meal == 'Other' ? 'Others' : meal)
+        .toSet();
+    if (selectedIds.contains(item.id)) return true;
+    if (itemMeals.isEmpty) return menuTypeMeals.contains('Others');
+    return itemMeals.intersection(menuTypeMeals).isNotEmpty;
+  }
+
+  String nextMenuItemId() {
+    var maxNumber = 0;
+    for (final item in MenuMasterScreen.menuItems) {
+      final match = RegExp(r'^MNU-(\d+)$').firstMatch(item.id);
+      if (match == null) continue;
+      final value = int.tryParse(match.group(1) ?? '') ?? 0;
+      if (value > maxNumber) maxNumber = value;
+    }
+    return 'MNU-${(maxNumber + 1).toString().padLeft(3, '0')}';
+  }
+
+  Future<void> addMenuItemPopup() async {
+    final english = TextEditingController(text: query.trim());
+    final kannada = TextEditingController();
+    try {
+      final item = await showDialog<MenuMasterItem>(
+        context: context,
+        builder: (context) {
+          String? popupError;
+          var savingItem = false;
+          return StatefulBuilder(builder: (context, setDialogState) {
+            Future<void> saveItem() async {
+              final englishText = english.text.trim();
+              final kannadaText = kannada.text.trim();
+              if (englishText.isEmpty || kannadaText.isEmpty) {
+                setDialogState(
+                    () => popupError = 'Enter both English and Kannada text.');
+                return;
+              }
+              setDialogState(() {
+                popupError = null;
+                savingItem = true;
+              });
+              try {
+                final saved = await api.saveMenuItem(
+                    MenuMasterItem(
+                        id: nextMenuItemId(),
+                        english: englishText,
+                        kannada: kannadaText,
+                        category: 'Other',
+                        meals: eventMenuTypes
+                            .where((meal) => menuTypeMeals.contains(meal))
+                            .join(', '),
+                        veg: true),
+                    creating: true);
+                if (context.mounted) Navigator.pop(context, saved);
+              } catch (e) {
+                setDialogState(() {
+                  popupError = e.toString().replaceFirst('Exception: ', '');
+                  savingItem = false;
+                });
+              }
+            }
+
+            return AlertDialog(
+              title: Text('Add ${widget.meal} item'),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                TextField(
+                  controller: english,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'English'),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: kannada,
+                  decoration: const InputDecoration(labelText: 'Kannada'),
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => savingItem ? null : saveItem(),
+                ),
+                if (popupError != null) ...[
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(popupError!,
+                        style: const TextStyle(
+                            color: Cp.error, fontWeight: FontWeight.w800)),
+                  ),
+                ],
+              ]),
+              actions: [
+                TextButton(
+                    onPressed: savingItem ? null : () => Navigator.pop(context),
+                    child: const Text('Cancel')),
+                FilledButton(
+                    onPressed: savingItem ? null : saveItem,
+                    child: Text(savingItem ? 'Saving...' : 'Add')),
+              ],
+            );
+          });
+        },
+      );
+      if (item == null || !mounted) return;
+      setState(() {
+        final index = MenuMasterScreen.menuItems
+            .indexWhere((existing) => existing.id == item.id);
+        if (index == -1) {
+          MenuMasterScreen.menuItems.add(item);
+        } else {
+          MenuMasterScreen.menuItems[index] = item;
+        }
+        selectedIds.add(item.id);
+        query = '';
+        searchController.clear();
+      });
+      showCpSnack(context, '${widget.meal} item added');
+    } finally {
+      english.dispose();
+      kannada.dispose();
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final items = MenuMasterScreen.menuItems
-        .where((item) =>
-            item.title.toLowerCase().contains(query.toLowerCase()) ||
-            item.english.toLowerCase().contains(query.toLowerCase()) ||
-            item.kannada.contains(query))
-        .toList()
+    final scheme = Theme.of(context).colorScheme;
+    final items = MenuMasterScreen.menuItems.where((item) {
+      if (appPreferences.value.vegOnlyDefault && !item.veg) return false;
+      final matchesType = itemMatchesMenuType(item);
+      final matchesSearch =
+          item.title.toLowerCase().contains(query.toLowerCase()) ||
+              item.english.toLowerCase().contains(query.toLowerCase()) ||
+              item.kannada.contains(query);
+      return matchesType && matchesSearch;
+    }).toList()
       ..sort((a, b) {
         final aOrder = selectedOrder(a.id, selectedIds);
         final bOrder = selectedOrder(b.id, selectedIds);
@@ -1148,12 +1383,20 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
       });
 
     return Scaffold(
-      backgroundColor: Cp.background,
+      backgroundColor: cpSurface(context),
       appBar: AppBar(
-        backgroundColor: Cp.surface,
-        foregroundColor: Cp.primary,
+        backgroundColor: cpSurface(context),
+        foregroundColor: cpPrimary(context),
         title: Text('Select ${widget.meal} Menu'),
         actions: [
+          IconButton(
+              tooltip: 'Select from ready made menus',
+              onPressed: openReadyMadeMenuPicker,
+              icon: const Icon(Icons.fact_check)),
+          IconButton(
+              tooltip: 'Add ${widget.meal} item',
+              onPressed: addMenuItemPopup,
+              icon: const Icon(Icons.add, color: Cp.toolbarIcon)),
           TextButton(
             onPressed: () {
               widget.onChanged(selectedIds);
@@ -1167,50 +1410,127 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DashedAction(
-              label: 'Select From Ready Made Menus',
-              icon: Icons.fact_check,
-              onTap: openReadyMadeMenuPicker),
-          const SizedBox(height: 12),
           TextField(
+            controller: searchController,
+            textInputAction: TextInputAction.search,
             decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
+                suffixIcon: query.isEmpty
+                    ? null
+                    : IconButton(
+                        tooltip: 'Clear search',
+                        onPressed: () {
+                          searchController.clear();
+                          setState(() => query = '');
+                        },
+                        icon: const Icon(Icons.close)),
                 hintText: 'Search menu items',
+                filled: true,
+                fillColor: scheme.surfaceContainerLow,
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12))),
             onChanged: (value) => setState(() => query = value),
           ),
-          const SizedBox(height: 16),
-          ...items.map((item) {
-            final selected = selectedIds.contains(item.id);
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: CpCard(
-                color: selected ? Cp.primaryFixed : Cp.card,
-                onTap: () => setState(() => selected
-                    ? selectedIds.remove(item.id)
-                    : selectedIds.add(item.id)),
-                child: Row(children: [
-                  Icon(selected ? Icons.check_circle : Icons.circle_outlined,
-                      color: selected ? Cp.primary : Cp.outline),
-                  const SizedBox(width: 12),
-                  Expanded(
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text(item.title,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w900)),
-                        Text('${item.id} | ${item.category} | ${item.meals}',
-                            style: const TextStyle(color: Cp.onVariant))
-                      ])),
-                ]),
-              ),
-            );
-          }),
+          const SizedBox(height: 12),
+          if (items.isEmpty)
+            CpCard(
+              onTap: addMenuItemPopup,
+              color: Cp.primaryFixed,
+              child: Row(children: [
+                Icon(Icons.add_circle, color: cpPrimary(context), size: 24),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text('Add item',
+                        style: TextStyle(
+                            color: cpPrimary(context),
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900))),
+              ]),
+            )
+          else
+            ReorderableListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              buildDefaultDragHandles: false,
+              itemCount: items.length,
+              onReorderItem: (oldIndex, newIndex) => reorderSelectedItem(
+                  items: items, oldIndex: oldIndex, newIndex: newIndex),
+              itemBuilder: (context, index) {
+                final item = items[index];
+                final selected = selectedIds.contains(item.id);
+                return Padding(
+                  key: ValueKey(item.id),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: CpCard(
+                    color: selected ? Cp.primaryFixed : Cp.card,
+                    onTap: () => setState(() {
+                      if (selected) {
+                        selectedIds.remove(item.id);
+                        return;
+                      }
+                      selectedIds.add(item.id);
+                      query = '';
+                      searchController.clear();
+                    }),
+                    child: Row(children: [
+                      Icon(
+                          selected ? Icons.check_circle : Icons.circle_outlined,
+                          color: selected
+                              ? cpPrimary(context)
+                              : cpOutline(context),
+                          size: 22),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: MarqueeText(
+                          '${item.kannada}/${item.english}',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                      if (selected) ...[
+                        const SizedBox(width: 8),
+                        ReorderableDragStartListener(
+                          index: index,
+                          child: Tooltip(
+                            message: 'Drag to reorder selected menu items',
+                            child: Icon(Icons.drag_handle,
+                                color: cpPrimary(context)),
+                          ),
+                        ),
+                      ],
+                    ]),
+                  ),
+                );
+              },
+            ),
         ],
       ),
     );
+  }
+
+  void reorderSelectedItem(
+      {required List<MenuMasterItem> items,
+      required int oldIndex,
+      required int newIndex}) {
+    if (oldIndex < 0 || oldIndex >= items.length) return;
+    final dragged = items[oldIndex];
+    if (!selectedIds.contains(dragged.id)) return;
+
+    final selectedVisible =
+        items.where((item) => selectedIds.contains(item.id)).toList();
+    if (selectedVisible.length < 2) return;
+
+    final adjustedNewIndex = newIndex.clamp(0, selectedVisible.length - 1);
+
+    final orderedIds = selectedIds.toList();
+    orderedIds.remove(dragged.id);
+    final targetId = selectedVisible[adjustedNewIndex].id;
+    final insertAt = orderedIds.indexOf(targetId);
+    orderedIds.insert(
+        insertAt == -1 ? orderedIds.length : insertAt, dragged.id);
+    setState(() => selectedIds = orderedIds.toSet());
   }
 
   void openReadyMadeMenuPicker() {
@@ -1228,8 +1548,8 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
           constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * .72),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
+          decoration: BoxDecoration(
+              color: cpSurface(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1241,16 +1561,16 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
                 Text('Ready Made ${widget.meal} Menus',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 22,
                         fontWeight: FontWeight.w900)),
-                const Text(
+                Text(
                     'Selecting one will add all its items. You can still add extra items below.',
-                    style: TextStyle(color: Cp.onVariant)),
+                    style: TextStyle(color: cpOnVariant(context))),
                 const SizedBox(height: 14),
                 if (menus.isEmpty)
                   const EmptyStateCard(
@@ -1271,8 +1591,8 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
                             showCpSnack(context, '${menu.name} items selected');
                           },
                           child: Row(children: [
-                            const Icon(Icons.playlist_add_check,
-                                color: Cp.primary),
+                            Icon(Icons.playlist_add_check,
+                                color: cpPrimary(context)),
                             const SizedBox(width: 12),
                             Expanded(
                                 child: Text(
@@ -1296,22 +1616,35 @@ class MealSlotCard extends StatelessWidget {
       {super.key,
       required this.slot,
       required this.items,
+      required this.services,
+      required this.menuImages,
       required this.onEnabledChanged,
       required this.onPaxChanged,
       required this.onPriceChanged,
       required this.onEditMenu,
+      required this.onEditServices,
+      required this.onAddImage,
+      required this.onRemoveImage,
       required this.onDelete});
   final MealSlotConfig slot;
   final List<String> items;
+  final List<Map<String, dynamic>> services;
+  final List<Map<String, dynamic>> menuImages;
   final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<String> onPaxChanged;
   final ValueChanged<String> onPriceChanged;
   final VoidCallback onEditMenu;
+  final VoidCallback onEditServices;
+  final VoidCallback onAddImage;
+  final ValueChanged<Map<String, dynamic>> onRemoveImage;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final enabled = slot.enabled;
+    final primary = cpPrimary(context);
+    final outline = cpOutline(context);
+    final onVariant = cpOnVariant(context);
     return Opacity(
       opacity: enabled ? 1 : .58,
       child: Padding(
@@ -1321,8 +1654,7 @@ class MealSlotCard extends StatelessWidget {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Icon(Icons.restaurant_menu,
-                  color: enabled ? Cp.primary : Cp.outline),
+              Icon(Icons.restaurant_menu, color: enabled ? primary : outline),
               const SizedBox(width: 12),
               Expanded(
                   child: Column(
@@ -1335,14 +1667,14 @@ class MealSlotCard extends StatelessWidget {
                         enabled
                             ? '${slot.time} | ${slot.pax.isEmpty ? 0 : slot.pax} Members'
                             : 'Not Scheduled | 0 Members',
-                        style: const TextStyle(color: Cp.onVariant))
+                        style: TextStyle(color: onVariant))
                   ])),
               IconButton(
                   onPressed: onDelete,
                   icon: const Icon(Icons.delete_outline, color: Cp.error)),
               Switch(
                   value: enabled,
-                  activeThumbColor: Cp.primary,
+                  activeThumbColor: primary,
                   onChanged: onEnabledChanged),
             ]),
             if (enabled) ...[
@@ -1373,9 +1705,9 @@ class MealSlotCard extends StatelessWidget {
             if (enabled) ...[
               const SizedBox(height: 12),
               if (items.isEmpty)
-                const Text('No menu items selected.',
+                Text('No menu items selected.',
                     style: TextStyle(
-                        color: Cp.onVariant, fontStyle: FontStyle.italic))
+                        color: onVariant, fontStyle: FontStyle.italic))
               else
                 Wrap(
                     spacing: 8,
@@ -1383,20 +1715,49 @@ class MealSlotCard extends StatelessWidget {
                     children: items
                         .map((e) => Pill(e, color: Cp.surfaceHigh))
                         .toList()),
+              if (services.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: services
+                        .map((service) => Pill(additionalServiceLine(service),
+                            color: Cp.primaryFixed))
+                        .toList()),
+              ],
+              if (menuImages.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: menuImages.map((image) {
+                      final name = image['name']?.toString().trim();
+                      return InputChip(
+                        avatar: const Icon(Icons.image, size: 18),
+                        label: Text(
+                            name == null || name.isEmpty ? 'Menu image' : name),
+                        onDeleted: () => onRemoveImage(image),
+                      );
+                    }).toList()),
+              ],
               const Divider(height: 24),
               Row(children: [
-                Text('Rs. ${slot.pricePerPax}/member',
-                    style: const TextStyle(
-                        color: Cp.primary, fontWeight: FontWeight.w900)),
-                const Spacer(),
-                InkWell(
-                    onTap: onEditMenu,
-                    child: const Row(children: [
-                      Icon(Icons.edit, color: Cp.primary, size: 18),
-                      Text(' Edit Menu',
-                          style: TextStyle(
-                              color: Cp.primary, fontWeight: FontWeight.w800))
-                    ]))
+                Expanded(
+                    child: MenuSlotActionButton(
+                        icon: Icons.edit,
+                        label: 'Menu',
+                        onPressed: onEditMenu)),
+                Expanded(
+                    child: MenuSlotActionButton(
+                        icon: Icons.room_service,
+                        label: 'Service',
+                        count: services.length,
+                        onPressed: onEditServices)),
+                Expanded(
+                    child: MenuSlotActionButton(
+                        icon: Icons.add_photo_alternate,
+                        label: 'Image',
+                        onPressed: menuImages.length >= 2 ? null : onAddImage)),
               ]),
             ],
             if (!enabled)
@@ -1407,6 +1768,47 @@ class MealSlotCard extends StatelessWidget {
                           color: Cp.onVariant, fontStyle: FontStyle.italic))),
           ]),
         ),
+      ),
+    );
+  }
+}
+
+class MenuSlotActionButton extends StatelessWidget {
+  const MenuSlotActionButton(
+      {super.key,
+      required this.icon,
+      required this.label,
+      this.count = 0,
+      required this.onPressed});
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          CountBadge(count: count),
+        ],
       ),
     );
   }
@@ -1426,14 +1828,22 @@ class CreateReviewStep extends StatelessWidget {
               0,
               (slotSum, slot) =>
                   slotSum + (int.tryParse(slot.pax) ?? 0) * slot.pricePerPax));
-  int get serviceTotal => draft.dates.fold(
+  int get serviceTotal => draft.dates.fold<int>(
       0,
       (dateSum, date) =>
           dateSum +
-          date.additionalServices.fold(
+          date.additionalServices.fold<int>(
               0,
               (sum, service) =>
-                  sum + ((service['price'] as num?)?.toInt() ?? 0)));
+                  sum + ((service['price'] as num?)?.toInt() ?? 0)) +
+          date.slots.fold<int>(
+              0,
+              (slotSum, slot) =>
+                  slotSum +
+                  slot.additionalServices.fold<int>(
+                      0,
+                      (sum, service) =>
+                          sum + ((service['price'] as num?)?.toInt() ?? 0))));
   int get addOnTotal => draft.addOns
       .fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
   int get grandTotal => menuTotal + serviceTotal + addOnTotal;
@@ -1451,8 +1861,8 @@ class CreateReviewStep extends StatelessWidget {
                   Text(draft.name.isEmpty ? 'Untitled Event' : draft.name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Cp.primary,
+                      style: TextStyle(
+                          color: cpPrimary(context),
                           fontSize: 21,
                           fontWeight: FontWeight.w900)),
                   const SizedBox(height: 2),
@@ -1463,19 +1873,20 @@ class CreateReviewStep extends StatelessWidget {
                       ].join(' | '),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w700)),
                 ])),
             const SizedBox(width: 10),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              const Text('Total',
+              Text('Total',
                   style: TextStyle(
-                      color: Cp.outline,
+                      color: cpOutline(context),
                       fontSize: 11,
                       fontWeight: FontWeight.w800)),
               Text(money(grandTotal),
-                  style: const TextStyle(
-                      color: Cp.primary,
+                  style: TextStyle(
+                      color: cpPrimary(context),
                       fontSize: 18,
                       fontWeight: FontWeight.w900)),
             ]),
@@ -1514,10 +1925,10 @@ class CreateReviewStep extends StatelessWidget {
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              const Expanded(
+              Expanded(
                   child: Text('Add-ons',
                       style: TextStyle(
-                          color: Cp.primary,
+                          color: cpPrimary(context),
                           fontSize: 18,
                           fontWeight: FontWeight.w900))),
               TextButton.icon(
@@ -1527,9 +1938,10 @@ class CreateReviewStep extends StatelessWidget {
             ]),
             const SizedBox(height: 4),
             if (draft.addOns.isEmpty)
-              const Text('No add-ons added.',
+              Text('No add-ons added.',
                   style: TextStyle(
-                      color: Cp.onVariant, fontStyle: FontStyle.italic))
+                      color: cpOnVariant(context),
+                      fontStyle: FontStyle.italic))
             else
               ...draft.addOns.map((addOn) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -1545,7 +1957,7 @@ class CreateReviewStep extends StatelessWidget {
                         IconButton(
                             onPressed: () =>
                                 openAddOnSheet(context, addOn: addOn),
-                            icon: const Icon(Icons.edit, color: Cp.primary)),
+                            icon: Icon(Icons.edit, color: cpPrimary(context))),
                         IconButton(
                             onPressed: () {
                               draft.addOns.remove(addOn);
@@ -1558,16 +1970,17 @@ class CreateReviewStep extends StatelessWidget {
             Align(
                 alignment: Alignment.centerRight,
                 child: Text('Grand Total: ${money(grandTotal)}',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 16,
                         fontWeight: FontWeight.w900))),
             if (draft.addOns.isNotEmpty)
               Align(
                   alignment: Alignment.centerRight,
                   child: Text('Add-ons Total: ${money(addOnTotal)}',
-                      style: const TextStyle(
-                          color: Cp.onVariant, fontWeight: FontWeight.w800))),
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w800))),
           ]),
         ),
       ]);
@@ -1602,11 +2015,11 @@ class ReviewSummaryChip extends StatelessWidget {
         width: 138,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
         decoration: BoxDecoration(
-            color: Cp.surfaceLow,
+            color: cpSurfaceLow(context),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Cp.outlineVariant)),
+            border: Border.all(color: cpOutlineVariant(context))),
         child: Row(children: [
-          Icon(icon, color: Cp.primary, size: 19),
+          Icon(icon, color: cpPrimary(context), size: 19),
           const SizedBox(width: 8),
           Expanded(
               child: Column(
@@ -1615,15 +2028,15 @@ class ReviewSummaryChip extends StatelessWidget {
                 Text(label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Cp.outline,
+                    style: TextStyle(
+                        color: cpOutline(context),
                         fontSize: 10,
                         fontWeight: FontWeight.w800)),
                 Text(value,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Cp.onSurface,
+                    style: TextStyle(
+                        color: cpOnSurface(context),
                         fontSize: 13,
                         fontWeight: FontWeight.w900)),
               ])),
@@ -1650,8 +2063,8 @@ Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context,
             EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
+          decoration: BoxDecoration(
+              color: cpSurface(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -1663,16 +2076,16 @@ Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context,
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
                 Text(addOn == null ? 'Add Add-on' : 'Edit Add-on',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
-                const Text(
+                Text(
                     'Enter a custom title and cost. This amount is added to the event total.',
-                    style: TextStyle(color: Cp.onVariant)),
+                    style: TextStyle(color: cpOnVariant(context))),
                 const SizedBox(height: 18),
                 EditableInlineField(
                     label: 'Add-on Title', controller: titleController),
@@ -1720,31 +2133,68 @@ Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context,
 
 class DashedAction extends StatelessWidget {
   const DashedAction(
-      {super.key, required this.label, required this.icon, this.onTap});
+      {super.key,
+      required this.label,
+      required this.icon,
+      this.count = 0,
+      this.onTap});
   final String label;
   final IconData icon;
+  final int count;
   final VoidCallback? onTap;
+
   @override
-  Widget build(BuildContext context) => InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-                border: Border.all(
-                    color: Cp.outlineVariant,
-                    width: 2,
-                    style: BorderStyle.solid),
-                borderRadius: BorderRadius.circular(12)),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-              Icon(icon, color: Cp.primary),
-              const SizedBox(width: 8),
-              Text(label,
-                  style: const TextStyle(
-                      color: Cp.primary, fontWeight: FontWeight.w900))
-            ])),
-      );
+  Widget build(BuildContext context) {
+    final enabled = onTap != null;
+    final accent = enabled ? cpPrimary(context) : cpOutline(context);
+    final border = enabled ? cpOutline(context) : cpOutlineVariant(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: cpDark(context) ? cpSurface(context) : null,
+              border:
+                  Border.all(color: border, width: 2, style: BorderStyle.solid),
+              borderRadius: BorderRadius.circular(12)),
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            Icon(icon, color: accent),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(label,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: accent, fontWeight: FontWeight.w900)),
+            ),
+            CountBadge(count: count),
+          ])),
+    );
+  }
+}
+
+class CountBadge extends StatelessWidget {
+  const CountBadge({super.key, required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count <= 0) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(left: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text('$count',
+          style: TextStyle(
+              color: scheme.onSecondaryContainer,
+              fontSize: 11,
+              fontWeight: FontWeight.w900)),
+    );
+  }
 }
 
 class StepperHeader extends StatelessWidget {
@@ -1760,16 +2210,23 @@ class StepperHeader extends StatelessWidget {
                     child: Column(children: [
                   CircleAvatar(
                       radius: 16,
-                      backgroundColor:
-                          i <= active ? Cp.primaryContainer : Cp.surfaceHigh,
+                      backgroundColor: i <= active
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : cpSurfaceHigh(context),
                       child: Text('${i + 1}',
                           style: TextStyle(
-                              color: i <= active ? Colors.white : Cp.onVariant,
+                              color: i <= active
+                                  ? Theme.of(context)
+                                      .colorScheme
+                                      .onPrimaryContainer
+                                  : cpOnVariant(context),
                               fontWeight: FontWeight.w900))),
                   const SizedBox(height: 4),
                   Text(labels[i],
                       style: TextStyle(
-                          color: i <= active ? Cp.primary : Cp.onVariant,
+                          color: i <= active
+                              ? cpPrimary(context)
+                              : cpOnVariant(context),
                           fontSize: 11,
                           fontWeight: FontWeight.w800))
                 ]))));
@@ -1841,7 +2298,8 @@ class _FormFieldBoxState extends State<FormFieldBox> {
         constraints: BoxConstraints(minHeight: widget.height),
         padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
         decoration: BoxDecoration(
-            border: Border.all(color: Cp.outline),
+            color: cpDark(context) ? cpSurfaceLow(context) : null,
+            border: Border.all(color: cpOutline(context)),
             borderRadius: BorderRadius.circular(12)),
         child: Row(
           crossAxisAlignment:
@@ -1855,12 +2313,15 @@ class _FormFieldBoxState extends State<FormFieldBox> {
                 onChanged: widget.onChanged,
                 maxLines: multiline ? null : 1,
                 minLines: multiline ? 3 : 1,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                cursorColor: cpPrimary(context),
+                style: TextStyle(
+                    color: cpOnSurface(context),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700),
                 decoration: InputDecoration(
                   labelText: widget.label,
-                  labelStyle: const TextStyle(
-                      color: Cp.primary,
+                  labelStyle: TextStyle(
+                      color: cpOnVariant(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w700),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -1873,7 +2334,7 @@ class _FormFieldBoxState extends State<FormFieldBox> {
             if (widget.icon != null)
               Padding(
                   padding: const EdgeInsets.only(left: 8, top: 8),
-                  child: Icon(widget.icon, color: Cp.outline)),
+                  child: Icon(widget.icon, color: cpOutline(context))),
           ],
         ),
       ),
@@ -1887,7 +2348,7 @@ class ShareMenuTile extends StatelessWidget {
       required this.icon,
       required this.label,
       required this.onTap});
-  final IconData icon;
+  final Widget icon;
   final String label;
   final VoidCallback onTap;
 
@@ -1900,17 +2361,18 @@ class ShareMenuTile extends StatelessWidget {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
             decoration: BoxDecoration(
-                color: Cp.card,
+                color: cpCard(context),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Cp.outlineVariant)),
+                border: Border.all(color: cpOutlineVariant(context))),
             child: Row(children: [
-              Icon(icon, color: Cp.primary),
+              SizedBox(width: 24, height: 24, child: Center(child: icon)),
               const SizedBox(width: 12),
               Expanded(
                   child: Text(label,
-                      style: const TextStyle(
-                          color: Cp.primary, fontWeight: FontWeight.w900))),
-              const Icon(Icons.chevron_right, color: Cp.outline),
+                      style: TextStyle(
+                          color: cpPrimary(context),
+                          fontWeight: FontWeight.w900))),
+              Icon(Icons.chevron_right, color: cpOutline(context)),
             ]),
           ),
         ),

@@ -1,6 +1,8 @@
 part of '../main.dart';
 
 final appPreferences = AppPreferencesController();
+final downloadHistory = DownloadHistoryController();
+const downloadChannel = MethodChannel('caterpro/downloads');
 
 class CaterProApp extends StatefulWidget {
   const CaterProApp({super.key});
@@ -14,6 +16,7 @@ class _CaterProAppState extends State<CaterProApp> {
   void initState() {
     super.initState();
     appPreferences.load();
+    downloadHistory.load();
   }
 
   @override
@@ -23,6 +26,69 @@ class _CaterProAppState extends State<CaterProApp> {
       builder: (context, _) {
         final settings = appPreferences.value;
         final textTheme = settings.textTheme();
+        final lightScheme = ColorScheme.fromSeed(
+          seedColor: Cp.primary,
+          brightness: Brightness.light,
+          primary: Cp.primary,
+          onPrimary: Colors.white,
+          primaryContainer: Cp.primaryContainer,
+          onPrimaryContainer: Colors.white,
+          secondary: Cp.secondary,
+          onSecondary: Colors.white,
+          secondaryContainer: Cp.secondaryContainer,
+          onSecondaryContainer: const Color(0xff2c1700),
+          tertiary: Cp.tertiary,
+          onTertiary: Colors.white,
+          tertiaryContainer: Cp.tertiaryContainer,
+          onTertiaryContainer: Colors.white,
+          surface: Cp.surface,
+          onSurface: Cp.onSurface,
+          surfaceContainerLowest: Cp.card,
+          surfaceContainerLow: Cp.surfaceLow,
+          surfaceContainerHigh: Cp.surfaceHigh,
+          surfaceContainerHighest: Cp.surfaceHigh,
+          onSurfaceVariant: Cp.onVariant,
+          outline: Cp.outline,
+          outlineVariant: Cp.outlineVariant,
+          error: Cp.error,
+          errorContainer: Cp.errorContainer,
+        );
+        final darkScheme = ColorScheme.fromSeed(
+          seedColor: Cp.primary,
+          brightness: Brightness.dark,
+        ).copyWith(
+          primary: const Color(0xffb8e5ff),
+          onPrimary: const Color(0xff6fa0be),
+          primaryContainer: const Color(0xff155f82),
+          onPrimaryContainer: const Color(0xffe3f4ff),
+          secondary: const Color(0xffffc266),
+          onSecondary: const Color(0xff422900),
+          secondaryContainer: const Color(0xff6a4300),
+          onSecondaryContainer: const Color(0xffffddb0),
+          tertiary: const Color(0xff70e6a0),
+          onTertiary: const Color(0xff003919),
+          tertiaryContainer: const Color(0xff005228),
+          onTertiaryContainer: const Color(0xff9cf6b8),
+          error: const Color(0xffffb4ab),
+          onError: const Color(0xff690005),
+          errorContainer: const Color(0xff6f1d1b),
+          onErrorContainer: const Color(0xffffdad6),
+          surface: const Color(0xff0b1220),
+          onSurface: const Color(0xfff4f7fb),
+          surfaceContainerLowest: const Color(0xff101827),
+          surfaceContainerLow: const Color(0xff142033),
+          surfaceContainer: const Color(0xff1b2940),
+          surfaceContainerHigh: const Color(0xff263650),
+          surfaceContainerHighest: const Color(0xff33455f),
+          onSurfaceVariant: const Color(0xffd7deea),
+          outline: const Color(0xff9aa7ba),
+          outlineVariant: const Color(0xff43536a),
+          shadow: Colors.black,
+          scrim: Colors.black,
+          inverseSurface: const Color(0xffeef2f7),
+          onInverseSurface: const Color(0xff101826),
+          inversePrimary: Cp.primary,
+        );
         return MaterialApp(
           title: 'CaterPro',
           debugShowCheckedModeBanner: false,
@@ -41,7 +107,7 @@ class _CaterProAppState extends State<CaterProApp> {
                       systemNavigationBarColor: Cp.background),
               child: MediaQuery(
                 data: media.copyWith(
-                    textScaler: TextScaler.linear(settings.textScale)),
+                    textScaler: TextScaler.linear(settings.textScale * .9)),
                 child: child ?? const SizedBox.shrink(),
               ),
             );
@@ -49,45 +115,67 @@ class _CaterProAppState extends State<CaterProApp> {
           theme: ThemeData(
             useMaterial3: true,
             scaffoldBackgroundColor: Cp.background,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Cp.primary,
-              primary: Cp.primary,
-              secondary: Cp.secondaryContainer,
-              surface: Cp.surface,
-              error: Cp.error,
+            colorScheme: lightScheme,
+            appBarTheme: AppBarTheme(
+                backgroundColor: lightScheme.surface,
+                foregroundColor: lightScheme.primary,
+                elevation: 0),
+            bottomSheetTheme:
+                BottomSheetThemeData(backgroundColor: lightScheme.surface),
+            cardTheme: CardThemeData(
+                color: lightScheme.surfaceContainerLowest,
+                surfaceTintColor: Colors.transparent),
+            dialogTheme: DialogThemeData(
+                backgroundColor: lightScheme.surface,
+                surfaceTintColor: Colors.transparent),
+            dividerTheme:
+                DividerThemeData(color: lightScheme.outlineVariant),
+            floatingActionButtonTheme: FloatingActionButtonThemeData(
+                backgroundColor: lightScheme.secondaryContainer,
+                foregroundColor: lightScheme.onSecondaryContainer),
+            inputDecorationTheme: InputDecorationTheme(
+              filled: true,
+              fillColor: lightScheme.surfaceContainerLowest,
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
+            snackBarTheme: SnackBarThemeData(
+                backgroundColor: lightScheme.primaryContainer,
+                contentTextStyle:
+                    textTheme.bodyMedium?.copyWith(color: Colors.white)),
             textTheme: textTheme.apply(
                 bodyColor: Cp.onSurface, displayColor: Cp.onSurface),
           ),
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xff111827),
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Cp.primary,
-              brightness: Brightness.dark,
-              primary: const Color(0xff9bd8ff),
-              onPrimary: const Color(0xff00263d),
-              primaryContainer: const Color(0xff0f4a68),
-              secondary: const Color(0xffffc266),
-              onSecondary: const Color(0xff422900),
-              secondaryContainer: const Color(0xff6a4300),
-              surface: const Color(0xff17212f),
-              onSurface: const Color(0xffeef2f7),
-              surfaceContainerHighest: const Color(0xff243244),
-              onSurfaceVariant: const Color(0xffcbd5e1),
-              outline: const Color(0xff7c8796),
-              outlineVariant: const Color(0xff3b4758),
-              error: const Color(0xffffb4ab),
-              errorContainer: const Color(0xff6f1d1b),
-            ),
+            scaffoldBackgroundColor: darkScheme.surface,
+            colorScheme: darkScheme,
+            appBarTheme: const AppBarTheme(
+                backgroundColor: Color(0xff0b1220),
+                foregroundColor: Color(0xffb8e5ff),
+                elevation: 0),
+            bottomSheetTheme: const BottomSheetThemeData(
+                backgroundColor: Color(0xff101827),
+                modalBackgroundColor: Color(0xff101827)),
+            cardTheme: const CardThemeData(
+                color: Color(0xff142033),
+                surfaceTintColor: Colors.transparent),
+            dialogTheme: const DialogThemeData(
+                backgroundColor: Color(0xff142033),
+                surfaceTintColor: Colors.transparent),
+            dividerTheme:
+                const DividerThemeData(color: Color(0xff43536a)),
+            floatingActionButtonTheme: const FloatingActionButtonThemeData(
+                backgroundColor: Color(0xff6a4300),
+                foregroundColor: Color(0xffffddb0)),
             inputDecorationTheme: InputDecorationTheme(
-              labelStyle: const TextStyle(color: Color(0xffcbd5e1)),
-              floatingLabelStyle: const TextStyle(color: Color(0xff9bd8ff)),
-              prefixIconColor: const Color(0xffcbd5e1),
-              suffixIconColor: const Color(0xffcbd5e1),
+              labelStyle: const TextStyle(color: Color(0xffd7deea)),
+              floatingLabelStyle: const TextStyle(color: Color(0xffb8e5ff)),
+              prefixIconColor: const Color(0xffd7deea),
+              suffixIconColor: const Color(0xffd7deea),
               filled: true,
-              fillColor: const Color(0xff1f2937),
+              fillColor: const Color(0xff1b2940),
               border:
                   OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
@@ -95,18 +183,193 @@ class _CaterProAppState extends State<CaterProApp> {
               fillColor: WidgetStateProperty.resolveWith((states) =>
                   states.contains(WidgetState.selected)
                       ? const Color(0xff9bd8ff)
-                      : const Color(0xff1f2937)),
-              checkColor: WidgetStateProperty.all(const Color(0xff00263d)),
+                      : const Color(0xff1b2940)),
+              checkColor: WidgetStateProperty.all(const Color(0xff6fa0be)),
             ),
             textTheme: textTheme.apply(
                 bodyColor: const Color(0xffeef2f7),
                 displayColor: const Color(0xffeef2f7)),
+            snackBarTheme: SnackBarThemeData(
+                backgroundColor: darkScheme.primaryContainer,
+                contentTextStyle: textTheme.bodyMedium
+                    ?.copyWith(color: darkScheme.onPrimaryContainer)),
           ),
           home: const AuthGate(),
         );
       },
     );
   }
+}
+
+class DownloadEntry {
+  const DownloadEntry(
+      {required this.id,
+      required this.title,
+      required this.url,
+      required this.kind,
+      required this.createdAt});
+
+  final String id;
+  final String title;
+  final String url;
+  final String kind;
+  final DateTime createdAt;
+
+  factory DownloadEntry.fromJson(Map<String, dynamic> json) => DownloadEntry(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Downloaded file',
+      url: json['url']?.toString() ?? '',
+      kind: json['kind']?.toString() ?? 'file',
+      createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+          DateTime.now());
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'url': url,
+        'kind': kind,
+        'createdAt': createdAt.toIso8601String(),
+      };
+}
+
+class DownloadHistoryController extends ChangeNotifier {
+  static const _storageKey = 'caterpro.downloadHistory.v1';
+  final List<DownloadEntry> _items = [];
+  bool _loaded = false;
+
+  List<DownloadEntry> get items => List.unmodifiable(_items);
+
+  Future<void> load() async {
+    if (_loaded) return;
+    _loaded = true;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final decoded = (jsonDecode(raw) as List)
+          .whereType<Map>()
+          .map(
+              (item) => DownloadEntry.fromJson(Map<String, dynamic>.from(item)))
+          .where((item) => item.url.isNotEmpty)
+          .toList();
+      _items
+        ..clear()
+        ..addAll(decoded);
+      notifyListeners();
+    } catch (_) {
+      // Ignore corrupt local history; future downloads will overwrite it.
+    }
+  }
+
+  Future<void> add(
+      {required String title, required Uri uri, String kind = 'file'}) async {
+    await load();
+    final url = uri.toString();
+    _items.removeWhere((item) => item.url == url);
+    _items.insert(
+        0,
+        DownloadEntry(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            title: title.trim().isEmpty ? fileNameFromUri(uri) : title.trim(),
+            url: url,
+            kind: kind,
+            createdAt: DateTime.now()));
+    if (_items.length > 50) _items.removeRange(50, _items.length);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+        _storageKey, jsonEncode(_items.map((item) => item.toJson()).toList()));
+    notifyListeners();
+  }
+
+  Future<void> clear() async {
+    _items.clear();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_storageKey);
+    notifyListeners();
+  }
+
+  Future<void> removeWhere(Set<String> ids) async {
+    if (ids.isEmpty) return;
+    await load();
+    _items.removeWhere((item) => ids.contains(item.id));
+    final prefs = await SharedPreferences.getInstance();
+    if (_items.isEmpty) {
+      await prefs.remove(_storageKey);
+    } else {
+      await prefs.setString(_storageKey,
+          jsonEncode(_items.map((item) => item.toJson()).toList()));
+    }
+    notifyListeners();
+  }
+}
+
+String fileNameFromUri(Uri uri) {
+  final segment = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+  return segment.isEmpty ? 'Downloaded file' : Uri.decodeComponent(segment);
+}
+
+String sanitizeDownloadFileName(String title, String kind) {
+  final extension = kind == 'backup' ? '.json' : '.pdf';
+  final cleaned = title
+      .trim()
+      .replaceAll(RegExp(r'[\\/:*?"<>|]+'), '-')
+      .replaceAll(RegExp(r'\s+'), ' ');
+  final fallback = kind == 'backup' ? 'CaterPro backup' : 'CaterPro download';
+  final name = cleaned.isEmpty ? fallback : cleaned;
+  return name.toLowerCase().endsWith(extension) ? name : '$name$extension';
+}
+
+String mimeTypeForDownload(String kind, String fileName) {
+  if (kind == 'backup' || fileName.toLowerCase().endsWith('.json')) {
+    return 'application/json';
+  }
+  return 'application/pdf';
+}
+
+Future<Uri> saveDownloadToDevice(
+    {required String title,
+    required Uri uri,
+    required String kind,
+    Map<String, String>? headers}) async {
+  if (kIsWeb) {
+    throw Exception('In-app downloads are available on the mobile app.');
+  }
+  final response = await http.get(uri, headers: headers);
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw Exception('Download failed (${response.statusCode})');
+  }
+  final fileName = sanitizeDownloadFileName(title, kind);
+  final mimeType = mimeTypeForDownload(kind, fileName);
+  final result = await downloadChannel.invokeMapMethod<String, Object?>(
+    'saveFile',
+    {
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'bytes': Uint8List.fromList(response.bodyBytes),
+    },
+  );
+  final savedUri = result?['uri']?.toString() ?? '';
+  if (savedUri.isEmpty) throw Exception('Unable to save file');
+  final localUri = Uri.parse(savedUri);
+  await downloadHistory.add(title: fileName, uri: localUri, kind: kind);
+  return localUri;
+}
+
+Future<bool> openDownloadedFile(Uri uri,
+    {required String title, String kind = 'file'}) async {
+  if (!kIsWeb && (uri.scheme == 'content' || uri.scheme == 'file')) {
+    final opened = await downloadChannel.invokeMethod<bool>(
+          'openFile',
+          {
+            'uri': uri.toString(),
+            'mimeType': mimeTypeForDownload(kind, title),
+          },
+        ) ??
+        false;
+    return opened;
+  }
+  return launchUrl(uri,
+      mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
 }
 
 class AppPreferences {
@@ -116,7 +379,8 @@ class AppPreferences {
       this.theme = 'system',
       this.languageCode = 'en',
       this.defaultMenuTimes = defaultEventMenuTimes,
-      this.autoMenuTypes = defaultAutoMenuTypes});
+      this.autoMenuTypes = defaultAutoMenuTypes,
+      this.vegOnlyDefault = false});
 
   final double textScale;
   final String font;
@@ -124,11 +388,17 @@ class AppPreferences {
   final String languageCode;
   final Map<String, String> defaultMenuTimes;
   final Set<String> autoMenuTypes;
+  final bool vegOnlyDefault;
 
   ThemeMode get themeMode => switch (theme) {
         'light' => ThemeMode.light,
         'dark' => ThemeMode.dark,
         _ => ThemeMode.system,
+      };
+
+  static String normalizeTheme(String? value) => switch (value) {
+        'light' || 'dark' || 'system' => value!,
+        _ => 'system',
       };
 
   TextTheme textTheme() {
@@ -154,14 +424,16 @@ class AppPreferences {
           String? theme,
           String? languageCode,
           Map<String, String>? defaultMenuTimes,
-          Set<String>? autoMenuTypes}) =>
+          Set<String>? autoMenuTypes,
+          bool? vegOnlyDefault}) =>
       AppPreferences(
           textScale: textScale ?? this.textScale,
           font: font ?? this.font,
           theme: theme ?? this.theme,
           languageCode: languageCode ?? this.languageCode,
           defaultMenuTimes: defaultMenuTimes ?? this.defaultMenuTimes,
-          autoMenuTypes: autoMenuTypes ?? this.autoMenuTypes);
+          autoMenuTypes: autoMenuTypes ?? this.autoMenuTypes,
+          vegOnlyDefault: vegOnlyDefault ?? this.vegOnlyDefault);
 
   static AppPreferences fromPrefs(SharedPreferences prefs) {
     final menuTimes = <String, String>{};
@@ -173,13 +445,14 @@ class AppPreferences {
     return AppPreferences(
       textScale: prefs.getDouble('appearance.textScale') ?? 1,
       font: prefs.getString('appearance.font') ?? 'Quicksand',
-      theme: prefs.getString('appearance.theme') ?? 'system',
+      theme: normalizeTheme(prefs.getString('appearance.theme')),
       languageCode: prefs.getString('appearance.language') ?? 'en',
       defaultMenuTimes: menuTimes,
       autoMenuTypes: (prefs.getStringList('eventDefaults.autoMenuTypes') ??
               defaultAutoMenuTypes.toList())
           .where(eventMenuTypes.contains)
           .toSet(),
+      vegOnlyDefault: prefs.getBool('eventDefaults.vegOnlyDefault') ?? false,
     );
   }
 }
@@ -193,17 +466,20 @@ class AppPreferencesController extends ValueNotifier<AppPreferences> {
   }
 
   Future<void> save(AppPreferences next) async {
-    value = next;
+    final normalized = next.copyWith(theme: AppPreferences.normalizeTheme(next.theme));
+    value = normalized;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('appearance.textScale', next.textScale);
-    await prefs.setString('appearance.font', next.font);
-    await prefs.setString('appearance.theme', next.theme);
-    await prefs.setString('appearance.language', next.languageCode);
-    for (final entry in next.defaultMenuTimes.entries) {
+    await prefs.setDouble('appearance.textScale', normalized.textScale);
+    await prefs.setString('appearance.font', normalized.font);
+    await prefs.setString('appearance.theme', normalized.theme);
+    await prefs.setString('appearance.language', normalized.languageCode);
+    for (final entry in normalized.defaultMenuTimes.entries) {
       await prefs.setString('eventDefaults.time.${entry.key}', entry.value);
     }
     await prefs.setStringList(
-        'eventDefaults.autoMenuTypes', next.autoMenuTypes.toList()..sort());
+        'eventDefaults.autoMenuTypes', normalized.autoMenuTypes.toList()..sort());
+    await prefs.setBool(
+        'eventDefaults.vegOnlyDefault', normalized.vegOnlyDefault);
   }
 }
 
@@ -452,6 +728,7 @@ class Cp {
   static const primary = Color(0xff003857);
   static const primaryContainer = Color(0xff1b4f72);
   static const primaryFixed = Color(0xffcce5ff);
+  static const toolbarIcon = Color(0xff52afda);
   static const secondary = Color(0xff865300);
   static const secondaryContainer = Color(0xfffea520);
   static const secondaryFixed = Color(0xffffddb9);
@@ -462,46 +739,93 @@ class Cp {
   static const errorContainer = Color(0xffffdad6);
 }
 
+class WhatsAppIcon extends StatelessWidget {
+  const WhatsAppIcon({super.key, this.size = 22});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: Stack(alignment: Alignment.center, children: [
+          CustomPaint(size: Size.square(size), painter: _WhatsAppIconPainter()),
+          Icon(Icons.call, color: Colors.white, size: size * .58),
+        ]),
+      );
+}
+
+class _WhatsAppIconPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xff25d366);
+    final radius = size.width * .44;
+    final center = Offset(size.width * .5, size.height * .46);
+    canvas.drawCircle(center, radius, paint);
+    final tail = Path()
+      ..moveTo(size.width * .28, size.height * .76)
+      ..lineTo(size.width * .18, size.height * .95)
+      ..lineTo(size.width * .42, size.height * .84)
+      ..close();
+    canvas.drawPath(tail, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 bool cpDark(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark;
 
 Color cpSurface(BuildContext context) =>
-    cpDark(context) ? const Color(0xff101826) : Cp.surface;
+    Theme.of(context).colorScheme.surface;
 
 Color cpCard(BuildContext context) =>
-    cpDark(context) ? const Color(0xff172231) : Cp.card;
+    Theme.of(context).colorScheme.surfaceContainerLow;
 
 Color cpSurfaceLow(BuildContext context) =>
-    cpDark(context) ? const Color(0xff1b2838) : Cp.surfaceLow;
+    Theme.of(context).colorScheme.surfaceContainer;
 
 Color cpSurfaceHigh(BuildContext context) =>
-    cpDark(context) ? const Color(0xff243244) : Cp.surfaceHigh;
+    Theme.of(context).colorScheme.surfaceContainerHigh;
 
 Color cpPrimary(BuildContext context) =>
-    cpDark(context) ? const Color(0xff8bd3ff) : Cp.primary;
+    Theme.of(context).colorScheme.primary;
 
 Color cpOnSurface(BuildContext context) =>
-    cpDark(context) ? const Color(0xfff4f7fb) : Cp.onSurface;
+    Theme.of(context).colorScheme.onSurface;
 
 Color cpOnVariant(BuildContext context) =>
-    cpDark(context) ? const Color(0xffb8c4d2) : Cp.onVariant;
+    Theme.of(context).colorScheme.onSurfaceVariant;
 
 Color cpOutline(BuildContext context) =>
-    cpDark(context) ? const Color(0xff718096) : Cp.outline;
+    Theme.of(context).colorScheme.outline;
 
 Color cpOutlineVariant(BuildContext context) =>
-    cpDark(context) ? const Color(0xff344155) : Cp.outlineVariant;
+    Theme.of(context).colorScheme.outlineVariant;
 
 Color cpAdaptSurfaceColor(BuildContext context, Color color) {
   if (!cpDark(context)) return color;
-  if (color == Cp.card || color == Cp.surface) return cpCard(context);
+  if (color == Cp.card ||
+      color == Cp.surface ||
+      color == const Color(0xfffff7ff)) {
+    return cpCard(context);
+  }
   if (color == Cp.surfaceLow) return cpSurfaceLow(context);
   if (color == Cp.surfaceHigh) return cpSurfaceHigh(context);
-  if (color == Cp.primaryFixed) return const Color(0xff173a52);
+  if (color == Cp.primaryFixed) return const Color(0xff173f5c);
   if (color == Cp.secondaryFixed) return const Color(0xff4b3419);
   if (color == Cp.tertiaryFixed) return const Color(0xff173d2a);
+  if (color == Cp.primaryContainer) {
+    return Theme.of(context).colorScheme.primaryContainer;
+  }
+  if (color == Cp.secondaryContainer) {
+    return Theme.of(context).colorScheme.secondaryContainer;
+  }
+  if (color == Cp.tertiaryContainer) {
+    return Theme.of(context).colorScheme.tertiaryContainer;
+  }
   if (color == Cp.errorContainer || color == const Color(0xffffebeb)) {
-    return const Color(0xff3b1f24);
+    return Theme.of(context).colorScheme.errorContainer;
   }
   return color;
 }
@@ -513,11 +837,13 @@ Color cpAdaptTextColor(BuildContext context, Color color) {
   }
   if (color == Cp.onSurface) return cpOnSurface(context);
   if (color == Cp.onVariant || color == Cp.outline) return cpOnVariant(context);
-  if (color == Cp.secondary) return const Color(0xffffc56f);
-  if (color == Cp.tertiary || color == Cp.tertiaryContainer) {
-    return const Color(0xff70e6a0);
+  if (color == Cp.secondary || color == Cp.secondaryContainer) {
+    return Theme.of(context).colorScheme.secondary;
   }
-  if (color == Cp.error) return const Color(0xffffb4ab);
+  if (color == Cp.tertiary || color == Cp.tertiaryContainer) {
+    return Theme.of(context).colorScheme.tertiary;
+  }
+  if (color == Cp.error) return Theme.of(context).colorScheme.error;
   return color;
 }
 
@@ -1012,7 +1338,9 @@ class AppClient {
       this.city = '',
       this.notes = '',
       this.address = '',
-      this.gst = ''});
+      this.gst = '',
+      this.createdAt = '',
+      this.updatedAt = ''});
   final String id;
   final String name;
   final String mobile;
@@ -1020,6 +1348,8 @@ class AppClient {
   final String notes;
   final String address;
   final String gst;
+  final String createdAt;
+  final String updatedAt;
 
   factory AppClient.fromJson(Map<String, dynamic> json) => AppClient(
         id: json['id']?.toString() ?? '',
@@ -1029,6 +1359,8 @@ class AppClient {
         notes: json['notes']?.toString() ?? '',
         address: json['address']?.toString() ?? '',
         gst: json['gst']?.toString() ?? json['gstin']?.toString() ?? '',
+        createdAt: json['createdAt']?.toString() ?? '',
+        updatedAt: json['updatedAt']?.toString() ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -1038,7 +1370,9 @@ class AppClient {
         'city': city,
         'notes': notes,
         'address': address,
-        'gst': gst
+        'gst': gst,
+        'createdAt': createdAt,
+        'updatedAt': updatedAt
       };
 
   AppClient copyWith(
@@ -1048,7 +1382,9 @@ class AppClient {
           String? city,
           String? notes,
           String? address,
-          String? gst}) =>
+          String? gst,
+          String? createdAt,
+          String? updatedAt}) =>
       AppClient(
         id: id ?? this.id,
         name: name ?? this.name,
@@ -1057,6 +1393,8 @@ class AppClient {
         notes: notes ?? this.notes,
         address: address ?? this.address,
         gst: gst ?? this.gst,
+        createdAt: createdAt ?? this.createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
       );
 }
 
@@ -1214,20 +1552,31 @@ class EventMaterialDocument {
       {required this.id,
       required this.type,
       required this.title,
+      this.eventId = '',
+      this.date = '',
       required this.items});
   final String id;
   final String type;
   final String title;
+  final String eventId;
+  final String date;
   final List<EventMaterialLine> items;
 
-  String get typeLabel =>
-      type == 'produce' ? 'Vegetables & Fruits' : 'Raw Materials';
+  String get typeLabel => type == 'menu'
+      ? 'Menu Items'
+      : type == 'produce'
+          ? 'Vegetables & Fruits'
+          : type == 'vessels'
+              ? 'Vessels & Utensils'
+              : 'Raw Materials';
 
   factory EventMaterialDocument.fromJson(Map<String, dynamic> json) =>
       EventMaterialDocument(
         id: json['id']?.toString() ?? '',
         type: json['type']?.toString() ?? 'raw',
         title: json['title']?.toString() ?? '',
+        eventId: json['eventId']?.toString() ?? '',
+        date: json['date']?.toString() ?? '',
         items: ((json['items'] as List?) ?? [])
             .whereType<Map<String, dynamic>>()
             .map(EventMaterialLine.fromJson)
@@ -1238,6 +1587,8 @@ class EventMaterialDocument {
         'id': id,
         'type': type,
         'title': title,
+        'eventId': eventId,
+        'date': date,
         'items': items.map((item) => item.toJson()).toList()
       };
 }
@@ -1554,7 +1905,35 @@ class ApiService {
       headers: await authHeaders(),
     );
     if (response.statusCode != 200) {
-      throw Exception('Unable to sync CaterPro data');
+      throw Exception('Unable to load CaterPro data');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getSyncSnapshot() async {
+    final response = await getWithRetry(
+      Uri.parse('${ApiConfig.baseUrl}/sync/snapshot'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load CaterPro data');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> pushSyncSnapshot({
+    required Map<String, dynamic> userData,
+    required Map<String, dynamic> universal,
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse('${ApiConfig.baseUrl}/sync/snapshot'),
+          headers: await authHeaders(),
+          body: jsonEncode({'userData': userData, 'universal': universal}),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw Exception('Unable to push local CaterPro data');
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -1606,7 +1985,7 @@ class ApiService {
 
   Future<List<MenuMasterItem>> getMenuItems() async {
     final response =
-        await http.get(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
+        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
     if (response.statusCode != 200) {
       throw Exception('Unable to load menu items');
     }
@@ -1627,11 +2006,12 @@ class ApiService {
         .replace(queryParameters: query);
   }
 
-  Future<MenuMasterItem> saveMenuItem(MenuMasterItem item) async {
-    final creating = item.id.isEmpty;
-    final response = await (creating ? http.post : http.put)(
+  Future<MenuMasterItem> saveMenuItem(MenuMasterItem item,
+      {bool? creating}) async {
+    final shouldCreate = creating ?? item.id.isEmpty;
+    final response = await (shouldCreate ? http.post : http.put)(
       Uri.parse(
-          '${ApiConfig.baseUrl}/menu-items${creating ? '' : '/${item.id}'}'),
+          '${ApiConfig.baseUrl}/menu-items${shouldCreate ? '' : '/${item.id}'}'),
       headers: await authHeaders(),
       body: jsonEncode(item.toJson()),
     );
@@ -1644,7 +2024,7 @@ class ApiService {
 
   Future<List<RawMaterialItem>> getRawMaterials() async {
     final response =
-        await http.get(Uri.parse('${ApiConfig.baseUrl}/raw-materials'));
+        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/raw-materials'));
     if (response.statusCode != 200) {
       throw Exception('Unable to load raw materials');
     }
@@ -1671,7 +2051,7 @@ class ApiService {
 
   Future<List<RawMaterialItem>> getProduceItems() async {
     final response =
-        await http.get(Uri.parse('${ApiConfig.baseUrl}/produce-items'));
+        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/produce-items'));
     if (response.statusCode != 200) {
       throw Exception('Unable to load vegetables and fruits');
     }
@@ -1694,6 +2074,69 @@ class ApiService {
     }
     return RawMaterialItem.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<RawMaterialItem>> getVesselItems() async {
+    final response =
+        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/vessel-items'));
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load vessels and utensils');
+    }
+    return (jsonDecode(response.body) as List)
+        .whereType<Map<String, dynamic>>()
+        .map(RawMaterialItem.fromJson)
+        .toList();
+  }
+
+  Future<RawMaterialItem> saveVesselItem(RawMaterialItem item) async {
+    final creating = item.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse(
+          '${ApiConfig.baseUrl}/vessel-items${creating ? '' : '/${item.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(item.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Unable to save vessel/utensil item');
+    }
+    return RawMaterialItem.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<List<EventMaterialDocument>> getRequirementLists() async {
+    final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/requirement-lists'),
+        headers: await authHeaders());
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load lists');
+    }
+    return (jsonDecode(response.body) as List)
+        .whereType<Map<String, dynamic>>()
+        .map(EventMaterialDocument.fromJson)
+        .toList();
+  }
+
+  Future<EventMaterialDocument> saveRequirementList(
+      EventMaterialDocument document) async {
+    final creating = document.id.isEmpty;
+    final response = await (creating ? http.post : http.put)(
+      Uri.parse(
+          '${ApiConfig.baseUrl}/requirement-lists${creating ? '' : '/${document.id}'}'),
+      headers: await authHeaders(),
+      body: jsonEncode(document.toJson()),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Unable to save list');
+    }
+    return EventMaterialDocument.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<Uri> requirementListPdfUri(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse('${ApiConfig.baseUrl}/requirement-lists/$id/pdf')
+        .replace(queryParameters: {'token': token});
   }
 
   Future<List<AdditionalServiceItem>> getAdditionalServices() async {
@@ -2185,6 +2628,78 @@ String? positiveMoneyValidator(String? value, String label,
         : '$label must be more than zero';
   }
   return null;
+}
+
+class MarqueeText extends StatefulWidget {
+  const MarqueeText(this.text, {super.key, this.style});
+
+  final String text;
+  final TextStyle? style;
+
+  @override
+  State<MarqueeText> createState() => _MarqueeTextState();
+}
+
+class _MarqueeTextState extends State<MarqueeText>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final displayText = widget.text.split('\n').first;
+    final textStyle = DefaultTextStyle.of(context).style.merge(widget.style);
+    final direction = Directionality.of(context);
+    return LayoutBuilder(builder: (context, constraints) {
+      final painter = TextPainter(
+        text: TextSpan(text: displayText, style: textStyle),
+        maxLines: 1,
+        textDirection: direction,
+      )..layout();
+      final overflow = painter.width - constraints.maxWidth;
+      if (overflow <= 0) {
+        controller.stop();
+        return Text(displayText,
+            maxLines: 1, overflow: TextOverflow.clip, style: textStyle);
+      }
+
+      final travel = overflow + 28;
+      final duration = Duration(
+          milliseconds: (travel * 42).round().clamp(2200, 9000).toInt());
+      if (controller.duration != duration) {
+        controller.duration = duration;
+      }
+      if (!controller.isAnimating) {
+        controller.repeat(reverse: true);
+      }
+
+      return ClipRect(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, child) => Transform.translate(
+            offset: Offset(-travel * controller.value, 0),
+            child: child,
+          ),
+          child: Text(displayText,
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.visible,
+              style: textStyle),
+        ),
+      );
+    });
+  }
 }
 
 final mobileInputFormatters = <TextInputFormatter>[

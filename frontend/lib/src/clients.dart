@@ -46,6 +46,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
   List<ClientSummary> get summaries {
     final map = <String, AppClient>{};
+    final savedClientMobileByName = <String, String>{};
+
+    String nameKey(String value) => value.trim().toLowerCase();
+
     void put(AppClient client) {
       final mobile = normalizeMobileText(client.mobile);
       if (mobile.isEmpty) return;
@@ -61,32 +65,47 @@ class _ClientsScreenState extends State<ClientsScreen> {
 
     for (final client in widget.clients) {
       put(client);
+      if (client.name.trim().isNotEmpty) {
+        savedClientMobileByName[nameKey(client.name)] =
+            normalizeMobileText(client.mobile);
+      }
     }
     for (final event in widget.events) {
+      final clientName =
+          event.primaryClient.isEmpty ? event.name : event.primaryClient;
+      final savedMobile = savedClientMobileByName[nameKey(clientName)];
       put(AppClient(
           id: '',
-          name: event.primaryClient.isEmpty ? event.name : event.primaryClient,
-          mobile: event.mobile,
+          name: clientName,
+          mobile: savedMobile?.isNotEmpty == true ? savedMobile! : event.mobile,
           city: event.venue));
     }
     for (final invoice in widget.manualInvoices) {
+      final savedMobile = savedClientMobileByName[nameKey(invoice.clientName)];
       put(AppClient(
           id: '',
           name: invoice.clientName,
-          mobile: invoice.mobile,
+          mobile:
+              savedMobile?.isNotEmpty == true ? savedMobile! : invoice.mobile,
           city: invoice.venue));
     }
 
     final result = map.values.map((client) {
       final mobile = normalizeMobileText(client.mobile);
+      final clientNameKey = nameKey(client.name);
       return ClientSummary(
         client: client,
-        events: widget.events
-            .where((event) => normalizeMobileText(event.mobile) == mobile)
-            .toList(),
-        invoices: widget.manualInvoices
-            .where((invoice) => normalizeMobileText(invoice.mobile) == mobile)
-            .toList(),
+        events: widget.events.where((event) {
+          final eventName =
+              event.primaryClient.isEmpty ? event.name : event.primaryClient;
+          return normalizeMobileText(event.mobile) == mobile ||
+              (clientNameKey.isNotEmpty && nameKey(eventName) == clientNameKey);
+        }).toList(),
+        invoices: widget.manualInvoices.where((invoice) {
+          return normalizeMobileText(invoice.mobile) == mobile ||
+              (clientNameKey.isNotEmpty &&
+                  nameKey(invoice.clientName) == clientNameKey);
+        }).toList(),
       );
     }).toList()
       ..sort((a, b) =>
@@ -215,10 +234,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
         IconButton(
             onPressed: () =>
                 showClientEditor(context, onSave: widget.onSaveClient),
-            icon: const Icon(Icons.add, color: Cp.primary)),
+            icon: const Icon(Icons.add, color: Cp.toolbarIcon)),
         IconButton(
             onPressed: widget.openNotifications,
-            icon: const Icon(Icons.notifications, color: Cp.primary))
+            icon: Icon(Icons.notifications, color: cpPrimary(context)))
       ]),
       children: [
         TextField(
@@ -432,6 +451,7 @@ class _ClientCardState extends State<ClientCard> {
 Future<void> showClientEditor(BuildContext context,
     {AppClient? client,
     required Future<void> Function(AppClient client) onSave}) async {
+  final parentContext = context;
   final formKey = GlobalKey<FormState>();
   final name = TextEditingController(text: client?.name ?? '');
   final mobile = TextEditingController(text: client?.mobile ?? '');
@@ -440,146 +460,149 @@ Future<void> showClientEditor(BuildContext context,
   final address = TextEditingController(text: client?.address ?? '');
   final gst = TextEditingController(text: client?.gst ?? '');
   bool saving = false;
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setSheetState) => Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-        decoration: const BoxDecoration(
-            color: Cp.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: SingleChildScrollView(
-          child: Form(
-            key: formKey,
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                      child: Container(
-                          width: 58,
-                          height: 6,
-                          decoration: BoxDecoration(
-                              color: Cp.outlineVariant,
-                              borderRadius: BorderRadius.circular(999)))),
-                  const SizedBox(height: 18),
-                  Text(client == null ? 'Add Client' : 'Edit Client',
-                      style: const TextStyle(
-                          color: Cp.primary,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900)),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                      controller: name,
-                      validator: (value) =>
-                          requiredTextValidator(value, 'Client name'),
-                      decoration: InputDecoration(
-                          labelText: 'Client Name',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                      controller: mobile,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: mobileInputFormatters,
-                      validator: mobileValidator,
-                      decoration: InputDecoration(
-                          labelText: 'Mobile Number',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                      controller: city,
-                      decoration: InputDecoration(
-                          labelText: 'City / Area',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                      controller: address,
-                      minLines: 2,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                          labelText: 'Client Address',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                      controller: gst,
-                      textCapitalization: TextCapitalization.characters,
-                      decoration: InputDecoration(
-                          labelText: 'GST',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                      controller: notes,
-                      minLines: 2,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                          labelText: 'Notes',
-                          border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12)))),
-                  const SizedBox(height: 18),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: FilledButton.icon(
-                      onPressed: saving
-                          ? null
-                          : () async {
-                              final clean = normalizeMobileText(mobile.text);
-                              if (!(formKey.currentState?.validate() ??
-                                  false)) {
-                                return;
-                              }
-                              setSheetState(() => saving = true);
-                              try {
-                                await onSave(AppClient(
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          padding: EdgeInsets.fromLTRB(
+              20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+          decoration: BoxDecoration(
+              color: cpSurface(context),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+          child: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                        child: Container(
+                            width: 58,
+                            height: 6,
+                            decoration: BoxDecoration(
+                                color: cpOutlineVariant(context),
+                                borderRadius: BorderRadius.circular(999)))),
+                    const SizedBox(height: 18),
+                    Text(client == null ? 'Add Client' : 'Edit Client',
+                        style: TextStyle(
+                            color: cpPrimary(context),
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900)),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                        controller: name,
+                        validator: (value) =>
+                            requiredTextValidator(value, 'Client name'),
+                        decoration: InputDecoration(
+                            labelText: 'Client Name',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: mobile,
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: mobileInputFormatters,
+                        validator: mobileValidator,
+                        decoration: InputDecoration(
+                            labelText: 'Mobile Number',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: city,
+                        decoration: InputDecoration(
+                            labelText: 'City / Area',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: address,
+                        minLines: 2,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                            labelText: 'Client Address',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: gst,
+                        textCapitalization: TextCapitalization.characters,
+                        decoration: InputDecoration(
+                            labelText: 'GST',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                        controller: notes,
+                        minLines: 2,
+                        maxLines: 4,
+                        decoration: InputDecoration(
+                            labelText: 'Notes',
+                            border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12)))),
+                    const SizedBox(height: 18),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: saving
+                            ? null
+                            : () async {
+                                final clean = normalizeMobileText(mobile.text);
+                                if (!(formKey.currentState?.validate() ??
+                                    false)) {
+                                  return;
+                                }
+                                final draft = AppClient(
                                     id: client?.id ?? '',
                                     name: name.text.trim(),
                                     mobile: clean,
                                     city: city.text.trim(),
                                     notes: notes.text.trim(),
                                     address: address.text.trim(),
-                                    gst: gst.text.trim()));
+                                    gst: gst.text.trim());
+                                setSheetState(() => saving = true);
                                 if (context.mounted) Navigator.pop(context);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  showCpSnack(
-                                      context,
-                                      e
-                                          .toString()
-                                          .replaceFirst('Exception: ', ''));
+                                try {
+                                  await onSave(draft);
+                                } catch (e) {
+                                  if (parentContext.mounted) {
+                                    showCpSnack(
+                                        parentContext,
+                                        e
+                                            .toString()
+                                            .replaceFirst('Exception: ', ''));
+                                  }
                                 }
-                              } finally {
-                                setSheetState(() => saving = false);
-                              }
-                            },
-                      icon: saving
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.save),
-                      label: Text(saving ? 'Saving...' : 'Save Client',
-                          style: const TextStyle(fontWeight: FontWeight.w900)),
+                              },
+                        icon: saving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.save),
+                        label: Text(saving ? 'Saving...' : 'Save Client',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
+                      ),
                     ),
-                  ),
-                ]),
+                  ]),
+            ),
           ),
         ),
       ),
-    ),
-  );
-  name.dispose();
-  mobile.dispose();
-  city.dispose();
-  notes.dispose();
-  address.dispose();
-  gst.dispose();
+    );
+  } finally {
+    name.dispose();
+    mobile.dispose();
+    city.dispose();
+    notes.dispose();
+    address.dispose();
+    gst.dispose();
+  }
 }

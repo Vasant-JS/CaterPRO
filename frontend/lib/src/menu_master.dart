@@ -62,6 +62,17 @@ int selectedOrder(String id, Iterable<String> selectedIds) {
   return -1;
 }
 
+String nextMenuMasterItemId() {
+  var maxNumber = 0;
+  final pattern = RegExp(r'^MNU-(\d+)$', caseSensitive: false);
+  for (final item in MenuMasterScreen.menuItems) {
+    final match = pattern.firstMatch(item.id.trim());
+    final value = int.tryParse(match?.group(1) ?? '') ?? 0;
+    if (value > maxNumber) maxNumber = value;
+  }
+  return 'MNU-${(maxNumber + 1).toString().padLeft(3, '0')}';
+}
+
 class MenuMasterScreen extends StatefulWidget {
   const MenuMasterScreen({super.key, required this.onClose});
   final VoidCallback onClose;
@@ -103,6 +114,8 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
   }
 
   void upsertMenuItem(MenuMasterItem item) {
+    final creating = !MenuMasterScreen.menuItems
+        .any((existing) => existing.id == item.id);
     setState(() {
       final index = MenuMasterScreen.menuItems
           .indexWhere((existing) => existing.id == item.id);
@@ -112,7 +125,7 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
         MenuMasterScreen.menuItems[index] = item;
       }
     });
-    unawaited(api.saveMenuItem(item).then((saved) {
+    unawaited(api.saveMenuItem(item, creating: creating).then((saved) {
       if (!mounted) return;
       setState(() {
         final index = MenuMasterScreen.menuItems
@@ -133,10 +146,12 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
   Future<void> exportMenuCatalogPdf(String language) async {
     final uri = await api.menuCatalogPdfUri(language,
         search: query, meal: selectedMealFilter, vegOnly: vegOnly);
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!mounted) return;
-    showCpSnack(context,
-        launched ? 'Menu catalog PDF started' : 'Unable to open menu PDF');
+    showDownloadSnack(context, uri,
+        title: 'Menu catalog $language.pdf',
+        kind: 'menu',
+        successMessage: 'Menu catalog PDF started',
+        failureMessage: 'Unable to open menu PDF');
   }
 
   PopupMenuItem<String> filterItem(String value, String label,
@@ -220,21 +235,25 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
               ]),
           children: [
             CpCard(
-                color: Cp.primaryFixed,
-                child: const Row(children: [
-                  Icon(Icons.public, color: Cp.primary),
-                  SizedBox(width: 10),
+                color: Theme.of(context).colorScheme.primaryContainer,
+                child: Row(children: [
+                  Icon(Icons.public,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer),
+                  const SizedBox(width: 10),
                   Expanded(
                       child: Text(
                           'Universal menu catalog. Add/edit only. Every user can access these items.',
                           style: TextStyle(
-                              color: Cp.primary,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer,
                               fontSize: 13,
                               fontWeight: FontWeight.w800)))
                 ])),
             const SizedBox(height: 12),
             TextField(
               controller: searchController,
+              textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: query.isEmpty
@@ -247,6 +266,10 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                               }),
                           icon: const Icon(Icons.close)),
                   hintText: 'Search menu items',
+                  filled: true,
+                  fillColor: cpCard(context),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12))),
               onChanged: (value) => setState(() => query = value),
@@ -286,6 +309,46 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
 
 class MenuItemCard extends StatelessWidget {
   const MenuItemCard({super.key, required this.item, required this.onEdit});
+  final MenuMasterItem item;
+  final VoidCallback onEdit;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: CpCard(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          onTap: onEdit,
+          child: Row(children: [
+            Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                    color: item.veg
+                        ? Cp.tertiaryFixed.withValues(alpha: .3)
+                        : Cp.errorContainer,
+                    borderRadius: BorderRadius.circular(8)),
+                child: Icon(Icons.restaurant,
+                    size: 21, color: item.veg ? Cp.tertiary : Cp.error)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: MarqueeText(
+                '${item.kannada}/${item.english}',
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+              ),
+            ),
+            IconButton(
+                onPressed: onEdit,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.edit, color: Cp.primary)),
+          ]),
+        ),
+      );
+}
+
+class MenuItemCardLegacy extends StatelessWidget {
+  const MenuItemCardLegacy(
+      {super.key, required this.item, required this.onEdit});
   final MenuMasterItem item;
   final VoidCallback onEdit;
 
@@ -396,8 +459,7 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
     'Others'
   ];
   late final id = TextEditingController(
-      text: widget.item?.id ??
-          'MNU-${(MenuMasterScreen.menuItems.length + 1).toString().padLeft(3, '0')}');
+      text: widget.item?.id ?? nextMenuMasterItemId());
   late final english = TextEditingController(
       text: widget.item?.english ?? widget.initialEnglish ?? '');
   late final kannada = TextEditingController(text: widget.item?.kannada ?? '');
@@ -418,6 +480,8 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
   };
   late bool veg = widget.item?.veg ?? true;
   String? error;
+
+  bool get vegOnlyDefault => appPreferences.value.vegOnlyDefault;
 
   @override
   void dispose() {
@@ -443,7 +507,7 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
         kannada: kannada.text.trim(),
         category: category,
         meals: meals,
-        veg: veg));
+        veg: vegOnlyDefault ? true : veg));
     Navigator.pop(context);
   }
 
@@ -463,9 +527,10 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
         child: Container(
           padding: EdgeInsets.fromLTRB(
               20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-          decoration: const BoxDecoration(
-              color: Cp.card,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          decoration: BoxDecoration(
+              color: cpCard(context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28))),
           child: SingleChildScrollView(
             child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -477,15 +542,15 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
                           height: 6,
                           margin: const EdgeInsets.only(bottom: 20),
                           decoration: BoxDecoration(
-                              color: Cp.outlineVariant,
+                              color: cpOutlineVariant(context),
                               borderRadius: BorderRadius.circular(99)))),
                   Text(widget.item == null ? 'Add Menu Item' : 'Edit Menu Item',
-                      style: const TextStyle(
-                          color: Cp.primary,
+                      style: TextStyle(
+                          color: cpPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w900)),
-                  const Text('Universal item, available to every user.',
-                      style: TextStyle(color: Cp.onVariant)),
+                  Text('Universal item, available to every user.',
+                      style: TextStyle(color: cpOnVariant(context))),
                   const SizedBox(height: 16),
                   EditableInlineField(label: 'ID', controller: id),
                   Row(children: [
@@ -531,35 +596,43 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
                                         : mealOptions
                                             .where(selectedMeals.contains)
                                             .join(', '),
+                                    style:
+                                        TextStyle(color: cpOnSurface(context)),
                                     overflow: TextOverflow.ellipsis)),
-                            const Icon(Icons.arrow_drop_down,
-                                color: Cp.primary),
+                            Icon(Icons.arrow_drop_down,
+                                color: cpPrimary(context)),
                           ]),
                         ),
                       ),
                     ),
                   ]),
                   const SizedBox(height: 12),
-                  SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      value: veg,
-                      activeThumbColor: Cp.primary,
-                      onChanged: (value) => setState(() => veg = value),
-                      title: const Text('Vegetarian',
-                          style: TextStyle(fontWeight: FontWeight.w900))),
+                  if (!vegOnlyDefault)
+                    SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: veg,
+                        activeThumbColor: Theme.of(context).colorScheme.primary,
+                        onChanged: (value) => setState(() => veg = value),
+                        title: const Text('Vegetarian',
+                            style: TextStyle(fontWeight: FontWeight.w900))),
                   if (error != null)
                     Padding(
                         padding: const EdgeInsets.only(bottom: 12),
                         child: Text(error!,
-                            style: const TextStyle(
-                                color: Cp.error, fontWeight: FontWeight.w800))),
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.error,
+                                fontWeight: FontWeight.w800))),
                   SizedBox(
                       width: double.infinity,
                       height: 52,
                       child: FilledButton.icon(
                           onPressed: save,
                           style: FilledButton.styleFrom(
-                              backgroundColor: Cp.primaryContainer),
+                              backgroundColor:
+                                  Theme.of(context).colorScheme.primaryContainer,
+                              foregroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .onPrimaryContainer),
                           icon: const Icon(Icons.save),
                           label: const Text('Save Menu Item',
                               style: TextStyle(fontWeight: FontWeight.w900)))),
@@ -590,9 +663,10 @@ class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
         constraints:
             BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .78),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        decoration: const BoxDecoration(
-            color: Cp.card,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpCard(context),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -603,11 +677,11 @@ class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
                       height: 6,
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                          color: Cp.outlineVariant,
+                          color: cpOutlineVariant(context),
                           borderRadius: BorderRadius.circular(99)))),
-              const Text('Select Meals',
+              Text('Select Meals',
                   style: TextStyle(
-                      color: Cp.primary,
+                      color: cpPrimary(context),
                       fontSize: 24,
                       fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
@@ -618,7 +692,7 @@ class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
                       .map((meal) => CheckboxListTile(
                             contentPadding: EdgeInsets.zero,
                             value: selected.contains(meal),
-                            activeColor: Cp.primary,
+                            activeColor: Theme.of(context).colorScheme.primary,
                             onChanged: (value) => setState(() => value == true
                                 ? selected.add(meal)
                                 : selected.remove(meal)),
@@ -635,7 +709,10 @@ class _MealCheckboxSheetState extends State<MealCheckboxSheet> {
                 height: 52,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                      backgroundColor: Cp.primaryContainer),
+                      backgroundColor:
+                          Theme.of(context).colorScheme.primaryContainer,
+                      foregroundColor:
+                          Theme.of(context).colorScheme.onPrimaryContainer),
                   onPressed: () => Navigator.pop(context, selected),
                   child: const Text('Apply Meals',
                       style: TextStyle(fontWeight: FontWeight.w900)),
@@ -713,24 +790,25 @@ class _CustomMenuScreenState extends State<CustomMenuScreen> {
         avatar: false,
         leading: IconButton(
             onPressed: widget.onClose,
-            icon: const Icon(Icons.arrow_back, color: Cp.primary)),
+            icon: Icon(Icons.arrow_back, color: cpPrimary(context))),
         actions: [
           IconButton(
               onPressed: saving ? null : () => openEditor(),
-              icon: const Icon(Icons.add, color: Cp.primary))
+              icon: const Icon(Icons.add, color: Cp.toolbarIcon))
         ],
       ),
       children: [
         CpCard(
             color: Cp.primaryFixed,
-            child: const Row(children: [
-              Icon(Icons.fact_check, color: Cp.primary),
-              SizedBox(width: 10),
+            child: Row(children: [
+              Icon(Icons.fact_check, color: cpPrimary(context)),
+              const SizedBox(width: 10),
               Expanded(
                   child: Text(
                       'Ready made menu sets are saved under your user and can be applied during event menu selection.',
                       style: TextStyle(
-                          color: Cp.primary, fontWeight: FontWeight.w800)))
+                          color: cpPrimary(context),
+                          fontWeight: FontWeight.w800)))
             ])),
         const SizedBox(height: 14),
         SingleChildScrollView(
@@ -774,25 +852,25 @@ class _CustomMenuScreenState extends State<CustomMenuScreen> {
               child: CpCard(
                 onTap: () => openEditor(menu),
                 child: Row(children: [
-                  const Icon(Icons.playlist_add_check, color: Cp.primary),
+                  Icon(Icons.playlist_add_check, color: cpPrimary(context)),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(menu.name,
-                              style: const TextStyle(
-                                  color: Cp.primary,
+                              style: TextStyle(
+                                  color: cpPrimary(context),
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900)),
                           Text(
                               '${menu.itemIds.length} items${names.isEmpty ? '' : ' • $names'}',
-                              style: const TextStyle(
-                                  color: Cp.onVariant,
+                              style: TextStyle(
+                                  color: cpOnVariant(context),
                                   fontWeight: FontWeight.w700)),
                         ]),
                   ),
-                  const Icon(Icons.edit, color: Cp.primary),
+                  Icon(Icons.edit, color: cpPrimary(context)),
                 ]),
               ),
             );
@@ -826,6 +904,7 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
   List<MenuMasterItem> get visibleItems {
     final normalized = query.trim().toLowerCase();
     return MenuMasterScreen.menuItems.where((item) {
+      if (appPreferences.value.vegOnlyDefault && !item.veg) return false;
       final mealList = item.meals.split(',').map((meal) => meal.trim()).toSet();
       final typeMatches = widget.type == 'Other'
           ? mealList.contains('Other') || mealList.isEmpty
@@ -873,9 +952,9 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
             BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .9),
         padding: EdgeInsets.fromLTRB(
             20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-        decoration: const BoxDecoration(
-            color: Cp.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -886,24 +965,29 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                       height: 6,
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                          color: Cp.outlineVariant,
+                          color: cpOutlineVariant(context),
                           borderRadius: BorderRadius.circular(99)))),
               Text(
                   widget.menu == null
                       ? 'Add ${widget.type} Custom Menu'
                       : 'Edit ${widget.type} Custom Menu',
-                  style: const TextStyle(
-                      color: Cp.primary,
+                  style: TextStyle(
+                      color: cpPrimary(context),
                       fontSize: 22,
                       fontWeight: FontWeight.w900)),
-              const Text('Pick the items that should be selected together.',
-                  style: TextStyle(color: Cp.onVariant)),
+              Text('Pick the items that should be selected together.',
+                  style: TextStyle(color: cpOnVariant(context))),
               const SizedBox(height: 14),
               EditableInlineField(label: 'Menu Name', controller: name),
               TextField(
+                textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.search),
+                    prefixIcon: Icon(Icons.search, color: cpOnVariant(context)),
                     hintText: 'Search ${widget.type} items',
+                    filled: true,
+                    fillColor: cpSurfaceLow(context),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12))),
                 onChanged: (value) => setState(() => query = value),
@@ -912,8 +996,9 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                 Padding(
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(error!,
-                        style: const TextStyle(
-                            color: Cp.error, fontWeight: FontWeight.w800))),
+                        style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                            fontWeight: FontWeight.w800))),
               const SizedBox(height: 12),
               Flexible(
                 child: ListView.separated(
@@ -933,12 +1018,16 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                             selected
                                 ? Icons.check_circle
                                 : Icons.circle_outlined,
-                            color: selected ? Cp.primary : Cp.outline),
-                        const SizedBox(width: 12),
+                            color: selected
+                                ? cpPrimary(context)
+                                : cpOutline(context),
+                            size: 22),
+                        const SizedBox(width: 10),
                         Expanded(
-                            child: Text(
+                            child: MarqueeText(
                                 '${item.title}\n${item.id} • ${item.category}',
                                 style: const TextStyle(
+                                    fontSize: 14,
                                     fontWeight: FontWeight.w800))),
                       ]),
                     );
@@ -952,7 +1041,10 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                   child: FilledButton.icon(
                       onPressed: save,
                       style: FilledButton.styleFrom(
-                          backgroundColor: Cp.primaryContainer),
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                          foregroundColor:
+                              Theme.of(context).colorScheme.onPrimaryContainer),
                       icon: const Icon(Icons.save),
                       label: const Text('Save Custom Menu',
                           style: TextStyle(fontWeight: FontWeight.w900)))),
