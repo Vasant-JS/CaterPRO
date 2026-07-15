@@ -6079,49 +6079,7 @@
   },
   "userData": {
     "usr_demo_admin": {
-      "events": [
-        {
-          "employeeAssignments": [],
-          "id": "evt_372b44bd",
-          "name": "Test event",
-          "primaryClient": "vasant",
-          "mobile": "7411626747",
-          "venue": "hubli",
-          "notes": "",
-          "status": "draft",
-          "addOns": [],
-          "dates": [
-            {
-              "id": "2026-07-15",
-              "date": "2026-07-15",
-              "label": "",
-              "menuSlots": [
-                {
-                  "id": "",
-                  "type": "Lunch",
-                  "time": "1:30 PM",
-                  "pax": 300,
-                  "pricePerPax": 250,
-                  "enabled": true,
-                  "menuItemIds": [
-                    "MNU-086",
-                    "MNU-088",
-                    "MNU-091",
-                    "MNU-095",
-                    "MNU-096"
-                  ],
-                  "additionalServices": [],
-                  "menuImages": []
-                }
-              ],
-              "additionalServices": []
-            }
-          ],
-          "payments": [],
-          "materialDocuments": [],
-          "attendance": []
-        }
-      ],
+      "events": [],
       "clients": [],
       "employees": [
         {
