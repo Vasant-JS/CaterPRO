@@ -322,7 +322,6 @@ class _AppShellState extends State<AppShell> {
       Map<String, dynamic> server, Map<String, dynamic> cached) {
     final merged = <String, dynamic>{...cached, ...server};
     const userLists = [
-      'events',
       'clients',
       'employees',
       'attendance',
@@ -330,6 +329,10 @@ class _AppShellState extends State<AppShell> {
       'customMenus',
       'manualInvoices',
     ];
+    merged['events'] = mergeServerEventsWithLocalDrafts(
+      server['events'],
+      cached['events'],
+    );
     for (final key in userLists) {
       merged[key] = mergeRecordLists(cached[key], server[key], key: key);
     }
@@ -340,6 +343,20 @@ class _AppShellState extends State<AppShell> {
         ...Map<String, dynamic>.from(server['businessProfile'] as Map),
     };
     return merged;
+  }
+
+  List<Map<String, dynamic>> mergeServerEventsWithLocalDrafts(
+      Object? server, Object? cached) {
+    final serverEvents = jsonMapList(server);
+    final serverIds = serverEvents
+        .map((event) => event['id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final localDrafts = jsonMapList(cached).where((event) {
+      final id = event['id']?.toString() ?? '';
+      return id.startsWith('evt_') && !serverIds.contains(id);
+    });
+    return [...serverEvents, ...localDrafts];
   }
 
   Map<String, dynamic> normalizeUserData(Map<String, dynamic> userData) {
