@@ -16,5 +16,3 @@ services:
         sync: false
       - key: SUPABASE_STATE_ID
         value: default
-      - key: ALLOW_DB_JSON_STORAGE
-        value: false

@@ -7,13 +7,10 @@ const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-const dbPath = path.join(__dirname, 'db.json');
-const universalCatalogBackupPath = path.join(__dirname, 'universal-catalog.backup.json');
 const port = Number(process.env.PORT || 8787);
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseStateId = process.env.SUPABASE_STATE_ID || 'default';
-const allowJsonStorage = process.env.ALLOW_DB_JSON_STORAGE === 'true';
 const supabase = supabaseUrl && supabaseServiceRoleKey ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } }) : null;
 let runtimeDb = null;
 let pendingSupabaseWrite = Promise.resolve();
@@ -27,14 +24,10 @@ app.use((req, res, next) => {
   next();
 });
 
-function readLocalDb() {
-  const db = JSON.parse(fs.readFileSync(dbPath, 'utf8').replace(/^\uFEFF/, ''));
-  ensureUniversal(db);
-  return db;
-}
-
 function readDb() {
-  if (!runtimeDb) runtimeDb = readLocalDb();
+  if (!runtimeDb) {
+    throw new Error('Online database state is not loaded. Check Supabase configuration and caterpro_state data.');
+  }
   ensureUniversal(runtimeDb);
   return runtimeDb;
 }
@@ -42,10 +35,6 @@ function readDb() {
 function writeDb(db) {
   ensureUniversal(db);
   runtimeDb = db;
-  persistUniversalCatalogBackup(db.universal);
-  if (allowJsonStorage) {
-    fs.writeFileSync(dbPath, `${JSON.stringify(db, null, 2)}\n`);
-  }
   scheduleSupabaseSave(db);
 }
 
@@ -247,26 +236,14 @@ async function flushSupabaseWrites() {
 }
 
 async function initializeStorage() {
-  const localDb = readLocalDb();
-  if (!supabase) {
-    if (allowJsonStorage) {
-      runtimeDb = localDb;
-      console.log('CaterPro storage: local db.json');
-      return;
-    }
-    requireSupabaseConfigured();
-  }
+  requireSupabaseConfigured();
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
-    supabaseDb.universal = mergeProtectedUniversalCatalog(localDb.universal || {}, supabaseDb.universal || {});
     runtimeDb = supabaseDb;
-    await saveSupabaseDb(runtimeDb);
     console.log(`CaterPro storage: loaded Supabase state "${supabaseStateId}"`);
     return;
   }
-  runtimeDb = localDb;
-  await saveSupabaseDb(runtimeDb);
-  console.log(`CaterPro storage: seeded Supabase state "${supabaseStateId}" from db.json`);
+  throw new Error(`No Supabase state found for "${supabaseStateId}". Create caterpro_state data before starting the API.`);
 }
 function makeId(prefix) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
@@ -720,16 +697,6 @@ function defaultVesselCatalog() {
 
 const protectedUniversalCatalogKeys = ['menuItems', 'rawMaterials', 'produceItems', 'vesselItems'];
 
-function readUniversalCatalogBackup() {
-  if (!fs.existsSync(universalCatalogBackupPath)) return {};
-  try {
-    const backup = JSON.parse(fs.readFileSync(universalCatalogBackupPath, 'utf8'));
-    return backup && typeof backup === 'object' && !Array.isArray(backup) ? backup : {};
-  } catch {
-    return {};
-  }
-}
-
 function mergeCatalogById(existing = [], incoming = []) {
   const merged = new Map();
   for (const item of Array.isArray(existing) ? existing : []) {
@@ -923,19 +890,12 @@ function normalizeRawMaterialUnits(rawMaterials = []) {
   });
 }
 
-function persistUniversalCatalogBackup(universal = {}) {
-  const previous = readUniversalCatalogBackup();
-  const backup = mergeProtectedUniversalCatalog(previous, universal);
-  fs.writeFileSync(universalCatalogBackupPath, `${JSON.stringify(backup, null, 2)}\n`);
-}
-
 function ensureUniversal(db) {
   db.universal = db.universal || {};
-  const backup = readUniversalCatalogBackup();
-  db.universal.menuItems = Array.isArray(db.universal.menuItems) && db.universal.menuItems.length > 0 ? db.universal.menuItems : backup.menuItems || [];
-  db.universal.rawMaterials = Array.isArray(db.universal.rawMaterials) && db.universal.rawMaterials.length > 0 ? db.universal.rawMaterials : backup.rawMaterials || [];
-  db.universal.produceItems = Array.isArray(db.universal.produceItems) && db.universal.produceItems.length > 0 ? db.universal.produceItems : backup.produceItems || [];
-  db.universal.vesselItems = Array.isArray(db.universal.vesselItems) && db.universal.vesselItems.length > 0 ? db.universal.vesselItems : backup.vesselItems || [];
+  db.universal.menuItems = Array.isArray(db.universal.menuItems) ? db.universal.menuItems : [];
+  db.universal.rawMaterials = Array.isArray(db.universal.rawMaterials) ? db.universal.rawMaterials : [];
+  db.universal.produceItems = Array.isArray(db.universal.produceItems) ? db.universal.produceItems : [];
+  db.universal.vesselItems = Array.isArray(db.universal.vesselItems) ? db.universal.vesselItems : [];
   const legacyNames = new Set(['Basmati Rice', 'Toor Dal', 'Cooking Oil', 'Tomato', 'Onion']);
   const hasOnlyLegacyRawMaterials = db.universal.rawMaterials.length > 0 && db.universal.rawMaterials.every((item) => legacyNames.has(item.name));
   if (db.universal.rawMaterials.length === 0 || hasOnlyLegacyRawMaterials) {
@@ -3855,7 +3815,7 @@ app.get('/api/storage/status', async (req, res) => {
     }
   }
   res.json({
-    storage: supabase ? 'supabase' : 'db.json',
+    storage: 'supabase',
     supabase: supabaseStatus,
     counts: storageCountsFor(db, user.id),
   });
@@ -3936,41 +3896,7 @@ async function pushLocalToSupabase(req, res) {
   }
 }
 
-async function pullSupabaseToLocal(req, res) {
-  const db = readDb();
-  const user = requireUser(req, res, db);
-  if (!user) return;
-  if (!allowJsonStorage) {
-    return res.status(410).json({
-      message: 'Local db.json pull is disabled. CaterPro is configured for Supabase storage.',
-    });
-  }
-  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
-  try {
-    const supabaseDb = await loadSupabaseDb();
-    if (!supabaseDb) return res.status(404).json({ message: 'No Supabase state found' });
-    supabaseDb.universal = mergeProtectedUniversalCatalog(db.universal || {}, supabaseDb.universal || {});
-    writeDb(supabaseDb);
-    await flushSupabaseWrites();
-    const pulledUserData = supabaseDb.userData[user.id] || emptyUserData();
-    res.json({
-      message: 'Supabase state pulled into local db.json',
-      stateId: supabaseStateId,
-      counts: {
-        events: pulledUserData.events.length,
-        menuItems: supabaseDb.universal.menuItems.length,
-        rawMaterials: supabaseDb.universal.rawMaterials.length,
-        produceItems: supabaseDb.universal.produceItems.length,
-        vesselItems: supabaseDb.universal.vesselItems.length,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({ message: 'Unable to pull from Supabase', error: error.message });
-  }
-}
-
 app.post('/api/storage/push-local-to-supabase', pushLocalToSupabase);
-app.post('/api/storage/pull-supabase-to-local', pullSupabaseToLocal);
 
 const webBuildPath = path.join(__dirname, '..', 'frontend', 'build', 'web');
 const webMimeTypes = {

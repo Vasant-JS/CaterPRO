@@ -18,6 +18,8 @@ backend/.env.*
 !backend/.env.example
 backend/api*.log
 backend/backend-run*.log
+backend/db.json
+backend/universal-catalog.backup.json
 
 # Local tooling
 .DS_Store

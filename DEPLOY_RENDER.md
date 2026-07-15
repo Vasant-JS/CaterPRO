@@ -39,7 +39,6 @@ NODE_VERSION=20
 SUPABASE_URL=<your Supabase project URL>
 SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
 SUPABASE_STATE_ID=default
-ALLOW_DB_JSON_STORAGE=false
 ```
 
 After deploy, open:
@@ -48,18 +47,9 @@ After deploy, open:
 https://YOUR-RENDER-SERVICE.onrender.com/api/docs
 ```
 
-The first successful backend start seeds Supabase from `backend/db.json` if no `caterpro_state/default` row exists. After that, the backend loads from Supabase and persists backend writes to Supabase.
+The backend requires an existing `caterpro_state/default` row. It does not seed from or fall back to local JSON files.
 
 ## 3. Local API
-
-For local-only development without Supabase:
-
-```powershell
-cd D:\Projects\CaterPro\backend
-npm install
-$env:ALLOW_DB_JSON_STORAGE='true'
-npm start
-```
 
 For local development connected to Supabase:
 
@@ -69,7 +59,6 @@ npm install
 $env:SUPABASE_URL='https://your-project-ref.supabase.co'
 $env:SUPABASE_SERVICE_ROLE_KEY='<service-role-key>'
 $env:SUPABASE_STATE_ID='default'
-$env:ALLOW_DB_JSON_STORAGE='false'
 npm start
 ```
 

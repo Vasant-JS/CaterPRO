@@ -7,7 +7,9 @@ Node API for the Flutter frontend.
 ```powershell
 cd D:\Projects\CaterPro\backend
 npm install
-$env:ALLOW_DB_JSON_STORAGE='true'
+$env:SUPABASE_URL='https://your-project-ref.supabase.co'
+$env:SUPABASE_SERVICE_ROLE_KEY='<service-role-key>'
+$env:SUPABASE_STATE_ID='default'
 npm start
 ```
 
@@ -26,7 +28,7 @@ admin@caterpro.in / password
 ## Supabase Storage
 
 CaterPro uses the Supabase JavaScript client only. It does not require Firebase config or a direct database connection string.
-In production, Supabase is the backend's primary storage: the API loads the app state from Supabase on startup and every backend write is persisted back to Supabase.
+Supabase is mandatory backend storage: the API loads the app state from Supabase on startup and every backend write is persisted back to Supabase. There is no local JSON fallback.
 
 Required production env vars:
 
@@ -34,7 +36,6 @@ Required production env vars:
 SUPABASE_URL=<your Supabase project URL>
 SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
 SUPABASE_STATE_ID=default
-ALLOW_DB_JSON_STORAGE=false
 ```
 
 Run [supabase-schema.sql](D:/Projects/CaterPro/backend/supabase-schema.sql) once in the Supabase SQL editor before deploying.
@@ -66,6 +67,4 @@ Useful authenticated endpoints:
 
 - `GET /api/storage/status`
 - `GET /api/storage/tables`
-- `POST /api/storage/push-local-to-supabase`
-- `POST /api/storage/pull-supabase-to-local`
 - `POST /api/storage/import-menu-items-from-supabase`
