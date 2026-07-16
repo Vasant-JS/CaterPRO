@@ -93,9 +93,10 @@ class _EventsScreenState extends State<EventsScreen> {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          decoration: BoxDecoration(
+              color: cpSurface(context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -106,11 +107,11 @@ class _EventsScreenState extends State<EventsScreen> {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 18),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
-                const Text('Filter Client',
+                Text('Filter Client',
                     style: TextStyle(
-                        color: Cp.primary,
+                        color: cpPrimary(context),
                         fontSize: 22,
                         fontWeight: FontWeight.w900)),
                 const SizedBox(height: 12),

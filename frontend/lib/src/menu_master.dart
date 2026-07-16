@@ -114,8 +114,8 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
   }
 
   void upsertMenuItem(MenuMasterItem item) {
-    final creating = !MenuMasterScreen.menuItems
-        .any((existing) => existing.id == item.id);
+    final creating =
+        !MenuMasterScreen.menuItems.any((existing) => existing.id == item.id);
     setState(() {
       final index = MenuMasterScreen.menuItems
           .indexWhere((existing) => existing.id == item.id);
@@ -333,8 +333,8 @@ class MenuItemCard extends StatelessWidget {
             Expanded(
               child: MarqueeText(
                 '${item.kannada}/${item.english}',
-                style:
-                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                style: kannadaMenuTextStyle(context,
+                    fontSize: 14, fontWeight: FontWeight.w800),
               ),
             ),
             IconButton(
@@ -387,7 +387,7 @@ class MenuItemCardLegacy extends StatelessWidget {
                           child: Text('${item.kannada} / ${item.english}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: kannadaMenuTextStyle(context,
                                   fontSize: 15, fontWeight: FontWeight.w800)))
                     ]),
                     const SizedBox(height: 2),
@@ -458,8 +458,8 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
     'Dinner',
     'Others'
   ];
-  late final id = TextEditingController(
-      text: widget.item?.id ?? nextMenuMasterItemId());
+  late final id =
+      TextEditingController(text: widget.item?.id ?? nextMenuMasterItemId());
   late final english = TextEditingController(
       text: widget.item?.english ?? widget.initialEnglish ?? '');
   late final kannada = TextEditingController(text: widget.item?.kannada ?? '');
@@ -628,8 +628,9 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
                       child: FilledButton.icon(
                           onPressed: save,
                           style: FilledButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.primaryContainer,
+                              backgroundColor: Theme.of(context)
+                                  .colorScheme
+                                  .primaryContainer,
                               foregroundColor: Theme.of(context)
                                   .colorScheme
                                   .onPrimaryContainer),
@@ -954,7 +955,8 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
             20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
         decoration: BoxDecoration(
             color: cpSurface(context),
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1026,7 +1028,7 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                         Expanded(
                             child: MarqueeText(
                                 '${item.title}\n${item.id} • ${item.category}',
-                                style: const TextStyle(
+                                style: kannadaMenuTextStyle(context,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800))),
                       ]),

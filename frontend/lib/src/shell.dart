@@ -53,6 +53,7 @@ class _AppShellState extends State<AppShell> {
   Timer? autoSyncTimer;
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
+  bool syncInProgress = false;
 
   @override
   void initState() {
@@ -62,7 +63,7 @@ class _AppShellState extends State<AppShell> {
         if (mounted) unawaited(startupRefresh());
       });
     });
-    autoSyncTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+    autoSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (!loading) unawaited(refreshEvents(silent: true));
     });
   }
@@ -162,7 +163,7 @@ class _AppShellState extends State<AppShell> {
 
   void backupCurrentSnapshotQuietly() {
     unawaited(cacheCurrentUserData()
-        .then((_) => pushCurrentSnapshot())
+        .then((_) => refreshEvents(silent: true))
         .catchError((_) {}));
   }
 
@@ -293,13 +294,7 @@ class _AppShellState extends State<AppShell> {
     return {
       ...fallback,
       ...preferred,
-      'menuItems': preferLocal
-          ? mergeRecordLists(
-              fallback['menuItems'],
-              preferred['menuItems'],
-              key: 'menuItems',
-            )
-          : jsonMapList(preferred['menuItems']),
+      'menuItems': jsonMapList(server['menuItems']),
       'rawMaterials': mergeRecordLists(
         fallback['rawMaterials'],
         preferred['rawMaterials'],
@@ -599,20 +594,26 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> pushCurrentSnapshot() async {
-    final response = await api.pushSyncSnapshot(
-      userData: currentUserDataJson(),
-      universal: currentUniversalJson(),
-    );
-    final universal =
-        Map<String, dynamic>.from((response['universal'] as Map?) ?? const {});
-    final userData =
-        Map<String, dynamic>.from((response['userData'] as Map?) ?? const {});
-    await applySnapshot(
-      userData: userData,
-      universal: universal,
-      synced: true,
-      updateLastSynced: true,
-    );
+    if (syncInProgress) return;
+    syncInProgress = true;
+    try {
+      final response = await api.pushSyncSnapshot(
+        userData: currentUserDataJson(),
+        universal: currentUniversalJson(),
+      );
+      final universal = Map<String, dynamic>.from(
+          (response['universal'] as Map?) ?? const {});
+      final userData =
+          Map<String, dynamic>.from((response['userData'] as Map?) ?? const {});
+      await applySnapshot(
+        userData: userData,
+        universal: universal,
+        synced: true,
+        updateLastSynced: true,
+      );
+    } finally {
+      syncInProgress = false;
+    }
   }
 
   Future<void> cacheAndPushCurrentSnapshot() async {
@@ -630,6 +631,8 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> refreshEvents({bool silent = false}) async {
+    if (syncInProgress) return;
+    syncInProgress = true;
     if (!silent) {
       setState(() {
         loading = true;
@@ -705,6 +708,7 @@ class _AppShellState extends State<AppShell> {
         loadError = null;
       });
     } finally {
+      syncInProgress = false;
       if (mounted) setState(() => loading = false);
     }
   }
@@ -1696,8 +1700,7 @@ class Pill extends StatelessWidget {
             ? scheme.onSecondaryContainer
             : color == Cp.tertiaryContainer || color == Cp.tertiaryFixed
                 ? scheme.onTertiaryContainer
-                : color == Cp.errorContainer ||
-                        color == const Color(0xffffebeb)
+                : color == Cp.errorContainer || color == const Color(0xffffebeb)
                     ? scheme.onErrorContainer
                     : cpAdaptTextColor(context, textColor);
     return Container(

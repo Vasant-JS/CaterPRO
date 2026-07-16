@@ -93,10 +93,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final detailsError = validateDetails();
     if (detailsError != null) return detailsError;
     if (draft.dates.isEmpty) return 'Add at least one event date.';
+    final seenDates = <String>{};
     for (final date in draft.dates) {
       final dateError =
           isoDateValidator(date.date, label: 'Event date', noPast: true);
       if (dateError != null) return dateError;
+      if (!seenDates.add(date.date.trim())) return 'Date already added';
       for (final slot in date.slots.where((item) => item.enabled)) {
         final pax = int.tryParse(slot.pax.trim()) ?? 0;
         if (pax <= 0) return '${slot.type} members must be more than zero.';
@@ -425,12 +427,57 @@ class CreateDatesStep extends StatelessWidget {
           onTap: () async {
             final date = await showAddDateSheet(context);
             if (date != null) {
+              final dateExists =
+                  dates.any((item) => item.date.trim() == date.date.trim());
+              if (dateExists) {
+                if (context.mounted) await showDateAlreadyAddedDialog(context);
+                return;
+              }
               dates.add(date);
               onChanged();
             }
           }),
     ]);
   }
+}
+
+Future<void> showDateAlreadyAddedDialog(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Date already added'),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
+String defaultMenuTimeForType(String type) {
+  return appPreferences.value.defaultMenuTimes[type] ??
+      defaultEventMenuTimes[type] ??
+      '10:00 AM';
+}
+
+MealSlotConfig defaultMealSlotForType(String type) {
+  return MealSlotConfig(
+    type: type,
+    time: defaultMenuTimeForType(type),
+    pax: '',
+    pricePerPax: 0,
+  );
+}
+
+DraftDateConfig defaultDraftDateConfig(
+    {required String date, required String label}) {
+  final config = DraftDateConfig(date: date, label: label);
+  final autoTypes = appPreferences.value.autoMenuTypes;
+  config.slots.addAll(
+      eventMenuTypes.where(autoTypes.contains).map(defaultMealSlotForType));
+  return config;
 }
 
 Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
@@ -505,7 +552,7 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
                           ? null
                           : () => Navigator.pop(
                               context,
-                              DraftDateConfig(
+                              defaultDraftDateConfig(
                                   date: dateController.text.trim(),
                                   label: labelController.text.trim())),
                       style: FilledButton.styleFrom(
@@ -536,46 +583,44 @@ class DateScheduleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: CpCard(
-            child: Row(children: [
-          Container(
-              width: 52,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              decoration: BoxDecoration(
-                  color: scheme.primaryContainer,
-                  borderRadius: BorderRadius.circular(10)),
-              child: Column(children: [
-                Text(month,
-                    style: TextStyle(
-                        color: scheme.onPrimaryContainer,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900)),
-                Text(day,
-                    style: TextStyle(
-                        color: scheme.onPrimaryContainer,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900))
-              ])),
-          const SizedBox(width: 14),
-          Expanded(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 16, fontWeight: FontWeight.w900)),
-                Text(summary,
-                    style: TextStyle(
-                        color: cpOnVariant(context),
-                        fontWeight: FontWeight.w700))
-              ])),
-          if (onDelete != null)
-            IconButton(
-                onPressed: onDelete,
-                icon: const Icon(Icons.delete, color: Cp.error))
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+          child: Row(children: [
+        Container(
+            width: 52,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: BorderRadius.circular(10)),
+            child: Column(children: [
+              Text(month,
+                  style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900)),
+              Text(day,
+                  style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900))
+            ])),
+        const SizedBox(width: 14),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+          Text(summary,
+              style: TextStyle(
+                  color: cpOnVariant(context), fontWeight: FontWeight.w700))
         ])),
-      );
+        if (onDelete != null)
+          IconButton(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete, color: Cp.error))
+      ])),
+    );
   }
 }
 
@@ -796,12 +841,9 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
   }
 
   void openMealTypePicker() {
-    const availableTypes = [
-      ('Breakfast', '8:00 AM', 0),
-      ('Juice', '5:00 PM', 0),
-      ('Lunch', '1:30 PM', 0),
-      ('Snack', '4:30 PM', 0),
-      ('Dinner', '8:00 PM', 0),
+    final availableTypes = [
+      for (final type in eventMenuTypes)
+        (type, defaultMenuTimeForType(type), 0),
     ];
     final config = currentConfig;
     if (config == null) return;
@@ -1485,7 +1527,7 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
                       Expanded(
                         child: MarqueeText(
                           '${item.kannada}/${item.english}',
-                          style: const TextStyle(
+                          style: kannadaMenuTextStyle(context,
                               fontSize: 14, fontWeight: FontWeight.w900),
                         ),
                       ),
@@ -1940,8 +1982,7 @@ class CreateReviewStep extends StatelessWidget {
             if (draft.addOns.isEmpty)
               Text('No add-ons added.',
                   style: TextStyle(
-                      color: cpOnVariant(context),
-                      fontStyle: FontStyle.italic))
+                      color: cpOnVariant(context), fontStyle: FontStyle.italic))
             else
               ...draft.addOns.map((addOn) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),

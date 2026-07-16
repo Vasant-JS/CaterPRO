@@ -582,8 +582,8 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                                   fontWeight: FontWeight.w900))),
                       IconButton(
                           onPressed: addItem,
-                          icon: Icon(Icons.add_circle,
-                              color: cpPrimary(context)))
+                          icon:
+                              Icon(Icons.add_circle, color: cpPrimary(context)))
                     ]),
                     const SizedBox(height: 8),
                     ...List.generate(items.length, (index) {
@@ -870,7 +870,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          color: Cp.surface,
+          color: cpSurface(context),
           child: Row(children: [
             Expanded(
                 child: FilledButton(
@@ -1663,6 +1663,7 @@ class PaymentInputBox extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
         decoration: BoxDecoration(
+            color: cpInputFill(context),
             border: Border.all(color: cpOutline(context)),
             borderRadius: BorderRadius.circular(12)),
         child: Row(
@@ -1672,12 +1673,14 @@ class PaymentInputBox extends StatelessWidget {
                 controller: controller,
                 keyboardType: keyboardType,
                 onChanged: onChanged,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                    color: cpOnSurface(context),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700),
                 decoration: InputDecoration(
                   labelText: label,
                   labelStyle: TextStyle(
-                      color: cpPrimary(context),
+                      color: cpOnVariant(context),
                       fontSize: 13,
                       fontWeight: FontWeight.w700),
                   floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -1699,15 +1702,21 @@ class PaymentInputBox extends StatelessWidget {
 }
 
 class _MoneyCell extends StatelessWidget {
-  const _MoneyCell(
-      {required this.label, required this.value, this.color = Cp.onSurface});
+  const _MoneyCell({required this.label, required this.value, this.color});
   final String label, value;
-  final Color color;
+  final Color? color;
   @override
   Widget build(BuildContext context) => Column(children: [
         Text(label,
-            style: const TextStyle(
-                color: Cp.outline, fontSize: 10, fontWeight: FontWeight.w900)),
-        Text(value, style: TextStyle(color: color, fontWeight: FontWeight.w900))
+            style: TextStyle(
+                color: cpOnVariant(context),
+                fontSize: 10,
+                fontWeight: FontWeight.w900)),
+        Text(value,
+            style: TextStyle(
+                color: color == null
+                    ? cpOnSurface(context)
+                    : cpAdaptTextColor(context, color!),
+                fontWeight: FontWeight.w900))
       ]);
 }

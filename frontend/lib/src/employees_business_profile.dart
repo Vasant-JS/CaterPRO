@@ -351,9 +351,10 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
       child: Container(
         padding: EdgeInsets.fromLTRB(
             20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-        decoration: const BoxDecoration(
-            color: Cp.card,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: SingleChildScrollView(
           child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -365,11 +366,11 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 20),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
                 Text(widget.employee == null ? 'Add Employee' : 'Edit Employee',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
                 const SizedBox(height: 16),
@@ -650,6 +651,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final bankName = TextEditingController(text: widget.profile.bankName);
   late final accountNumber =
       TextEditingController(text: widget.profile.accountNumber);
+  late final ifsc = TextEditingController(text: widget.profile.ifsc);
   late final terms = TextEditingController(text: widget.profile.terms);
   late String logoBase64 = widget.profile.logoBase64;
   late String signatureBase64 = widget.profile.signatureBase64;
@@ -684,6 +686,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     email.text = profile.email;
     bankName.text = profile.bankName;
     accountNumber.text = profile.accountNumber;
+    ifsc.text = profile.ifsc;
     terms.text = profile.terms;
     logoBase64 = profile.logoBase64;
     signatureBase64 = profile.signatureBase64;
@@ -704,6 +707,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       email,
       bankName,
       accountNumber,
+      ifsc,
       terms
     ]) {
       controller.dispose();
@@ -716,13 +720,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         serviceType: serviceType.text.trim(),
         gstin: gstRegistered ? gstin.text.trim() : '',
         gstType: gstType,
-        gstRate: gstRegistered ? (double.tryParse(gstRate.text.trim()) ?? 5) : 0,
+        gstRate:
+            gstRegistered ? (double.tryParse(gstRate.text.trim()) ?? 5) : 0,
         pan: pan.text.trim(),
         address: address.text.trim(),
         phone: phone.text.trim().isEmpty ? '' : normalizeMobileText(phone.text),
         email: email.text.trim(),
         bankName: bankName.text.trim(),
         accountNumber: accountNumber.text.trim(),
+        ifsc: ifsc.text.trim().toUpperCase(),
         terms: terms.text.trim(),
         logoBase64: logoBase64,
         signatureBase64: signatureBase64,
@@ -857,25 +863,26 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
               Expanded(
                   flex: 4,
                   child: Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: DropdownButtonFormField<String>(
-                  initialValue: gstType,
-                  disabledHint: Text(gstType == 'igst' ? 'IGST' : 'CGST + SGST'),
-                  decoration: InputDecoration(
-                      labelText: 'GST Type',
-                      border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12))),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'cgst_sgst', child: Text('CGST + SGST')),
-                    DropdownMenuItem(value: 'igst', child: Text('IGST')),
-                  ],
-                  onChanged: gstRegistered
-                      ? (value) =>
-                          setState(() => gstType = value ?? 'cgst_sgst')
-                      : null,
-                ),
-              )),
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: DropdownButtonFormField<String>(
+                      initialValue: gstType,
+                      disabledHint:
+                          Text(gstType == 'igst' ? 'IGST' : 'CGST + SGST'),
+                      decoration: InputDecoration(
+                          labelText: 'GST Type',
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12))),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'cgst_sgst', child: Text('CGST + SGST')),
+                        DropdownMenuItem(value: 'igst', child: Text('IGST')),
+                      ],
+                      onChanged: gstRegistered
+                          ? (value) =>
+                              setState(() => gstType = value ?? 'cgst_sgst')
+                          : null,
+                    ),
+                  )),
               const SizedBox(width: 10),
               Expanded(
                   flex: 3,
@@ -905,6 +912,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 label: 'Account Number',
                 controller: accountNumber,
                 keyboardType: TextInputType.number),
+            EditableInlineField(label: 'IFSC', controller: ifsc),
             const SectionTitle('Terms & Conditions', Icons.description),
             EditableInlineField(label: 'Standard Terms', controller: terms),
             const SizedBox(height: 18),

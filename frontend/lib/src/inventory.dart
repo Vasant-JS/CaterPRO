@@ -228,8 +228,7 @@ class _ListsScreenState extends State<ListsScreen> {
           bottom: 24,
           child: FloatingActionButton(
               heroTag: 'addList',
-              backgroundColor:
-                  Theme.of(context).colorScheme.secondaryContainer,
+              backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
               foregroundColor:
                   Theme.of(context).colorScheme.onSecondaryContainer,
               onPressed: chooseListType,
@@ -1441,10 +1440,9 @@ class RawMaterialCard extends StatelessWidget {
             Expanded(
               child: MarqueeText(
                 item.name,
-                style: const TextStyle(
-                    color: Cp.primary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800),
+                style: kannadaMenuTextStyle(context,
+                        fontSize: 14, fontWeight: FontWeight.w800)
+                    .copyWith(color: Cp.primary),
               ),
             ),
             IconButton(
@@ -1563,9 +1561,10 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
         child: Container(
           padding: EdgeInsets.fromLTRB(
               20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-          decoration: const BoxDecoration(
-              color: Cp.card,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          decoration: BoxDecoration(
+              color: cpSurface(context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28))),
           child: SingleChildScrollView(
             child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -1577,18 +1576,18 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
                           height: 6,
                           margin: const EdgeInsets.only(bottom: 20),
                           decoration: BoxDecoration(
-                              color: Cp.outlineVariant,
+                              color: cpOutlineVariant(context),
                               borderRadius: BorderRadius.circular(99)))),
                   Text(
                       widget.item == null
                           ? 'Add ${widget.noun}'
                           : 'Edit ${widget.noun}',
-                      style: const TextStyle(
-                          color: Cp.primary,
+                      style: TextStyle(
+                          color: cpPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w900)),
-                  const Text('Universal item, available to every user.',
-                      style: TextStyle(color: Cp.onVariant)),
+                  Text('Universal item, available to every user.',
+                      style: TextStyle(color: cpOnVariant(context))),
                   const SizedBox(height: 16),
                   EditableInlineField(label: 'ID', controller: id),
                   EditableInlineField(label: 'Name', controller: name),

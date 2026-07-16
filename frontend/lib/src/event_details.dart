@@ -212,9 +212,10 @@ class EventDetailsScreen extends StatelessWidget {
           top: false,
           child: Container(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            decoration: const BoxDecoration(
-                color: Cp.surface,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+            decoration: BoxDecoration(
+                color: cpSurface(context),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(28))),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,16 +226,17 @@ class EventDetailsScreen extends StatelessWidget {
                           height: 6,
                           margin: const EdgeInsets.only(bottom: 18),
                           decoration: BoxDecoration(
-                              color: Cp.outlineVariant,
+                              color: cpOutlineVariant(context),
                               borderRadius: BorderRadius.circular(99)))),
-                  const Text('Share Menu',
+                  Text('Share Menu',
                       style: TextStyle(
-                          color: Cp.primary,
+                          color: cpPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w900)),
                   Text(event.name,
-                      style: const TextStyle(
-                          color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w700)),
                   const SizedBox(height: 14),
                   ShareMenuTile(
                     icon: const WhatsAppIcon(size: 22),
@@ -1836,64 +1838,64 @@ class EventDateMenuCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: CpCard(
-          child: Row(
-            children: [
-              Container(
-                width: 54,
-                height: 58,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(10)),
-                child: Text(date.date.split('-').skip(1).join('\n'),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: scheme.onPrimaryContainer,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1)),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        child: Row(
+          children: [
+            Container(
+              width: 54,
+              height: 58,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text(date.date.split('-').skip(1).join('\n'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: scheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w900,
+                      height: 1.1)),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(date.label.isEmpty ? date.date : date.label,
+                      style: TextStyle(
+                          color: cpPrimary(context),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900)),
+                  const SizedBox(height: 2),
+                  Text(
+                      date.menuSlots.isEmpty
+                          ? 'No menu slots'
+                          : date.menuSlots
+                              .map((slot) =>
+                                  '${slot.type} | ${slot.pax} Members | ${money(slot.pricePerPax)}/member')
+                              .join('\n'),
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontWeight: FontWeight.w700)),
+                ],
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(date.label.isEmpty ? date.date : date.label,
-                        style: TextStyle(
-                            color: cpPrimary(context),
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900)),
-                    const SizedBox(height: 2),
-                    Text(
-                        date.menuSlots.isEmpty
-                            ? 'No menu slots'
-                            : date.menuSlots
-                                .map((slot) =>
-                                    '${slot.type} | ${slot.pax} Members | ${money(slot.pricePerPax)}/member')
-                                .join('\n'),
-                        style: TextStyle(
-                            color: cpOnVariant(context),
-                            fontWeight: FontWeight.w700)),
-                  ],
-                ),
+            ),
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(
+                onPressed: onShareWhatsApp,
+                icon: const WhatsAppIcon(size: 24),
+                tooltip: 'Share menu on WhatsApp',
               ),
-              Row(mainAxisSize: MainAxisSize.min, children: [
-                IconButton(
-                  onPressed: onShareWhatsApp,
-                  icon: const WhatsAppIcon(size: 24),
-                  tooltip: 'Share menu on WhatsApp',
-                ),
-                IconButton(
-                  onPressed: onDownload,
-                  icon: Icon(Icons.picture_as_pdf, color: cpPrimary(context)),
-                  tooltip: 'Download menu PDF',
-                ),
-              ]),
-            ],
-          ),
+              IconButton(
+                onPressed: onDownload,
+                icon: Icon(Icons.picture_as_pdf, color: cpPrimary(context)),
+                tooltip: 'Download menu PDF',
+              ),
+            ]),
+          ],
         ),
-      );
+      ),
+    );
   }
 }
 

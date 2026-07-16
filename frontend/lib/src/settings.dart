@@ -1142,9 +1142,10 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
         top: false,
         child: Container(
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-          decoration: const BoxDecoration(
-              color: Cp.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+          decoration: BoxDecoration(
+              color: cpSurface(context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28))),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1155,16 +1156,17 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                         height: 5,
                         margin: const EdgeInsets.only(bottom: 18),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
-                const Text('Share Download',
+                Text('Share Download',
                     style: TextStyle(
-                        color: Cp.primary,
+                        color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
                 Text(title,
-                    style: const TextStyle(
-                        color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                    style: TextStyle(
+                        color: cpOnVariant(context),
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 14),
                 if (entries.length == 1)
                   ShareMenuTile(
@@ -1633,120 +1635,112 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
     final scheme = Theme.of(context).colorScheme;
     final selectedTheme = AppPreferences.normalizeTheme(draft.theme);
     return ScreenFrame(
-        topBar: TopBar(
-            title: tr('App Appearance', kn: 'ಅ್ಯಪ್ ರೂಪ', hi: 'ऐप दिखावट'),
-            avatar: false,
-            leading: IconButton(
-                onPressed: widget.onClose,
-                icon: Icon(Icons.arrow_back, color: scheme.primary))),
-        children: [
-          CpCard(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(tr('Text Size', kn: 'ಅಕ್ಷರ ಗಾತ್ರ', hi: 'टेक्स्ट आकार'),
-                    style: TextStyle(
-                        color: scheme.primary, fontWeight: FontWeight.w900)),
-                Slider(
-                    min: .85,
-                    max: 1.25,
-                    divisions: 4,
-                    label: '${(draft.textScale * 100).round()}%',
-                    value: draft.textScale,
-                    onChanged: (value) =>
-                        save(draft.copyWith(textScale: value))),
-                Text('Preview: CaterPro 123',
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-              ])),
-          const SizedBox(height: 14),
-          CpCard(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text('Font',
-                    style: TextStyle(
-                        color: scheme.primary, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                    initialValue: draft.font,
-                    decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.text_fields)),
-                    items: const [
-                      DropdownMenuItem(
-                          value: 'Quicksand', child: Text('Quicksand')),
-                      DropdownMenuItem(
-                          value: 'Poppins', child: Text('Poppins')),
-                      DropdownMenuItem(
-                          value: 'Noto Sans', child: Text('Noto Sans')),
-                      DropdownMenuItem(
-                          value: 'Noto Sans Kannada',
-                          child: Text('Noto Sans Kannada')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) save(draft.copyWith(font: value));
-                    }),
-              ])),
-          const SizedBox(height: 14),
-          CpCard(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(tr('Theme', kn: 'ಥೀಮ್', hi: 'थीम'),
-                    style: TextStyle(
-                        color: scheme.primary, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 10),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                        value: 'system',
-                        icon: Icon(Icons.phone_android),
-                        label: Text('System')),
-                    ButtonSegment(
-                        value: 'light',
-                        icon: Icon(Icons.light_mode),
-                        label: Text('Day')),
-                    ButtonSegment(
-                        value: 'dark',
-                        icon: Icon(Icons.dark_mode),
-                        label: Text('Night')),
-                  ],
-                  selected: {selectedTheme},
-                  showSelectedIcon: false,
-                  onSelectionChanged: (value) =>
-                      save(draft.copyWith(theme: value.first)),
-                ),
-              ])),
-          const SizedBox(height: 14),
-          CpCard(
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                Text(tr('App Language', kn: 'ಅ್ಯಪ್ ಭಾಷೆ', hi: 'ऐप भाषा'),
-                    style: TextStyle(
-                        color: scheme.primary, fontWeight: FontWeight.w900)),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<String>(
-                    initialValue: draft.languageCode,
-                    decoration: const InputDecoration(
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.translate)),
-                    items: const [
-                      DropdownMenuItem(value: 'en', child: Text('English')),
-                      DropdownMenuItem(value: 'kn', child: Text('ಕನ್ನಡ')),
-                      DropdownMenuItem(value: 'hi', child: Text('हिन्दी')),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        save(draft.copyWith(languageCode: value));
-                      }
-                    }),
-                const SizedBox(height: 8),
-                Text('Selected: ${draft.languageLabel}',
-                    style: TextStyle(color: scheme.onSurfaceVariant)),
-              ])),
-        ],
-      );
+      topBar: TopBar(
+          title: tr('App Appearance', kn: 'ಅ್ಯಪ್ ರೂಪ', hi: 'ऐप दिखावट'),
+          avatar: false,
+          leading: IconButton(
+              onPressed: widget.onClose,
+              icon: Icon(Icons.arrow_back, color: scheme.primary))),
+      children: [
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Text Size', kn: 'ಅಕ್ಷರ ಗಾತ್ರ', hi: 'टेक्स्ट आकार'),
+              style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w900)),
+          Slider(
+              min: .85,
+              max: 1.25,
+              divisions: 4,
+              label: '${(draft.textScale * 100).round()}%',
+              value: draft.textScale,
+              onChanged: (value) => save(draft.copyWith(textScale: value))),
+          Text('Preview: CaterPro 123',
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+        ])),
+        const SizedBox(height: 14),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Font',
+              style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+              initialValue: draft.font,
+              decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.text_fields)),
+              items: const [
+                DropdownMenuItem(value: 'Quicksand', child: Text('Quicksand')),
+                DropdownMenuItem(value: 'Poppins', child: Text('Poppins')),
+                DropdownMenuItem(value: 'Noto Sans', child: Text('Noto Sans')),
+                DropdownMenuItem(
+                    value: 'Noto Sans Kannada',
+                    child: Text('Noto Sans Kannada')),
+              ],
+              onChanged: (value) {
+                if (value != null) save(draft.copyWith(font: value));
+              }),
+        ])),
+        const SizedBox(height: 14),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('Theme', kn: 'ಥೀಮ್', hi: 'थीम'),
+              style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                  value: 'system',
+                  icon: Icon(Icons.phone_android),
+                  label: Text('System')),
+              ButtonSegment(
+                  value: 'light',
+                  icon: Icon(Icons.light_mode),
+                  label: Text('Day')),
+              ButtonSegment(
+                  value: 'dark',
+                  icon: Icon(Icons.dark_mode),
+                  label: Text('Night')),
+            ],
+            selected: {selectedTheme},
+            showSelectedIcon: false,
+            onSelectionChanged: (value) =>
+                save(draft.copyWith(theme: value.first)),
+          ),
+        ])),
+        const SizedBox(height: 14),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(tr('App Language', kn: 'ಅ್ಯಪ್ ಭಾಷೆ', hi: 'ऐप भाषा'),
+              style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+              initialValue: draft.languageCode,
+              decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.translate)),
+              items: const [
+                DropdownMenuItem(value: 'en', child: Text('English')),
+                DropdownMenuItem(value: 'kn', child: Text('ಕನ್ನಡ')),
+                DropdownMenuItem(value: 'hi', child: Text('हिन्दी')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  save(draft.copyWith(languageCode: value));
+                }
+              }),
+          const SizedBox(height: 8),
+          Text('Selected: ${draft.languageLabel}',
+              style: TextStyle(color: scheme.onSurfaceVariant)),
+        ])),
+      ],
+    );
   }
 }
 
@@ -1787,6 +1781,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
         email: widget.profile.email,
         bankName: widget.profile.bankName,
         accountNumber: widget.profile.accountNumber,
+        ifsc: widget.profile.ifsc,
         terms: widget.profile.terms,
         logoBase64: widget.profile.logoBase64,
         signatureBase64: widget.profile.signatureBase64,
@@ -2025,9 +2020,10 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
       child: Container(
         padding: EdgeInsets.fromLTRB(
             20, 10, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
-        decoration: const BoxDecoration(
-            color: Cp.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: SingleChildScrollView(
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2039,20 +2035,21 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
                         height: 6,
                         margin: const EdgeInsets.only(bottom: 22),
                         decoration: BoxDecoration(
-                            color: Cp.outlineVariant,
+                            color: cpOutlineVariant(context),
                             borderRadius: BorderRadius.circular(99)))),
                 Text('Record Payment - ${widget.event.name}',
-                    style: const TextStyle(
-                        color: Cp.primary,
+                    style: TextStyle(
+                        color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
-                const Text(
+                Text(
                     'Payment amount must be less than or equal to the remaining balance.',
                     style: TextStyle(
-                        color: Cp.onVariant, fontWeight: FontWeight.w700)),
+                        color: cpOnVariant(context),
+                        fontWeight: FontWeight.w700)),
                 const SizedBox(height: 16),
                 CpCard(
-                    color: Cp.surfaceLow,
+                    color: cpCard(context),
                     child: Row(children: [
                       Expanded(
                           child: _MoneyCell(
@@ -2101,7 +2098,9 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
                       label: Text(paymentModes[index]),
                       selectedColor: Cp.primaryContainer,
                       labelStyle: TextStyle(
-                          color: selected ? Colors.white : Cp.onVariant,
+                          color: selected
+                              ? Theme.of(context).colorScheme.onPrimaryContainer
+                              : cpOnVariant(context),
                           fontWeight: FontWeight.w800),
                       onSelected: (_) => setState(() => selectedMode = index),
                     );
@@ -2147,9 +2146,9 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
                 Center(
                     child: TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel',
+                        child: Text('Cancel',
                             style: TextStyle(
-                                color: Cp.primary,
+                                color: cpPrimary(context),
                                 fontWeight: FontWeight.w900)))),
               ]),
         ),
@@ -2176,9 +2175,10 @@ class AdditionalServiceManagerSheet extends StatelessWidget {
         constraints:
             BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .82),
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-        decoration: const BoxDecoration(
-            color: Cp.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2189,22 +2189,22 @@ class AdditionalServiceManagerSheet extends StatelessWidget {
                     height: 6,
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                        color: Cp.outlineVariant,
+                        color: cpOutlineVariant(context),
                         borderRadius: BorderRadius.circular(99)))),
             Row(children: [
-              const Expanded(
+              Expanded(
                   child: Text('Additional Services',
                       style: TextStyle(
-                          color: Cp.primary,
+                          color: cpPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w900))),
               IconButton(
                   onPressed: () => showServiceEditor(context, onSave: onSave),
                   icon: const Icon(Icons.add_circle, color: Cp.primary)),
             ]),
-            const Text(
+            Text(
                 'Add, update, or remove services used in event menu configuration.',
-                style: TextStyle(color: Cp.onVariant)),
+                style: TextStyle(color: cpOnVariant(context))),
             const SizedBox(height: 16),
             Flexible(
               child: ListView.separated(
@@ -2214,7 +2214,7 @@ class AdditionalServiceManagerSheet extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final service = services[index];
                   return CpCard(
-                    color: Cp.card,
+                    color: cpCard(context),
                     child: Row(children: [
                       const Icon(Icons.room_service, color: Cp.secondary),
                       const SizedBox(width: 12),
@@ -2305,9 +2305,10 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
       child: Container(
         padding: EdgeInsets.fromLTRB(
             20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
-        decoration: const BoxDecoration(
-            color: Cp.card,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(28))),
         child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -2318,11 +2319,11 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
                       height: 6,
                       margin: const EdgeInsets.only(bottom: 20),
                       decoration: BoxDecoration(
-                          color: Cp.outlineVariant,
+                          color: cpOutlineVariant(context),
                           borderRadius: BorderRadius.circular(99)))),
               Text(widget.service == null ? 'Add Service' : 'Update Service',
-                  style: const TextStyle(
-                      color: Cp.primary,
+                  style: TextStyle(
+                      color: cpPrimary(context),
                       fontSize: 24,
                       fontWeight: FontWeight.w900)),
               const SizedBox(height: 16),

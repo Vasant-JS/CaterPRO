@@ -128,8 +128,7 @@ class _CaterProAppState extends State<CaterProApp> {
             dialogTheme: DialogThemeData(
                 backgroundColor: lightScheme.surface,
                 surfaceTintColor: Colors.transparent),
-            dividerTheme:
-                DividerThemeData(color: lightScheme.outlineVariant),
+            dividerTheme: DividerThemeData(color: lightScheme.outlineVariant),
             floatingActionButtonTheme: FloatingActionButtonThemeData(
                 backgroundColor: lightScheme.secondaryContainer,
                 foregroundColor: lightScheme.onSecondaryContainer),
@@ -159,13 +158,11 @@ class _CaterProAppState extends State<CaterProApp> {
                 backgroundColor: Color(0xff101827),
                 modalBackgroundColor: Color(0xff101827)),
             cardTheme: const CardThemeData(
-                color: Color(0xff142033),
-                surfaceTintColor: Colors.transparent),
+                color: Color(0xff142033), surfaceTintColor: Colors.transparent),
             dialogTheme: const DialogThemeData(
                 backgroundColor: Color(0xff142033),
                 surfaceTintColor: Colors.transparent),
-            dividerTheme:
-                const DividerThemeData(color: Color(0xff43536a)),
+            dividerTheme: const DividerThemeData(color: Color(0xff43536a)),
             floatingActionButtonTheme: const FloatingActionButtonThemeData(
                 backgroundColor: Color(0xff6a4300),
                 foregroundColor: Color(0xffffddb0)),
@@ -466,7 +463,8 @@ class AppPreferencesController extends ValueNotifier<AppPreferences> {
   }
 
   Future<void> save(AppPreferences next) async {
-    final normalized = next.copyWith(theme: AppPreferences.normalizeTheme(next.theme));
+    final normalized =
+        next.copyWith(theme: AppPreferences.normalizeTheme(next.theme));
     value = normalized;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('appearance.textScale', normalized.textScale);
@@ -476,8 +474,8 @@ class AppPreferencesController extends ValueNotifier<AppPreferences> {
     for (final entry in normalized.defaultMenuTimes.entries) {
       await prefs.setString('eventDefaults.time.${entry.key}', entry.value);
     }
-    await prefs.setStringList(
-        'eventDefaults.autoMenuTypes', normalized.autoMenuTypes.toList()..sort());
+    await prefs.setStringList('eventDefaults.autoMenuTypes',
+        normalized.autoMenuTypes.toList()..sort());
     await prefs.setBool(
         'eventDefaults.vegOnlyDefault', normalized.vegOnlyDefault);
   }
@@ -776,8 +774,7 @@ class _WhatsAppIconPainter extends CustomPainter {
 bool cpDark(BuildContext context) =>
     Theme.of(context).brightness == Brightness.dark;
 
-Color cpSurface(BuildContext context) =>
-    Theme.of(context).colorScheme.surface;
+Color cpSurface(BuildContext context) => Theme.of(context).colorScheme.surface;
 
 Color cpCard(BuildContext context) =>
     Theme.of(context).colorScheme.surfaceContainerLow;
@@ -788,8 +785,10 @@ Color cpSurfaceLow(BuildContext context) =>
 Color cpSurfaceHigh(BuildContext context) =>
     Theme.of(context).colorScheme.surfaceContainerHigh;
 
-Color cpPrimary(BuildContext context) =>
-    Theme.of(context).colorScheme.primary;
+Color cpInputFill(BuildContext context) =>
+    Theme.of(context).inputDecorationTheme.fillColor ?? cpSurfaceLow(context);
+
+Color cpPrimary(BuildContext context) => Theme.of(context).colorScheme.primary;
 
 Color cpOnSurface(BuildContext context) =>
     Theme.of(context).colorScheme.onSurface;
@@ -797,8 +796,7 @@ Color cpOnSurface(BuildContext context) =>
 Color cpOnVariant(BuildContext context) =>
     Theme.of(context).colorScheme.onSurfaceVariant;
 
-Color cpOutline(BuildContext context) =>
-    Theme.of(context).colorScheme.outline;
+Color cpOutline(BuildContext context) => Theme.of(context).colorScheme.outline;
 
 Color cpOutlineVariant(BuildContext context) =>
     Theme.of(context).colorScheme.outlineVariant;
@@ -929,6 +927,7 @@ class BusinessProfile {
     this.email = '',
     this.bankName = '',
     this.accountNumber = '',
+    this.ifsc = '',
     this.terms = '',
     this.logoBase64 = '',
     this.signatureBase64 = '',
@@ -948,6 +947,7 @@ class BusinessProfile {
   final String email;
   final String bankName;
   final String accountNumber;
+  final String ifsc;
   final String terms;
   final String logoBase64;
   final String signatureBase64;
@@ -971,6 +971,7 @@ class BusinessProfile {
       email: data['email']?.toString() ?? '',
       bankName: data['bankName']?.toString() ?? '',
       accountNumber: data['accountNumber']?.toString() ?? '',
+      ifsc: data['ifsc']?.toString() ?? '',
       terms: data['terms']?.toString() ?? '',
       logoBase64: data['logoBase64']?.toString() ?? '',
       signatureBase64: data['signatureBase64']?.toString() ?? '',
@@ -993,6 +994,7 @@ class BusinessProfile {
         'email': email,
         'bankName': bankName,
         'accountNumber': accountNumber,
+        'ifsc': ifsc,
         'terms': terms,
         'logoBase64': logoBase64,
         'signatureBase64': signatureBase64,
@@ -2638,6 +2640,15 @@ class MarqueeText extends StatefulWidget {
 
   @override
   State<MarqueeText> createState() => _MarqueeTextState();
+}
+
+TextStyle kannadaMenuTextStyle(BuildContext context,
+    {double fontSize = 14, FontWeight fontWeight = FontWeight.w800}) {
+  return GoogleFonts.notoSansKannada(
+    textStyle: DefaultTextStyle.of(context).style,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+  );
 }
 
 class _MarqueeTextState extends State<MarqueeText>

@@ -140,6 +140,7 @@ function buildSupabaseRows(db) {
       gstin: profile.gstin || '',
       gst_type: profile.gstType || '',
       gst_rate: Number(profile.gstRate || 0),
+      ifsc: profile.ifsc || '',
       phone: profile.phone || '',
       email: profile.email || '',
       raw: profile,
@@ -285,7 +286,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1 };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1 };
 }
 
 function defaultEmployees() {
@@ -1001,6 +1002,10 @@ function dateFromBody(body, existing = {}) {
   };
 }
 
+function sameEventDate(left, right) {
+  return String(left?.date || '').trim() === String(right?.date || '').trim();
+}
+
 function menuSlotFromBody(body, existing = {}) {
   return {
     ...existing,
@@ -1600,6 +1605,7 @@ function bankDetailLines(businessProfile = emptyBusinessProfile()) {
   const lines = [];
   if (businessProfile.bankName) lines.push(`Bank: ${businessProfile.bankName}`);
   if (businessProfile.accountNumber) lines.push(`A/C: ${businessProfile.accountNumber}`);
+  if (businessProfile.ifsc) lines.push(`IFSC: ${businessProfile.ifsc}`);
   if (businessProfile.upiId) lines.push(`UPI: ${businessProfile.upiId}`);
   return lines;
 }
@@ -3599,6 +3605,9 @@ app.post('/api/events/:eventId/dates', (req, res) => {
   const event = findUserEvent(db, user.id, req.params.eventId);
   if (!event) return res.status(404).json({ message: 'Event not found' });
   const date = dateFromBody(req.body);
+  if (event.dates.some((item) => sameEventDate(item, date))) {
+    return res.status(409).json({ message: 'Date already added' });
+  }
   event.dates.push(date);
   event.updatedAt = new Date().toISOString();
   writeDb(db);
@@ -3613,7 +3622,11 @@ app.put('/api/events/:eventId/dates/:dateId', (req, res) => {
   if (!event) return res.status(404).json({ message: 'Event not found' });
   const date = event.dates.find((item) => item.id === req.params.dateId);
   if (!date) return res.status(404).json({ message: 'Date not found' });
-  Object.assign(date, dateFromBody({ ...req.body, id: req.params.dateId }, date));
+  const nextDate = dateFromBody({ ...req.body, id: req.params.dateId }, date);
+  if (event.dates.some((item) => item.id !== date.id && sameEventDate(item, nextDate))) {
+    return res.status(409).json({ message: 'Date already added' });
+  }
+  Object.assign(date, nextDate);
   event.updatedAt = new Date().toISOString();
   writeDb(db);
   res.json(date);

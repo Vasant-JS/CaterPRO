@@ -22,6 +22,7 @@ create table if not exists cp_business_profiles (
   gstin text,
   gst_type text,
   gst_rate numeric,
+  ifsc text,
   phone text,
   email text,
   raw jsonb not null,

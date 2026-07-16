@@ -17,15 +17,31 @@ class LocalCaterProDb {
     final dbPath = path_package.join(basePath, 'caterpro_local.db');
     return _db = await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: (db, version) async => createSchema(db),
-      onUpgrade: (db, oldVersion, newVersion) async => createSchema(db),
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await createSchema(db);
+        if (oldVersion < 3) {
+          await addColumnIfMissing(db, 'cp_business_profiles', 'ifsc', 'text');
+        }
+      },
     );
   }
 
   Future<void> createSchema(Database db) async {
     for (final sql in schemaStatements) {
       await db.execute(sql);
+    }
+  }
+
+  Future<void> addColumnIfMissing(
+      Database db, String table, String column, String type) async {
+    try {
+      await db.execute('alter table $table add column $column $type');
+    } catch (error) {
+      if (!error.toString().toLowerCase().contains('duplicate column')) {
+        rethrow;
+      }
     }
   }
 
@@ -52,6 +68,7 @@ class LocalCaterProDb {
           gstin text,
           gst_type text,
           gst_rate real,
+          ifsc text,
           phone text,
           email text,
           raw text not null,
@@ -473,6 +490,7 @@ class LocalCaterProDb {
       'gstin': profile['gstin']?.toString() ?? '',
       'gst_type': profile['gstType']?.toString() ?? '',
       'gst_rate': double.tryParse(profile['gstRate']?.toString() ?? '') ?? 0,
+      'ifsc': profile['ifsc']?.toString() ?? '',
       'phone': profile['phone']?.toString() ?? '',
       'email': profile['email']?.toString() ?? '',
       'raw': encode(profile),
