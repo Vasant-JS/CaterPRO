@@ -108,6 +108,9 @@ class DashboardScreen extends StatelessWidget {
 
   String monthShort(DateTime date) => _monthShortNames[date.month - 1];
 
+  String dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
   Future<void> downloadMonthlyReport(
       BuildContext context, DateTime month) async {
     try {
@@ -128,21 +131,35 @@ class DashboardScreen extends StatelessWidget {
     }
   }
 
-  Future<void> downloadUpcomingMenus(BuildContext context) async {
+  Future<void> downloadUpcomingMenus(
+      BuildContext context, List<AppEvent> upcomingMenuEvents) async {
     try {
-      showCpSnack(context, 'Downloading upcoming menus...');
-      final error = await api.upcomingMenusError(days: 3);
+      final now = DateTime.now();
+      final start =
+          DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+      final end = start.add(const Duration(days: 2));
+      final eventIds = upcomingMenuEvents.map((event) => event.id).toList();
+      showCpSnack(context, 'Preparing upcoming consolidated menu...');
+      final error = await api.consolidatedMenusError(
+          eventIds: eventIds,
+          startDate: dateKey(start),
+          endDate: dateKey(end),
+          title: 'Upcoming Consolidated Menus');
       if (!context.mounted) return;
       if (error != null) {
         showCpSnack(context, error);
         return;
       }
-      final uri = await api.upcomingMenusUri(days: 3);
+      final uri = await api.consolidatedMenusUri(
+          eventIds: eventIds,
+          startDate: dateKey(start),
+          endDate: dateKey(end),
+          title: 'Upcoming Consolidated Menus');
       if (context.mounted) {
         showDownloadSnack(context, uri,
-            title: 'Upcoming menus.pdf',
+            title: 'Upcoming consolidated menus.pdf',
             kind: 'menu',
-            successMessage: 'Upcoming menus download started',
+            successMessage: 'Upcoming consolidated menu download started',
             failureMessage: 'Unable to start menu download');
       }
     } catch (error) {
@@ -285,7 +302,7 @@ class DashboardScreen extends StatelessWidget {
             IconButton(
               onPressed: upcomingMenuEvents.isEmpty
                   ? null
-                  : () => downloadUpcomingMenus(context),
+                  : () => downloadUpcomingMenus(context, upcomingMenuEvents),
               icon: Icon(Icons.restaurant_menu,
                   color: upcomingMenuEvents.isEmpty
                       ? cpOutline(context)
@@ -521,32 +538,32 @@ class DashboardActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconColor = cpDark(context) ? Cp.primary : cpPrimary(context);
     return InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Center(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                    color: Cp.surfaceHigh,
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: const [
-                      BoxShadow(color: Color(0x12000000), blurRadius: 10)
-                    ]),
-                child: Icon(icon, color: iconColor, size: 23)),
-            const SizedBox(height: 6),
-            Text(label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: cpOnSurface(context),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800)),
-          ]),
-        ),
-      );
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                  color: Cp.surfaceHigh,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x12000000), blurRadius: 10)
+                  ]),
+              child: Icon(icon, color: iconColor, size: 23)),
+          const SizedBox(height: 6),
+          Text(label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: cpOnSurface(context),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800)),
+        ]),
+      ),
+    );
   }
 }
 

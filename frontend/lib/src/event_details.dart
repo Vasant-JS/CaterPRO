@@ -1,5 +1,32 @@
 part of '../main.dart';
 
+int menuTimeSortMinutes(String value) {
+  final raw = value.trim();
+  final match =
+      RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*([AaPp][Mm])?$').firstMatch(raw);
+  if (match == null) return 24 * 60;
+  var hour = int.tryParse(match.group(1) ?? '') ?? 0;
+  final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+  final suffix = match.group(3)?.toUpperCase();
+  if (suffix == 'PM' && hour < 12) hour += 12;
+  if (suffix == 'AM' && hour == 12) hour = 0;
+  return hour.clamp(0, 23) * 60 + minute.clamp(0, 59);
+}
+
+List<AppEventDate> sortedEventDates(Iterable<AppEventDate> dates) =>
+    dates.toList()..sort((a, b) => a.date.compareTo(b.date));
+
+List<AppMenuSlot> sortedMenuSlots(Iterable<AppMenuSlot> slots) => slots.toList()
+  ..sort((a, b) {
+    final byTime =
+        menuTimeSortMinutes(a.time).compareTo(menuTimeSortMinutes(b.time));
+    if (byTime != 0) return byTime;
+    return a.type.compareTo(b.type);
+  });
+
+List<AppMenuSlot> sortedVisibleMenuSlots(Iterable<AppMenuSlot> slots) =>
+    sortedMenuSlots(slots.where((slot) => slot.enabled && slot.pax > 0));
+
 class EventDetailsScreen extends StatelessWidget {
   const EventDetailsScreen(
       {super.key,
@@ -343,55 +370,89 @@ class EventDetailsScreen extends StatelessWidget {
   }
 
   String buildEventWhatsAppMessage(AppEvent event) {
+    final eventName = event.name.isEmpty ? 'Event' : event.name;
+    final businessName = businessProfile.businessName.trim().isEmpty
+        ? 'CaterPro'
+        : businessProfile.businessName.trim();
     final lines = <String>[
-      '*CaterPro Event Details*',
+      '*$eventName*',
+      '*Event Details*',
       '------------------------------',
-      '*Event:* ${event.name.isEmpty ? 'Event' : event.name}',
-      '*Client:* ${event.primaryClient.isEmpty ? 'Not set' : event.primaryClient}',
-      if (event.mobile.isNotEmpty) '*Phone:* ${event.mobile}',
-      if (event.venue.isNotEmpty) '*Venue:* ${event.venue}',
-      if (event.notes.trim().isNotEmpty) '*Notes:* ${event.notes.trim()}',
-      '',
-      '*Dates & Menu*',
     ];
+
+    if (event.primaryClient.trim().isNotEmpty) {
+      lines.add('*Client:* ${event.primaryClient.trim()}');
+    }
+    if (event.mobile.trim().isNotEmpty) {
+      lines.add('*Phone:* ${event.mobile.trim()}');
+    }
+    if (event.venue.trim().isNotEmpty) {
+      lines.add('*Venue:* ${event.venue.trim()}');
+    }
+    if (event.notes.trim().isNotEmpty) {
+      lines
+        ..add('')
+        ..add('*Notes*')
+        ..add(event.notes.trim());
+    }
+
+    lines
+      ..add('')
+      ..add('*Dates & Menu*');
 
     if (event.dates.isEmpty) {
       lines.add('- No dates configured');
     } else {
-      for (final date in event.dates) {
-        lines.add('*${readableDateLabel(date.date)}*');
-        if (date.menuSlots.isEmpty) {
+      for (final date in sortedEventDates(event.dates)) {
+        lines
+          ..add('')
+          ..add('*${readableDateLabel(date.date)}*');
+        if (date.label.trim().isNotEmpty) {
+          lines.add('_${date.label.trim()}_');
+        }
+        final visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
+        if (visibleSlots.isEmpty) {
           lines.add('- No menu configured');
         } else {
-          for (final slot in date.menuSlots.where((slot) => slot.enabled)) {
+          for (final slot in visibleSlots) {
             final names = slot.menuItemIds
                 .map((id) => menuItemById(id))
                 .whereType<MenuMasterItem>()
                 .map((item) => item.title)
                 .toList();
-            lines.add(
-                '- ${slot.type}${slot.time.isEmpty ? '' : ' at ${slot.time}'}');
-            lines.add(
-                '  Members: ${slot.pax} | Rate: ${whatsAppMoney(slot.pricePerPax)}/member');
-            lines.add(names.isEmpty
-                ? '  Menu: Not selected'
-                : '  Menu: ${names.join(', ')}');
+            final slotMeta = [
+              if (slot.time.trim().isNotEmpty) slot.time.trim(),
+              '${slot.pax} members',
+              '${whatsAppMoney(slot.pricePerPax)}/member',
+            ].join(' | ');
+            lines
+              ..add('')
+              ..add('*${slot.type} - $slotMeta*');
+            if (names.isEmpty) {
+              lines.add('- Menu items not selected');
+            } else {
+              for (final name in names) {
+                lines.add('- $name');
+              }
+            }
             if (slot.additionalServices.isNotEmpty) {
-              lines.add('  Services:');
+              lines.add('Services:');
               for (final service in slot.additionalServices) {
-                lines.add('  - ${oneLineService(service)}');
+                lines.add('- ${oneLineService(service)}');
               }
             }
             if (slot.menuImages.isNotEmpty) {
               lines.add(
-                  '  Images: ${slot.menuImages.length} menu image${slot.menuImages.length == 1 ? '' : 's'} attached');
+                  'Images: ${slot.menuImages.length} menu image${slot.menuImages.length == 1 ? '' : 's'} attached');
             }
           }
         }
         if (date.additionalServices.isNotEmpty) {
-          lines.add('  Date services:');
+          lines
+            ..add('')
+            ..add('*Date services*');
           for (final service in date.additionalServices) {
-            lines.add('  - ${oneLineService(service)}');
+            lines.add('- ${oneLineService(service)}');
           }
         }
       }
@@ -426,7 +487,11 @@ class EventDetailsScreen extends StatelessWidget {
       ..add('*Payment Summary*')
       ..add('Total: ${whatsAppMoney(total)}')
       ..add('Paid: ${whatsAppMoney(paid)}')
-      ..add('Balance: ${whatsAppMoney(balance)}');
+      ..add('Balance: ${whatsAppMoney(balance)}')
+      ..add('')
+      ..add('Thank you for your business')
+      ..add('Regards:')
+      ..add(businessName);
 
     return lines.join('\n');
   }
@@ -557,9 +622,7 @@ String buildFormattedMenuShareMessage(AppEvent event,
     lines.add('*Venue:* ${event.venue.trim()}');
   }
 
-  final dates = onlyDate == null
-      ? ([...event.dates]..sort((a, b) => a.date.compareTo(b.date)))
-      : [onlyDate];
+  final dates = onlyDate == null ? sortedEventDates(event.dates) : [onlyDate];
   if (dates.isEmpty) {
     lines
       ..add('')
@@ -568,7 +631,7 @@ String buildFormattedMenuShareMessage(AppEvent event,
   }
 
   for (final date in dates) {
-    final slots = date.menuSlots.where((slot) => slot.enabled).toList();
+    final slots = sortedVisibleMenuSlots(date.menuSlots);
     lines
       ..add('')
       ..add('*${readableDateLabel(date.date)}*');
@@ -1868,9 +1931,9 @@ class EventDateMenuCard extends StatelessWidget {
                           fontWeight: FontWeight.w900)),
                   const SizedBox(height: 2),
                   Text(
-                      date.menuSlots.isEmpty
+                      sortedVisibleMenuSlots(date.menuSlots).isEmpty
                           ? 'No menu slots'
-                          : date.menuSlots
+                          : sortedVisibleMenuSlots(date.menuSlots)
                               .map((slot) =>
                                   '${slot.type} | ${slot.pax} Members | ${money(slot.pricePerPax)}/member')
                               .join('\n'),

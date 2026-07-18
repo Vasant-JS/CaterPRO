@@ -3,11 +3,13 @@ part of '../main.dart';
 class EventsScreen extends StatefulWidget {
   const EventsScreen(
       {super.key,
+      required this.api,
       required this.events,
       required this.loading,
       required this.openDetails,
       required this.openCreate,
       required this.refresh});
+  final ApiService api;
   final List<AppEvent> events;
   final bool loading;
   final ValueChanged<AppEvent> openDetails;
@@ -26,6 +28,20 @@ class _EventsScreenState extends State<EventsScreen> {
   bool showPastEvents = true;
   bool showOverduePayments = false;
   String paymentFilter = 'All';
+  static const shortMonths = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
 
   @override
   void dispose() {
@@ -85,6 +101,23 @@ class _EventsScreenState extends State<EventsScreen> {
     }
   }
 
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  String _dateChipLabel(DateTime date) =>
+      '${date.day.toString().padLeft(2, '0')}, ${shortMonths[date.month - 1]}';
+
+  List<DateTime> get dateChipDates {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return List.generate(15, (index) => today.add(Duration(days: index - 7)));
+  }
+
+  void toggleDateFilter(DateTime date) {
+    final key = _dateKey(date);
+    setState(() => dateFilter = dateFilter == key ? null : key);
+  }
+
   Future<void> chooseClient() async {
     final selected = await showModalBottomSheet<String?>(
       context: context,
@@ -141,8 +174,7 @@ class _EventsScreenState extends State<EventsScreen> {
         lastDate: DateTime(2035),
         initialDate: DateTime.now());
     if (picked == null) return;
-    setState(() => dateFilter =
-        '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}');
+    setState(() => dateFilter = _dateKey(picked));
   }
 
   void clearFilters() {
@@ -173,6 +205,45 @@ class _EventsScreenState extends State<EventsScreen> {
     );
   }
 
+  Future<void> downloadConsolidatedMenus(
+      BuildContext context, List<AppEvent> visibleEvents) async {
+    if (visibleEvents.isEmpty) {
+      showCpSnack(context, 'No events available for consolidated menu');
+      return;
+    }
+    final eventIds = visibleEvents.map((event) => event.id).toList();
+    try {
+      showCpSnack(context, 'Preparing consolidated menu...');
+      final error = await widget.api.consolidatedMenusError(
+          eventIds: eventIds,
+          date: dateFilter,
+          title: dateFilter == null
+              ? 'Events Consolidated Menus'
+              : 'Events Consolidated Menus - $dateFilter');
+      if (!context.mounted) return;
+      if (error != null) {
+        showCpSnack(context, error);
+        return;
+      }
+      final uri = await widget.api.consolidatedMenusUri(
+          eventIds: eventIds,
+          date: dateFilter,
+          title: dateFilter == null
+              ? 'Events Consolidated Menus'
+              : 'Events Consolidated Menus - $dateFilter');
+      if (!context.mounted) return;
+      showDownloadSnack(context, uri,
+          title: 'Consolidated menus.pdf',
+          kind: 'menu',
+          successMessage: 'Consolidated menu download started',
+          failureMessage: 'Unable to start consolidated menu download');
+    } catch (error) {
+      if (context.mounted) {
+        showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final visible = filteredEvents;
@@ -182,6 +253,29 @@ class _EventsScreenState extends State<EventsScreen> {
     return ScreenFrame(
       topBar: TopBar(title: 'Events', actions: [
         IconButton(onPressed: widget.refresh, icon: const Icon(Icons.refresh)),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Cp.toolbarIcon),
+          tooltip: 'Event options',
+          onSelected: (value) {
+            if (value == 'consolidated-menu') {
+              downloadConsolidatedMenus(context, visible);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'consolidated-menu',
+              enabled: visible.isNotEmpty,
+              child: Row(children: [
+                Icon(Icons.picture_as_pdf,
+                    color: visible.isEmpty ? cpOutline(context) : Cp.primary),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text('Consolidated Menu PDF',
+                        style: TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            ),
+          ],
+        ),
         PopupMenuButton<String>(
           icon: const Icon(Icons.filter_list, color: Cp.primary),
           tooltip: 'Filter events',
@@ -261,6 +355,36 @@ class _EventsScreenState extends State<EventsScreen> {
             fillColor: cpCard(context),
             border: fieldBorder,
             enabledBorder: fieldBorder,
+          ),
+        ),
+        const SizedBox(height: 16),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: dateChipDates.map((date) {
+              final key = _dateKey(date);
+              final selected = dateFilter == key;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(_dateChipLabel(date)),
+                  selected: selected,
+                  onSelected: (_) => toggleDateFilter(date),
+                  selectedColor: cpPrimary(context),
+                  backgroundColor: cpCard(context),
+                  side: BorderSide(
+                      color: selected
+                          ? cpPrimary(context)
+                          : cpOutlineVariant(context)),
+                  labelStyle: TextStyle(
+                      color: selected
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : cpOnSurface(context),
+                      fontWeight: FontWeight.w800),
+                  showCheckmark: false,
+                ),
+              );
+            }).toList(),
           ),
         ),
         const SizedBox(height: 16),

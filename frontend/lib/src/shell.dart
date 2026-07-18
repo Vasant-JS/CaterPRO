@@ -1178,6 +1178,7 @@ class _AppShellState extends State<AppShell> {
             openDetails: openEventDetails,
             refresh: refreshEvents),
         EventsScreen(
+            api: api,
             events: events,
             loading: loading,
             openDetails: openEventDetails,
@@ -1193,10 +1194,13 @@ class _AppShellState extends State<AppShell> {
             openNotifications: openNotifications),
         BillingScreen(
             events: events,
+            clients: clients,
             manualInvoices: manualInvoices,
             api: api,
             onSaveManualInvoice: saveManualInvoice,
-            onAddManualInvoice: openManualInvoiceForm),
+            onAddManualInvoice: openManualInvoiceForm,
+            onOpenEvent: openEventDetails,
+            onEventUpdated: updateSelectedEvent),
         SettingsScreen(
             openBusiness: () => openChildTab(8),
             openInvoiceSettings: openInvoiceSettings,

@@ -1150,7 +1150,9 @@ function serviceQuantityText(service) {
 }
 
 function eventTotals(event) {
-  const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots.reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
+  const menuTotal = event.dates.reduce((dateSum, date) => dateSum + date.menuSlots
+    .filter((slot) => slot.enabled !== false && Number(slot.pax || 0) > 0)
+    .reduce((slotSum, slot) => slotSum + Number(slot.pax || 0) * Number(slot.pricePerPax || 0), 0), 0);
   const serviceTotal = event.dates.reduce((dateSum, date) => {
     const dateServices = (date.additionalServices || []).reduce((sum, service) => sum + Number(service.price || 0), 0);
     const slotServices = (date.menuSlots || []).reduce((slotSum, slot) => slotSum + (slot.additionalServices || []).reduce((sum, service) => sum + Number(service.price || 0), 0), 0);
@@ -1159,8 +1161,36 @@ function eventTotals(event) {
   const addOnTotal = (event.addOns || []).reduce((sum, addOn) => sum + Number(addOn.cost || 0), 0);
   const paid = event.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const discount = event.payments.reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
-  const total = menuTotal + serviceTotal + addOnTotal;
+  const total = menuTotal + addOnTotal;
   return { menuTotal, serviceTotal, addOnTotal, total, paid, discount, balance: Math.max(0, total - paid - discount) };
+}
+
+function menuTimeSortMinutes(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*([AaPp][Mm])?$/);
+  if (!match) return 24 * 60;
+  let hour = Number.parseInt(match[1] || '0', 10);
+  const minute = Number.parseInt(match[2] || '0', 10);
+  const suffix = String(match[3] || '').toUpperCase();
+  if (suffix === 'PM' && hour < 12) hour += 12;
+  if (suffix === 'AM' && hour === 12) hour = 0;
+  return Math.min(23, Math.max(0, hour)) * 60 + Math.min(59, Math.max(0, minute));
+}
+
+function sortedEventDates(dates = []) {
+  return [...asArray(dates)].sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+}
+
+function sortedMenuSlots(slots = []) {
+  return [...asArray(slots)].sort((a, b) => {
+    const byTime = menuTimeSortMinutes(a.time) - menuTimeSortMinutes(b.time);
+    if (byTime !== 0) return byTime;
+    return String(a.type || '').localeCompare(String(b.type || ''));
+  });
+}
+
+function sortedVisibleMenuSlots(slots = []) {
+  return sortedMenuSlots(asArray(slots).filter((slot) => slot.enabled !== false && Number(slot.pax || 0) > 0));
 }
 
 function gstBreakdown(baseAmount, businessProfile = emptyBusinessProfile()) {
@@ -1507,12 +1537,12 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
 
 function invoiceTableLayout(theme = documentTheme()) {
   if (theme.name === 'elegant') {
-    return { x: 112, w: 447, descX: 126, descW: 194, qtyX: 328, qtyW: 46, rateX: 384, rateW: 62, amountX: 462, amountW: 78 };
+    return { x: 112, w: 447, descX: 126, descW: 184, qtyX: 318, qtyW: 58, rateX: 386, rateW: 60, amountX: 462, amountW: 78 };
   }
   if (theme.name === 'classic') {
-    return { x: 36, w: 523, descX: 48, descW: 238, qtyX: 300, qtyW: 58, rateX: 372, rateW: 70, amountX: 460, amountW: 82 };
+    return { x: 36, w: 523, descX: 48, descW: 232, qtyX: 294, qtyW: 64, rateX: 372, rateW: 70, amountX: 460, amountW: 82 };
   }
-  return { x: 36, w: 523, descX: 54, descW: 234, qtyX: 310, qtyW: 52, rateX: 374, rateW: 68, amountX: 462, amountW: 80 };
+  return { x: 36, w: 523, descX: 54, descW: 228, qtyX: 304, qtyW: 60, rateX: 374, rateW: 68, amountX: 462, amountW: 80 };
 }
 
 function tableHeader(doc, y, fonts, theme = documentTheme()) {
@@ -1532,7 +1562,7 @@ function tableHeader(doc, y, fonts, theme = documentTheme()) {
   }
   doc.font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE)
     .text('Description', layout.descX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.descW })
-    .text('Pax/Qty', layout.qtyX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.qtyW, align: 'right' })
+    .text('Members', layout.qtyX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.qtyW, align: 'right' })
     .text('Rate', layout.rateX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.rateW, align: 'right' })
     .text('Amount', layout.amountX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.amountW, align: 'right' });
 }
@@ -1645,9 +1675,9 @@ function drawDocumentClosing(doc, y, {
 
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Amount in words', metrics.left, y + 2);
   doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(amountInWords(amountValue), metrics.left, y + 16, { width: 260, height: 24 });
-  if (notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(notes, metrics.left, y + 43, { width: 260, height: 32 });
+  if (notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(notes, metrics.left, y + 43, { width: 260, height: 46 });
 
-  const lowerY = Math.max(y + 82, totalsY + totalsH + 18);
+  const lowerY = Math.max(y + 96, totalsY + totalsH + 18);
   drawPaymentDetails(doc, metrics.left, lowerY, fonts, theme, businessProfile);
 
   const signatureX = metrics.right - 154;
@@ -1681,7 +1711,8 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
   const number = documentNumber(isInvoice ? 'INV' : 'QUOTE', event);
   const totals = eventTotals(event);
-  const gst = gstBreakdown(totals.total, businessProfile);
+  const documentSubtotal = Number(totals.menuTotal || 0) + Number(totals.addOnTotal || 0);
+  const gst = gstBreakdown(documentSubtotal, businessProfile);
   const grandTotal = gst.total;
   const balanceDue = Math.max(0, grandTotal - totals.paid - totals.discount);
   const eventClient = clients.find((client) => normalizeMobile(client.mobile) === normalizeMobile(event.mobile));
@@ -1705,11 +1736,13 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   y += theme.name === 'modern' ? 32 : 26;
 
   let shaded = false;
-  for (const date of event.dates) {
+  for (const date of sortedEventDates(event.dates)) {
+    const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
+    if (visibleSlots.length === 0) continue;
     y = ensurePageSpace(doc, y, 22, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left, y, { width: metrics.width });
     y += 15;
-    for (const slot of date.menuSlots) {
+    for (const slot of visibleSlots) {
       y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       const amount = Number(slot.pax || 0) * Number(slot.pricePerPax || 0);
       drawInvoiceRow(doc, y, fonts, {
@@ -1719,31 +1752,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         amount: money(amount),
       }, shaded, theme);
       shaded = !shaded;
-      y += 28;
-      for (const service of slot.additionalServices || []) {
-        y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
-        const quantity = serviceQuantityText(service);
-        drawInvoiceRow(doc, y, fonts, {
-          description: `${slot.type || 'Meal'} service - ${service.name || 'Service'}${quantity ? ` (${quantity})` : ''}`,
-          qty: '',
-          rate: '',
-          amount: money(service.price || 0),
-        }, shaded, theme);
-        shaded = !shaded;
-        y += 28;
-      }
-    }
-    for (const service of date.additionalServices || []) {
-      y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
-      const quantity = serviceQuantityText(service);
-      drawInvoiceRow(doc, y, fonts, {
-        description: `Date service - ${service.name || 'Service'}${quantity ? ` (${quantity})` : ''}`,
-        qty: '',
-        rate: '',
-        amount: money(service.price || 0),
-      }, shaded, theme);
-      shaded = !shaded;
-      y += 28;
+      y += 25;
     }
   }
   if ((event.addOns || []).length > 0) {
@@ -1759,14 +1768,13 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         amount: money(addOn.cost),
       }, shaded, theme);
       shaded = !shaded;
-      y += 28;
+      y += 25;
     }
   }
 
   const totalRows = [
     ['Menu Total', money(totals.menuTotal), '#202124', fonts.regular],
   ];
-  if (totals.serviceTotal > 0) totalRows.push(['Services Total', money(totals.serviceTotal), '#202124', fonts.regular]);
   if (totals.addOnTotal > 0) totalRows.push(['Add-ons Total', money(totals.addOnTotal), '#202124', fonts.regular]);
   if (gst.enabled) gst.rows.forEach((row) => totalRows.push([row[0], money(row[1]), '#202124', fonts.regular]));
   totalRows.push(['Grand Total', money(grandTotal), theme.primary, fonts.bold]);
@@ -1776,7 +1784,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     totalRows.push(['Balance Due', money(balanceDue), balanceDue > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
   }
   y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126));
-  const terms = businessProfile.terms || (isInvoice ? 'Thank you for your payment. Balance, if any, is payable as per event agreement.' : 'Quotation is based on selected menu, pax and services. Final invoice may vary after confirmation.');
+  const terms = 'Thank you for the business';
   drawDocumentClosing(doc, y + 4, {
     amountValue: isInvoice ? balanceDue || grandTotal : grandTotal,
     notes: terms,
@@ -1824,7 +1832,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
       amount: money(finalItem.amount),
     }, shaded, theme);
     shaded = !shaded;
-    y += 28;
+    y += 25;
   }
 
   const baseSubtotal = Number(invoice.subtotal ?? invoice.total ?? 0) || (invoice.items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -1845,7 +1853,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126));
   drawDocumentClosing(doc, y + 4, {
     amountValue: pending || grandTotal,
-    notes: invoice.notes,
+    notes: [invoice.notes, 'Thank you for the business'].filter((line) => String(line || '').trim()).join('\n'),
     totalRows,
     fonts,
     theme,
@@ -2148,11 +2156,11 @@ function menuDocumentTitle(event, date) {
 function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo) {
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('EVENT MENU', 42, 36, { width: 180 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
     .text(`${businessProfile.businessName || 'CaterPro'} | ${pageLabel} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
   doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
   doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
+  doc.fillColor('#374151').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
     .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
     .text(`Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`, 330, 78, { width: 220, align: 'right' })
     .text(`Venue: ${event.venue || '-'}`, 330, 94, { width: 220, align: 'right' });
@@ -2164,12 +2172,12 @@ function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: PDF_BODY_FONT_SIZE, height: 12 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: MENU_PDF_BODY_FONT_SIZE, height: 12 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
   doc.moveTo(42, 780).lineTo(553, 780).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-  doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
+  doc.fillColor('#6b7280').font(fonts.regular).fontSize(MENU_PDF_FOOTER_FONT_SIZE).text(businessProfile.businessName || 'CaterPro', 42, 788, { width: 220, lineBreak: false });
   doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
 }
 
@@ -2182,7 +2190,7 @@ function drawServiceSection(doc, date, y, fonts) {
     if (index > 0 && index % 2 === 0) y += 18;
     const quantity = serviceQuantityText(service);
     doc.rect(x, y + 2, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#202124').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
+    doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
   });
   return y + 28;
 }
@@ -2190,14 +2198,15 @@ function drawServiceSection(doc, date, y, fonts) {
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile, pageNo }) {
   menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
   let y = 132;
-  if (date.menuSlots.length === 0) {
+  const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
+  if (visibleSlots.length === 0) {
     y = drawServiceSection(doc, date, y, fonts);
     doc.fillColor('#5f6368').font(fonts.regular).fontSize(11).text('No menu configured for this date.', 42, y + 12);
     menuFooter(doc, fonts, businessProfile, pageNo);
     return pageNo;
   }
 
-  for (const [slotIndex, slot] of date.menuSlots.entries()) {
+  for (const [slotIndex, slot] of visibleSlots.entries()) {
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
     const legacyServices = slotIndex === 0 ? date.additionalServices || [] : [];
     const services = [...(slot.additionalServices || []), ...legacyServices];
@@ -2212,9 +2221,9 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       y = 132;
     }
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
-    const line = [slot.time, slot.pax ? `${slot.pax} pax` : ''].filter(Boolean).join(' - ');
+    const line = [slot.time, slot.pax ? `${slot.pax} members` : ''].filter(Boolean).join(' - ');
     doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(line, 364, y + 9, { width: 178, align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE).text(line, 364, y + 9, { width: 178, align: 'right' });
     doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
     items.forEach((item, index) => {
       const col = index % 3;
@@ -2222,19 +2231,19 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
       drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
     });
     if (!items.length && (slot.menuImages || []).length) {
-      doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
         .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} attached at end of PDF.`, 56, y + 31, { width: 320 });
     }
     if (services.length) {
       const serviceY = y + 30 + itemRows * 14 + 7;
-      doc.fillColor('#4b5563').font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
+      doc.fillColor('#4b5563').font(fonts.bold).fontSize(MENU_PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
       services.forEach((service, index) => {
         const col = index % 2;
         const row = Math.floor(index / 2);
         const x = 112 + col * 238;
         const quantity = serviceQuantityText(service);
         doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-        doc.fillColor('#202124').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
+        doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
           .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
       });
     }
@@ -2261,7 +2270,7 @@ function drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo }) 
   const { date, slot, image } = attachment;
   const title = `${slot.type || 'Menu'} - ${prettyDate(date.date || '')}`;
   doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('UPLOADED MENU IMAGE', 42, 34, { width: 260 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
     .text(`${title}${image.name ? ` - ${image.name}` : ''}`, 42, 56, { width: 500, height: 22 });
   const buffer = imageBufferFromDataUrl(image.dataUrl);
   if (buffer) {
@@ -2281,8 +2290,11 @@ function drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo }) 
 }
 
 function generateMenuPdf({ res, db, event, dateId, allDates = false, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0 || (slot.menuImages || []).length > 0);
-  const dates = allDates ? event.dates.filter(hasMenuContent) : event.dates.filter((date) => date.id === dateId || date.date === dateId);
+  const hasVisibleMenuSlot = (date) => sortedVisibleMenuSlots(date.menuSlots).length > 0;
+  const hasMenuContent = (date) => hasVisibleMenuSlot(date) || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.menuImages || []).length > 0);
+  const dates = allDates
+    ? sortedEventDates(event.dates.filter(hasMenuContent))
+    : event.dates.filter((date) => date.id === dateId || date.date === dateId);
   if (!dates.length) {
     res.status(404).json({ message: 'Event date not found' });
     return;
@@ -2321,7 +2333,8 @@ function todayIso() {
 }
 
 function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile = emptyBusinessProfile() }) {
-  const hasMenuContent = (date) => date.menuSlots.length > 0 || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.additionalServices || []).length > 0 || (slot.menuImages || []).length > 0);
+  const hasVisibleMenuSlot = (date) => sortedVisibleMenuSlots(date.menuSlots).length > 0;
+  const hasMenuContent = (date) => hasVisibleMenuSlot(date) || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.menuImages || []).length > 0);
   const start = addDaysIso(todayIso(), 1);
   const end = addDaysIso(start, Math.max(1, days) - 1);
   const pages = [];
@@ -2349,6 +2362,139 @@ function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile =
     doc.addPage();
     drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo });
     pageNo += 1;
+  }
+  doc.end();
+}
+
+function consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title = 'Consolidated Menus') {
+  doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
+  doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('CONSOLIDATED EVENT MENU', 42, 36, { width: 260 });
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+    .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
+  doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
+  doc.fillColor('#111827').font(fonts.bold).fontSize(12).text(title, 42, 78, { width: 280 });
+  doc.fillColor('#374151').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+    .text(`Date: ${prettyDate(date)}`, 330, 80, { width: 220, align: 'right' });
+  doc.moveTo(42, 106).lineTo(553, 106).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+}
+
+function addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title) {
+  doc.addPage();
+  consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title);
+  return 124;
+}
+
+function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pageNo, title }) {
+  const date = entries[0]?.date?.date || '';
+  let y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
+  for (const { event, date: eventDate } of entries) {
+    const visibleSlots = sortedVisibleMenuSlots(eventDate.menuSlots);
+    const eventHeaderHeight = 48;
+    const baseEventHeight = eventHeaderHeight + (visibleSlots.length ? 0 : 30);
+    if (y + baseEventHeight > 766) {
+      menuFooter(doc, fonts, businessProfile, pageNo);
+      pageNo += 1;
+      y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
+    }
+
+    doc.fillColor('#111827').font(fonts.bold).fontSize(12)
+      .text(event.primaryClient || event.name || 'Customer', 42, y, { width: 230 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+      .text(`Event: ${event.name || '-'}`, 42, y + 16, { width: 230 })
+      .text(`Venue: ${event.venue || '-'}`, 300, y, { width: 252, align: 'right' })
+      .text(`Mobile: ${event.mobile || '-'}`, 300, y + 16, { width: 252, align: 'right' });
+    y += eventHeaderHeight;
+
+    if (!visibleSlots.length) {
+      y = drawServiceSection(doc, eventDate, y, fonts);
+      doc.fillColor('#5f6368').font(fonts.regular).fontSize(11)
+        .text('No menu configured for this date.', 42, y + 4);
+      y += 28;
+    }
+
+    for (const [slotIndex, slot] of visibleSlots.entries()) {
+      const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
+      const legacyServices = slotIndex === 0 ? eventDate.additionalServices || [] : [];
+      const services = [...(slot.additionalServices || []), ...legacyServices];
+      const itemRows = Math.ceil(Math.max(items.length, 1) / 3);
+      const serviceRows = Math.ceil(services.length / 2);
+      const rowHeight = Math.max(46, 30 + itemRows * 14 + serviceRows * 14 + (services.length ? 12 : 0));
+      if (y + rowHeight > 766) {
+        menuFooter(doc, fonts, businessProfile, pageNo);
+        pageNo += 1;
+        y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
+      }
+      doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
+      const line = [slot.time, slot.pax ? `${slot.pax} members` : ''].filter(Boolean).join(' - ');
+      doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+        .text(line, 364, y + 9, { width: 178, align: 'right' });
+      doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
+      items.forEach((item, index) => {
+        const col = index % 3;
+        const row = Math.floor(index / 3);
+        drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
+      });
+      if (!items.length && (slot.menuImages || []).length) {
+        doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+          .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} available in the event menu PDF.`, 56, y + 31, { width: 320 });
+      }
+      if (services.length) {
+        const serviceY = y + 30 + itemRows * 14 + 7;
+        doc.fillColor('#4b5563').font(fonts.bold).fontSize(MENU_PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
+        services.forEach((service, index) => {
+          const col = index % 2;
+          const row = Math.floor(index / 2);
+          const x = 112 + col * 238;
+          const quantity = serviceQuantityText(service);
+          doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
+          doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+            .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
+        });
+      }
+      y += rowHeight + 7;
+    }
+    doc.moveTo(42, y + 4).lineTo(553, y + 4).strokeColor('#e5e7eb').lineWidth(0.5).stroke();
+    y += 18;
+  }
+  menuFooter(doc, fonts, businessProfile, pageNo);
+  return pageNo + 1;
+}
+
+function generateConsolidatedMenusPdf({ res, db, events, dateFilter, startDate, endDate, title = 'Consolidated Menus', businessProfile = emptyBusinessProfile() }) {
+  const hasVisibleMenuSlot = (date) => sortedVisibleMenuSlots(date.menuSlots).length > 0;
+  const hasMenuContent = (date) => hasVisibleMenuSlot(date) || date.additionalServices.length > 0 || date.menuSlots.some((slot) => (slot.menuImages || []).length > 0);
+  const entries = [];
+  events.forEach((event) => {
+    (event.dates || [])
+      .filter((date) => !dateFilter || date.date === dateFilter)
+      .filter((date) => !startDate || date.date >= startDate)
+      .filter((date) => !endDate || date.date <= endDate)
+      .filter(hasMenuContent)
+      .forEach((date) => entries.push({ event, date }));
+  });
+  entries.sort((a, b) =>
+    a.date.date.localeCompare(b.date.date) ||
+    (a.event.name || '').localeCompare(b.event.name || '') ||
+    (a.event.primaryClient || '').localeCompare(b.event.primaryClient || ''));
+  if (!entries.length) {
+    res.status(404).json({ message: 'No menus found for the selected events' });
+    return;
+  }
+  const doc = new PDFDocument({ size: 'A4', margin: 28, info: { Title: title }, autoFirstPage: false });
+  const fonts = configurePdfFonts(doc);
+  const suffix = dateFilter || [startDate, endDate].filter(Boolean).join('_TO_') || 'ALL_DATES';
+  res.setHeader('Content-Type', 'application/pdf');
+  setPdfAttachment(res, ['Consolidated-Menus', suffix]);
+  doc.pipe(res);
+  let pageNo = 1;
+  const grouped = new Map();
+  entries.forEach((entry) => {
+    const key = entry.date.date || 'No Date';
+    grouped.set(key, [...(grouped.get(key) || []), entry]);
+  });
+  for (const groupEntries of grouped.values()) {
+    pageNo = drawConsolidatedMenuDate({ doc, db, entries: groupEntries, fonts, businessProfile, pageNo, title });
   }
   doc.end();
 }
@@ -2688,6 +2834,7 @@ const openApiSpec = {
     '/api/events/{eventId}/material-documents/{documentId}': { put: { tags: ['Events'], security: [{ bearerAuth: [] }], summary: 'Update event material document' } },
     '/api/events/{eventId}/material-documents/{documentId}/pdf': { get: { tags: ['Events'], summary: 'Download raw material or vegetable/fruit PDF', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'documentId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' } } } },
     '/api/events/{eventId}/documents/{type}': { get: { tags: ['Events'], summary: 'Download event PDF document', parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'type', in: 'path', required: true, schema: { type: 'string', enum: ['quotation', 'invoice', 'menu', 'all-menus'] } }, { name: 'dateId', in: 'query', required: false, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'Event not found' } } } },
+    '/api/documents/consolidated-menus': { get: { tags: ['Events'], summary: 'Download one consolidated menu PDF for selected events', parameters: [{ name: 'eventIds', in: 'query', required: false, schema: { type: 'string' } }, { name: 'date', in: 'query', required: false, schema: { type: 'string' } }, { name: 'startDate', in: 'query', required: false, schema: { type: 'string' } }, { name: 'endDate', in: 'query', required: false, schema: { type: 'string' } }, { name: 'token', in: 'query', required: true, schema: { type: 'string' } }], responses: { 200: { description: 'PDF file' }, 404: { description: 'No menus found' } } } },
     '/api/manual-invoices': { get: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'List manual invoices' }, post: { tags: ['User Data'], security: [{ bearerAuth: [] }], summary: 'Create manual invoice and upsert client' } },
     '/api/manual-invoices/{invoiceId}/pdf': { get: { tags: ['User Data'], summary: 'Download manual invoice PDF' } },
   },
@@ -2801,6 +2948,8 @@ function recordUpdatedAtValue(item) {
 }
 
 const PDF_BODY_FONT_SIZE = 8.5;
+const MENU_PDF_BODY_FONT_SIZE = 10;
+const MENU_PDF_FOOTER_FONT_SIZE = 8;
 
 function recordKeyForSync(item, listKey) {
   if (!item || typeof item !== 'object') return '';
@@ -3787,6 +3936,29 @@ app.get('/api/documents/upcoming-menus', (req, res) => {
   if (!user) return;
   const days = Math.max(1, Math.min(14, Number(req.query.days || 3)));
   return generateUpcomingMenusPdf({ res, db, events: db.userData[user.id].events, days, businessProfile: db.userData[user.id].businessProfile });
+});
+
+app.get('/api/documents/consolidated-menus', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const ids = String(req.query.eventIds || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const idSet = new Set(ids);
+  const events = (db.userData[user.id].events || [])
+    .filter((event) => idSet.size === 0 || idSet.has(event.id));
+  return generateConsolidatedMenusPdf({
+    res,
+    db,
+    events,
+    dateFilter: req.query.date ? String(req.query.date) : '',
+    startDate: req.query.startDate ? String(req.query.startDate) : '',
+    endDate: req.query.endDate ? String(req.query.endDate) : '',
+    title: req.query.title ? String(req.query.title).slice(0, 80) : 'Consolidated Menus',
+    businessProfile: db.userData[user.id].businessProfile,
+  });
 });
 
 function storageCountsFor(db, userId) {

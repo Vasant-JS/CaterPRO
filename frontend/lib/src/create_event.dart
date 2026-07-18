@@ -462,6 +462,25 @@ String defaultMenuTimeForType(String type) {
       '10:00 AM';
 }
 
+TimeOfDay parseMenuTimeOfDay(String value, {String fallback = '10:00 AM'}) {
+  final raw = value.trim().isEmpty ? fallback.trim() : value.trim();
+  final match =
+      RegExp(r'^(\d{1,2})(?::(\d{2}))?\s*([AaPp][Mm])?$').firstMatch(raw);
+  if (match == null) return const TimeOfDay(hour: 10, minute: 0);
+  var hour = int.tryParse(match.group(1) ?? '') ?? 10;
+  final minute = int.tryParse(match.group(2) ?? '0') ?? 0;
+  final suffix = match.group(3)?.toUpperCase();
+  if (suffix == 'PM' && hour < 12) hour += 12;
+  if (suffix == 'AM' && hour == 12) hour = 0;
+  return TimeOfDay(hour: hour.clamp(0, 23), minute: minute.clamp(0, 59));
+}
+
+String formatMenuTimeOfDay(TimeOfDay time) {
+  final suffix = time.hour >= 12 ? 'PM' : 'AM';
+  final hour12 = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+  return '$hour12:${time.minute.toString().padLeft(2, '0')} $suffix';
+}
+
 MealSlotConfig defaultMealSlotForType(String type) {
   return MealSlotConfig(
     type: type,
@@ -717,6 +736,10 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
               },
               onPriceChanged: (value) {
                 setState(() => slot.pricePerPax = int.tryParse(value) ?? 0);
+                widget.onChanged();
+              },
+              onTimeChanged: (value) {
+                setState(() => slot.time = value);
                 widget.onChanged();
               },
               onEditMenu: () => openMenuPicker(slot),
@@ -979,7 +1002,7 @@ class MealSlotConfig {
 
   String? id;
   final String type;
-  final String time;
+  String time;
   String pax;
   int pricePerPax;
   Set<String> selectedMenuIds;
@@ -991,7 +1014,9 @@ class MealSlotConfig {
     return MealSlotConfig(
         id: slot.id,
         type: slot.type,
-        time: slot.time,
+        time: slot.time.trim().isEmpty
+            ? defaultMenuTimeForType(slot.type)
+            : slot.time,
         pax: slot.pax.toString(),
         pricePerPax: slot.pricePerPax,
         selectedMenuIds: slot.menuItemIds.toSet(),
@@ -1007,7 +1032,7 @@ class MealSlotConfig {
   Map<String, dynamic> toJson() => {
         if (id != null && id!.isNotEmpty) 'id': id,
         'type': type,
-        'time': time,
+        'time': time.trim().isEmpty ? defaultMenuTimeForType(type) : time,
         'pax': int.tryParse(pax) ?? 0,
         'pricePerPax': pricePerPax,
         'enabled': enabled,
@@ -1663,6 +1688,7 @@ class MealSlotCard extends StatelessWidget {
       required this.onEnabledChanged,
       required this.onPaxChanged,
       required this.onPriceChanged,
+      required this.onTimeChanged,
       required this.onEditMenu,
       required this.onEditServices,
       required this.onAddImage,
@@ -1675,6 +1701,7 @@ class MealSlotCard extends StatelessWidget {
   final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<String> onPaxChanged;
   final ValueChanged<String> onPriceChanged;
+  final ValueChanged<String> onTimeChanged;
   final VoidCallback onEditMenu;
   final VoidCallback onEditServices;
   final VoidCallback onAddImage;
@@ -1721,28 +1748,46 @@ class MealSlotCard extends StatelessWidget {
             ]),
             if (enabled) ...[
               const SizedBox(height: 12),
-              Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Expanded(
-                    child: FormFieldBox(
-                        label: '${slot.type} Members',
-                        value: slot.pax,
-                        icon: Icons.person,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
-                        ],
-                        onChanged: onPaxChanged)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: FormFieldBox(
-                        label: 'Price / Member',
-                        value:
-                            slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}',
-                        icon: Icons.currency_rupee,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
-                        ],
-                        onChanged: onPriceChanged)),
-              ]),
+              LayoutBuilder(builder: (context, constraints) {
+                final timeField = MenuTimeField(
+                    label: '${slot.type} Time',
+                    value: slot.time,
+                    fallback: defaultMenuTimeForType(slot.type),
+                    onChanged: onTimeChanged);
+                final membersField = FormFieldBox(
+                    label: '${slot.type} Members',
+                    value: slot.pax,
+                    icon: Icons.person,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: onPaxChanged);
+                final priceField = FormFieldBox(
+                    label: 'Price / Member',
+                    value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}',
+                    icon: Icons.currency_rupee,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: onPriceChanged);
+                if (constraints.maxWidth < 420) {
+                  return Column(children: [
+                    timeField,
+                    Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: membersField),
+                          const SizedBox(width: 12),
+                          Expanded(child: priceField),
+                        ]),
+                  ]);
+                }
+                return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: timeField),
+                      const SizedBox(width: 12),
+                      Expanded(child: membersField),
+                      const SizedBox(width: 12),
+                      Expanded(child: priceField),
+                    ]);
+              }),
             ],
             if (enabled) ...[
               const SizedBox(height: 12),
@@ -2271,6 +2316,66 @@ class StepperHeader extends StatelessWidget {
                           fontSize: 11,
                           fontWeight: FontWeight.w800))
                 ]))));
+  }
+}
+
+class MenuTimeField extends StatelessWidget {
+  const MenuTimeField(
+      {super.key,
+      required this.label,
+      required this.value,
+      required this.fallback,
+      required this.onChanged});
+  final String label;
+  final String value;
+  final String fallback;
+  final ValueChanged<String> onChanged;
+
+  Future<void> pickTime(BuildContext context) async {
+    final picked = await showTimePicker(
+        context: context,
+        initialTime: parseMenuTimeOfDay(value, fallback: fallback));
+    if (picked == null) return;
+    onChanged(formatMenuTimeOfDay(picked));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => pickTime(context),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          padding: const EdgeInsets.fromLTRB(14, 7, 12, 7),
+          decoration: BoxDecoration(
+              color: cpDark(context) ? cpSurfaceLow(context) : null,
+              border: Border.all(color: cpOutline(context)),
+              borderRadius: BorderRadius.circular(12)),
+          child: Row(children: [
+            Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                  Text(label,
+                      style: TextStyle(
+                          color: cpOnVariant(context),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 3),
+                  Text(value.trim().isEmpty ? fallback : value,
+                      style: TextStyle(
+                          color: cpOnSurface(context),
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800)),
+                ])),
+            Icon(Icons.schedule, color: cpOutline(context)),
+          ]),
+        ),
+      ),
+    );
   }
 }
 

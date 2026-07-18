@@ -2543,6 +2543,55 @@ class ApiService {
         .replace(queryParameters: {'token': token, 'days': '$days'});
   }
 
+  Future<Uri> consolidatedMenusUri(
+      {List<String> eventIds = const [],
+      String? date,
+      String? startDate,
+      String? endDate,
+      String title = 'Consolidated Menus'}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    final query = <String, String>{'token': token, 'title': title};
+    if (eventIds.isNotEmpty) query['eventIds'] = eventIds.join(',');
+    if (date != null && date.isNotEmpty) query['date'] = date;
+    if (startDate != null && startDate.isNotEmpty) {
+      query['startDate'] = startDate;
+    }
+    if (endDate != null && endDate.isNotEmpty) query['endDate'] = endDate;
+    return Uri.parse('${ApiConfig.baseUrl}/documents/consolidated-menus')
+        .replace(queryParameters: query);
+  }
+
+  Future<String?> consolidatedMenusError(
+      {List<String> eventIds = const [],
+      String? date,
+      String? startDate,
+      String? endDate,
+      String title = 'Consolidated Menus'}) async {
+    final uri = await consolidatedMenusUri(
+        eventIds: eventIds,
+        date: date,
+        startDate: startDate,
+        endDate: endDate,
+        title: title);
+    final response = await http.get(uri, headers: await authHeaders());
+    if (response.statusCode == 200) {
+      final contentType = response.headers['content-type'] ?? '';
+      return contentType.toLowerCase().contains('application/pdf')
+          ? null
+          : 'Consolidated menu is not available yet.';
+    }
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['message'] != null) {
+        return body['message'].toString();
+      }
+    } catch (_) {
+      // Fall through to the friendly default below.
+    }
+    return 'No menus found for the selected events';
+  }
+
   Future<String?> upcomingMenusError({int days = 3}) async {
     final uri = await upcomingMenusUri(days: days);
     final response = await http.get(uri, headers: await authHeaders());
@@ -2748,6 +2797,7 @@ int eventMenuTotal(AppEvent event) => event.dates.fold(
     (dateSum, date) =>
         dateSum +
         date.menuSlots
+            .where((slot) => slot.enabled && slot.pax > 0)
             .fold(0, (slotSum, slot) => slotSum + slot.pax * slot.pricePerPax));
 int eventServiceTotal(AppEvent event) => event.dates.fold(
     0,
@@ -2768,7 +2818,7 @@ int eventServiceTotal(AppEvent event) => event.dates.fold(
 int eventAddOnTotal(AppEvent event) => event.addOns
     .fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
 int eventTotal(AppEvent event) =>
-    eventMenuTotal(event) + eventServiceTotal(event) + eventAddOnTotal(event);
+    eventMenuTotal(event) + eventAddOnTotal(event);
 int eventPaid(AppEvent event) =>
     event.payments.fold(0, (sum, payment) => sum + payment.amount);
 int eventSettledDiscount(AppEvent event) =>

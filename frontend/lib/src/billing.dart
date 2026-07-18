@@ -1,18 +1,46 @@
 part of '../main.dart';
 
+String paymentEventPhrase(String eventName) {
+  final cleaned = eventName.trim();
+  return cleaned.isEmpty ? 'event' : 'event with event name $cleaned';
+}
+
+String requestPaymentMessage({
+  required String documentType,
+  required String clientName,
+  required String eventName,
+  required String amount,
+}) {
+  final isQuotation = documentType == 'quotation';
+  return [
+    'Hi, ${clientName.trim().isEmpty ? 'Customer' : clientName.trim()}',
+    'The $documentType amount for the ${paymentEventPhrase(eventName)} is $amount.',
+    isQuotation
+        ? 'Kindly make the payment to confirm the order. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.'
+        : 'Kindly make the payment. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.',
+    if (!isQuotation) 'Thank you for the business.',
+  ].join('\n');
+}
+
 class BillingScreen extends StatefulWidget {
   const BillingScreen(
       {super.key,
       required this.events,
+      required this.clients,
       required this.manualInvoices,
       required this.api,
       required this.onSaveManualInvoice,
-      required this.onAddManualInvoice});
+      required this.onAddManualInvoice,
+      required this.onOpenEvent,
+      required this.onEventUpdated});
   final List<AppEvent> events;
+  final List<AppClient> clients;
   final List<ManualInvoice> manualInvoices;
   final ApiService api;
   final Future<void> Function(ManualInvoice invoice) onSaveManualInvoice;
   final VoidCallback onAddManualInvoice;
+  final ValueChanged<AppEvent> onOpenEvent;
+  final ValueChanged<AppEvent> onEventUpdated;
 
   @override
   State<BillingScreen> createState() => _BillingScreenState();
@@ -29,6 +57,63 @@ class _BillingScreenState extends State<BillingScreen> {
             (event: event, payment: payment),
       ];
 
+  AppClient clientFor(String name, String mobile,
+      {String address = '', String gst = ''}) {
+    final normalizedMobile = normalizeMobileText(mobile);
+    final normalizedName = name.trim().toLowerCase();
+    for (final client in widget.clients) {
+      final clientMobile = normalizeMobileText(client.mobile);
+      final matches =
+          (normalizedMobile.isNotEmpty && clientMobile == normalizedMobile) ||
+              (normalizedName.isNotEmpty &&
+                  client.name.trim().toLowerCase() == normalizedName);
+      if (matches) return client;
+    }
+    return AppClient(
+        id: '',
+        name: name,
+        mobile: normalizedMobile.isNotEmpty ? normalizedMobile : mobile,
+        address: address,
+        gst: gst);
+  }
+
+  List<AppEvent> linkedEventsForClient(AppClient client) {
+    final mobile = normalizeMobileText(client.mobile);
+    final name = client.name.trim().toLowerCase();
+    return widget.events.where((event) {
+      final eventMobile = normalizeMobileText(event.mobile);
+      final eventClient = event.primaryClient.trim().toLowerCase();
+      return (mobile.isNotEmpty && eventMobile == mobile) ||
+          (name.isNotEmpty && eventClient == name);
+    }).toList();
+  }
+
+  List<ManualInvoice> linkedInvoicesForClient(AppClient client) {
+    final mobile = normalizeMobileText(client.mobile);
+    final name = client.name.trim().toLowerCase();
+    return widget.manualInvoices.where((invoice) {
+      final invoiceMobile = normalizeMobileText(invoice.mobile);
+      final invoiceClient = invoice.clientName.trim().toLowerCase();
+      return (mobile.isNotEmpty && invoiceMobile == mobile) ||
+          (name.isNotEmpty && invoiceClient == name);
+    }).toList();
+  }
+
+  AppEvent? eventForManualInvoice(ManualInvoice invoice) {
+    final mobile = normalizeMobileText(invoice.mobile);
+    final eventName = invoice.eventName.trim().toLowerCase();
+    for (final event in widget.events) {
+      final sameMobile =
+          mobile.isNotEmpty && normalizeMobileText(event.mobile) == mobile;
+      final sameName =
+          eventName.isNotEmpty && event.name.trim().toLowerCase() == eventName;
+      final sameDate = invoice.eventDate.trim().isEmpty ||
+          event.dates.any((date) => date.date == invoice.eventDate.trim());
+      if (sameMobile && sameName && sameDate) return event;
+    }
+    return null;
+  }
+
   Future<void> downloadDocument(
       BuildContext context, AppEvent event, String type) async {
     showCpSnack(context, 'Downloading...');
@@ -43,9 +128,19 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   void openDocumentDetails(AppEvent event, String type, {AppPayment? payment}) {
+    final client = clientFor(
+        event.primaryClient.isEmpty ? event.name : event.primaryClient,
+        event.mobile);
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => BillingDocumentDetailsScreen(
-          event: event, payment: payment, type: type, api: widget.api),
+          event: event,
+          client: client,
+          linkedInvoices: linkedInvoicesForClient(client),
+          payment: payment,
+          type: type,
+          api: widget.api,
+          onOpenEvent: widget.onOpenEvent,
+          onEventUpdated: widget.onEventUpdated),
     ));
   }
 
@@ -66,9 +161,19 @@ class _BillingScreenState extends State<BillingScreen> {
   }
 
   void openManualInvoiceDetails(ManualInvoice invoice) {
+    final client = clientFor(invoice.clientName, invoice.mobile,
+        address: invoice.clientAddress, gst: invoice.clientGst);
+    final linkedEvent = eventForManualInvoice(invoice);
     Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) =>
-            ManualInvoiceDetailsScreen(invoice: invoice, api: widget.api)));
+        builder: (_) => ManualInvoiceDetailsScreen(
+            invoice: invoice,
+            client: client,
+            linkedEvent: linkedEvent,
+            linkedEvents: linkedEventsForClient(client),
+            linkedInvoices: linkedInvoicesForClient(client),
+            api: widget.api,
+            onOpenEvent: widget.onOpenEvent,
+            onEventUpdated: widget.onEventUpdated)));
   }
 
   Widget tabChip(int index, String label, int count) {
@@ -592,54 +697,52 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                         padding: const EdgeInsets.only(bottom: 14),
                         child: LayoutBuilder(builder: (context, constraints) {
                           final wide = constraints.maxWidth > 820;
+                          Widget titleField() => TextFormField(
+                              controller: item.title,
+                              decoration: fieldDecoration('Item Title'),
+                              validator: (value) =>
+                                  requiredTextValidator(value, 'Item title'));
+                          Widget quantityField() => TextFormField(
+                              controller: item.quantity,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              onChanged: (_) => setState(() {}),
+                              decoration: fieldDecoration('Members'),
+                              validator: (value) => positiveMoneyValidator(
+                                  value, 'Members',
+                                  allowZero: false));
+                          Widget priceField() => TextFormField(
+                              controller: item.rate,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                              onChanged: (_) => setState(() {}),
+                              decoration: fieldDecoration('Price'),
+                              validator: (value) => positiveMoneyValidator(
+                                  value, 'Price',
+                                  allowZero: false));
+                          Widget amountField() => InputDecorator(
+                              decoration: fieldDecoration('Amount'),
+                              child: Text(money(lineAmount(item)),
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w900)));
+                          Widget deleteButton() => IconButton(
+                              onPressed: () => removeItem(index),
+                              icon: const Icon(Icons.delete, color: Cp.error));
                           final fields = [
-                            Expanded(
-                                flex: 4,
-                                child: TextFormField(
-                                    controller: item.title,
-                                    decoration: fieldDecoration('Item Title'),
-                                    validator: (value) => requiredTextValidator(
-                                        value, 'Item title'))),
+                            Expanded(flex: 4, child: titleField()),
                             const SizedBox(width: 8),
                             SizedBox(
                                 width: wide ? 110 : null,
-                                child: TextFormField(
-                                    controller: item.quantity,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly
-                                    ],
-                                    onChanged: (_) => setState(() {}),
-                                    decoration: fieldDecoration('Qty'),
-                                    validator: (value) =>
-                                        positiveMoneyValidator(value, 'Qty',
-                                            allowZero: false))),
+                                child: quantityField()),
                             const SizedBox(width: 8),
-                            Expanded(
-                                flex: 2,
-                                child: TextFormField(
-                                    controller: item.rate,
-                                    keyboardType: TextInputType.number,
-                                    inputFormatters: [
-                                      FilteringTextInputFormatter.digitsOnly
-                                    ],
-                                    onChanged: (_) => setState(() {}),
-                                    decoration: fieldDecoration('Rate'),
-                                    validator: (value) =>
-                                        positiveMoneyValidator(value, 'Rate',
-                                            allowZero: false))),
+                            Expanded(flex: 2, child: priceField()),
                             const SizedBox(width: 8),
-                            Expanded(
-                                flex: 2,
-                                child: InputDecorator(
-                                    decoration: fieldDecoration('Amount'),
-                                    child: Text(money(lineAmount(item)),
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w900)))),
-                            IconButton(
-                                onPressed: () => removeItem(index),
-                                icon:
-                                    const Icon(Icons.delete, color: Cp.error)),
+                            Expanded(flex: 2, child: amountField()),
+                            deleteButton(),
                           ];
                           if (wide) {
                             return Row(
@@ -647,9 +750,20 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                                 children: fields);
                           }
                           return Column(children: [
-                            Row(children: [fields[0], fields.last]),
+                            Row(children: [
+                              Expanded(child: titleField()),
+                              deleteButton(),
+                            ]),
                             const SizedBox(height: 10),
-                            Row(children: fields.sublist(2, 7)),
+                            Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: quantityField()),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: priceField()),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: amountField()),
+                                ]),
                           ]);
                         }),
                       );
@@ -737,9 +851,52 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
 
 class ManualInvoiceDetailsScreen extends StatelessWidget {
   const ManualInvoiceDetailsScreen(
-      {super.key, required this.invoice, required this.api});
+      {super.key,
+      required this.invoice,
+      required this.client,
+      required this.linkedEvents,
+      required this.linkedInvoices,
+      required this.api,
+      required this.onOpenEvent,
+      required this.onEventUpdated,
+      this.linkedEvent});
   final ManualInvoice invoice;
+  final AppClient client;
+  final AppEvent? linkedEvent;
+  final List<AppEvent> linkedEvents;
+  final List<ManualInvoice> linkedInvoices;
   final ApiService api;
+  final ValueChanged<AppEvent> onOpenEvent;
+  final ValueChanged<AppEvent> onEventUpdated;
+
+  void openClientInfo(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BillingClientInfoScreen(
+            client: client,
+            events: linkedEvents,
+            invoices: linkedInvoices,
+            onOpenEvent: onOpenEvent)));
+  }
+
+  void openLinkedEvent(BuildContext context) {
+    final event = linkedEvent;
+    if (event == null) {
+      showCpSnack(context, 'No linked event found for this invoice');
+      return;
+    }
+    Navigator.pop(context);
+    onOpenEvent(event);
+  }
+
+  void recordPayment(BuildContext context) {
+    final event = linkedEvent;
+    if (event == null) {
+      showCpSnack(context, 'No linked event found for this invoice');
+      return;
+    }
+    showEventRecordPaymentSheet(context,
+        event: event, api: api, onSaved: onEventUpdated);
+  }
 
   Future<void> download(BuildContext context) async {
     showCpSnack(context, 'Downloading invoice...');
@@ -754,8 +911,11 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment() async {
-    final text =
-        'Hello ${invoice.clientName}, pending payment for ${invoice.eventName} is ${money(invoice.pending)}. Please complete the payment. - CaterPro';
+    final text = requestPaymentMessage(
+        documentType: 'invoice',
+        clientName: invoice.clientName,
+        eventName: invoice.eventName,
+        amount: money(invoice.pending));
     await launchUrl(
         Uri.parse(
             'https://wa.me/91${invoice.mobile}?text=${Uri.encodeComponent(text)}'),
@@ -803,23 +963,31 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 22, fontWeight: FontWeight.w900))),
               const Divider(height: 28),
-              DetailNavTile(
-                  iconText: invoice.clientName.isEmpty
-                      ? 'C'
-                      : invoice.clientName[0].toUpperCase(),
-                  label: 'Client Name',
-                  value: '${invoice.clientName} • ${invoice.mobile}'),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => openClientInfo(context),
+                child: DetailNavTile(
+                    iconText: invoice.clientName.isEmpty
+                        ? 'C'
+                        : invoice.clientName[0].toUpperCase(),
+                    label: 'Client Name',
+                    value: '${invoice.clientName} • ${invoice.mobile}'),
+              ),
               if (invoice.clientAddress.isNotEmpty)
                 SmallInfoBlock(
                     label: 'Client Address', value: invoice.clientAddress),
               if (invoice.clientGst.isNotEmpty)
                 SmallInfoBlock(label: 'Client GST', value: invoice.clientGst),
-              DetailNavTile(
-                  iconText: invoice.eventName.isEmpty
-                      ? 'E'
-                      : invoice.eventName[0].toUpperCase(),
-                  label: 'Event Name',
-                  value: invoice.eventName),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => openLinkedEvent(context),
+                child: DetailNavTile(
+                    iconText: invoice.eventName.isEmpty
+                        ? 'E'
+                        : invoice.eventName[0].toUpperCase(),
+                    label: 'Event Name',
+                    value: invoice.eventName),
+              ),
               SmallInfoBlock(
                   label: 'Invoice#',
                   value: invoice.invoiceNumber.isEmpty
@@ -873,14 +1041,21 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
           color: cpSurface(context),
           child: Row(children: [
             Expanded(
-                child: FilledButton(
-                    onPressed: invoice.pending == 0 ? null : requestPayment,
+                child: FilledButton.icon(
+                    onPressed: linkedEvent == null || invoice.pending == 0
+                        ? null
+                        : () => recordPayment(context),
                     style: FilledButton.styleFrom(
                         backgroundColor: Cp.secondaryContainer,
                         foregroundColor: const Color(0xff694000)),
-                    child: const Text('Request Payment',
+                    icon: const Icon(Icons.payments),
+                    label: const Text('Record Payment',
                         style: TextStyle(fontWeight: FontWeight.w900)))),
             const SizedBox(width: 10),
+            IconButton.filledTonal(
+                onPressed: invoice.pending == 0 ? null : requestPayment,
+                icon: const Icon(Icons.chat)),
+            const SizedBox(width: 8),
             IconButton.filledTonal(
                 onPressed: () => download(context),
                 icon: const Icon(Icons.download)),
@@ -1042,12 +1217,20 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   const BillingDocumentDetailsScreen(
       {super.key,
       required this.event,
+      required this.client,
+      required this.linkedInvoices,
       required this.type,
       required this.api,
+      required this.onOpenEvent,
+      required this.onEventUpdated,
       this.payment});
   final AppEvent event;
+  final AppClient client;
+  final List<ManualInvoice> linkedInvoices;
   final String type;
   final ApiService api;
+  final ValueChanged<AppEvent> onOpenEvent;
+  final ValueChanged<AppEvent> onEventUpdated;
   final AppPayment? payment;
 
   bool get isInvoice => type == 'invoice';
@@ -1084,16 +1267,38 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment(BuildContext context) async {
-    final pending = eventBalance(event);
     final client =
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
-    final text =
-        'Hello $client, pending payment for ${event.name} is ${money(pending)}. Please complete the payment. - CaterPro';
+    final amount = isInvoice ? eventBalance(event) : eventTotal(event);
+    final text = requestPaymentMessage(
+        documentType: isInvoice ? 'invoice' : 'quotation',
+        clientName: client,
+        eventName: event.name,
+        amount: money(amount));
     await launchUrl(
         Uri.parse(
             'https://wa.me/${event.mobile}?text=${Uri.encodeComponent(text)}'),
         mode: LaunchMode.externalApplication,
         webOnlyWindowName: '_blank');
+  }
+
+  void openClientInfo(BuildContext context) {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BillingClientInfoScreen(
+            client: client,
+            events: [event],
+            invoices: linkedInvoices,
+            onOpenEvent: onOpenEvent)));
+  }
+
+  void openEventInfo(BuildContext context) {
+    Navigator.pop(context);
+    onOpenEvent(event);
+  }
+
+  void recordPayment(BuildContext context) {
+    showEventRecordPaymentSheet(context,
+        event: event, api: api, onSaved: onEventUpdated);
   }
 
   @override
@@ -1150,11 +1355,13 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
           DetailNavTile(
               iconText: clientName.isEmpty ? 'C' : clientName[0].toUpperCase(),
               label: 'Client Name',
-              value: clientName),
+              value: clientName,
+              onTap: () => openClientInfo(context)),
           DetailNavTile(
               iconText: event.name.isEmpty ? 'E' : event.name[0].toUpperCase(),
               label: 'Event Name',
-              value: event.name),
+              value: event.name,
+              onTap: () => openEventInfo(context)),
           CpCard(
             color: const Color(0xfffff7ff),
             child:
@@ -1201,8 +1408,8 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       color: cpOnVariant(context),
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
-              ...event.dates.take(4).map((date) => Text(
-                  '${date.date}: ${date.menuSlots.map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
+              ...sortedEventDates(event.dates).take(4).map((date) => Text(
+                  '${date.date}: ${sortedVisibleMenuSlots(date.menuSlots).map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
                   style: const TextStyle(fontWeight: FontWeight.w700))),
             ]),
           ),
@@ -1233,19 +1440,24 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
           child: Row(children: [
             Expanded(
-              child: FilledButton(
-                onPressed: pending == 0 ? null : () => requestPayment(context),
+              child: FilledButton.icon(
+                onPressed: pending == 0 ? null : () => recordPayment(context),
                 style: FilledButton.styleFrom(
                     backgroundColor: scheme.secondaryContainer,
                     foregroundColor: scheme.onSecondaryContainer,
                     disabledBackgroundColor: cpSurfaceHigh(context),
                     disabledForegroundColor: cpOnVariant(context)),
-                child: Text(
-                    pending == 0 ? 'Payment Complete' : 'Request Payment',
+                icon: Icon(pending == 0 ? Icons.check_circle : Icons.payments),
+                label: Text(
+                    pending == 0 ? 'Payment Complete' : 'Record Payment',
                     style: const TextStyle(fontWeight: FontWeight.w900)),
               ),
             ),
             const SizedBox(width: 10),
+            IconButton.filledTonal(
+                onPressed: pending == 0 ? null : () => requestPayment(context),
+                icon: const Icon(Icons.chat)),
+            const SizedBox(width: 8),
             IconButton.filledTonal(
                 onPressed: () => download(context),
                 icon: const Icon(Icons.download)),
@@ -1260,17 +1472,118 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   }
 }
 
+class BillingClientInfoScreen extends StatelessWidget {
+  const BillingClientInfoScreen(
+      {super.key,
+      required this.client,
+      required this.events,
+      required this.invoices,
+      required this.onOpenEvent});
+  final AppClient client;
+  final List<AppEvent> events;
+  final List<ManualInvoice> invoices;
+  final ValueChanged<AppEvent> onOpenEvent;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: cpSurface(context),
+      body: ScreenFrame(
+        topBar: TopBar(
+            title: 'Client Info',
+            avatar: false,
+            leading: IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: Icon(Icons.arrow_back, color: cpPrimary(context)))),
+        children: [
+          CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(client.name.isEmpty ? 'Client' : client.name,
+                  style: TextStyle(
+                      color: cpPrimary(context),
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              SmallInfoBlock(label: 'Mobile', value: client.mobile),
+              if (client.address.isNotEmpty)
+                SmallInfoBlock(label: 'Address', value: client.address),
+              if (client.city.isNotEmpty)
+                SmallInfoBlock(label: 'City', value: client.city),
+              if (client.gst.isNotEmpty)
+                SmallInfoBlock(label: 'GST', value: client.gst),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Events',
+                  style: TextStyle(
+                      color: cpPrimary(context),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              if (events.isEmpty)
+                Text('No linked events',
+                    style: TextStyle(
+                        color: cpOnVariant(context),
+                        fontWeight: FontWeight.w700)),
+              ...events.map((event) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.event, color: cpPrimary(context)),
+                    title: Text(event.name,
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                    subtitle:
+                        Text(event.dates.map((date) => date.date).join(', ')),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).popUntil((route) => route.isFirst);
+                      onOpenEvent(event);
+                    },
+                  )),
+            ]),
+          ),
+          const SizedBox(height: 12),
+          CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Invoices',
+                  style: TextStyle(
+                      color: cpPrimary(context),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900)),
+              const SizedBox(height: 8),
+              if (invoices.isEmpty)
+                Text('No linked invoices',
+                    style: TextStyle(
+                        color: cpOnVariant(context),
+                        fontWeight: FontWeight.w700)),
+              ...invoices.map((invoice) => AmountLine(
+                  invoice.eventName.isEmpty ? 'Invoice' : invoice.eventName,
+                  money(invoice.total))),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class DetailNavTile extends StatelessWidget {
   const DetailNavTile(
       {super.key,
       required this.iconText,
       required this.label,
-      required this.value});
+      required this.value,
+      this.onTap});
   final String iconText, label, value;
+  final VoidCallback? onTap;
   @override
   Widget build(BuildContext context) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: CpCard(
+          onTap: onTap,
           color: const Color(0xfffff7ff),
           child: Row(children: [
             CircleAvatar(
