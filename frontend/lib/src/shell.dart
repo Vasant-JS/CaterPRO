@@ -1736,6 +1736,7 @@ void showCpSnack(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(message),
+      duration: const Duration(seconds: 2),
       behavior: SnackBarBehavior.floating,
       backgroundColor: scheme.primaryContainer,
     ),
@@ -1752,6 +1753,7 @@ void showDownloadSnack(BuildContext context, Uri uri,
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
       content: Text(successMessage),
+      duration: const Duration(seconds: 2),
       behavior: SnackBarBehavior.floating,
       backgroundColor: scheme.primaryContainer,
     ),
@@ -1766,6 +1768,7 @@ void showDownloadSnack(BuildContext context, Uri uri,
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$fileName downloaded'),
+          duration: const Duration(seconds: 2),
           behavior: SnackBarBehavior.floating,
           backgroundColor: scheme.primaryContainer,
           action: SnackBarAction(

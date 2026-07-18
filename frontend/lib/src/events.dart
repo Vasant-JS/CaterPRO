@@ -241,46 +241,6 @@ class _EventsScreenState extends State<EventsScreen> {
     return ScreenFrame(
       topBar: TopBar(title: 'Events', actions: [
         PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Cp.toolbarIcon),
-          tooltip: 'Event options',
-          onSelected: (value) {
-            switch (value) {
-              case 'refresh':
-                widget.refresh();
-                break;
-              case 'consolidated-menu':
-                downloadConsolidatedMenus(context, visible);
-                break;
-            }
-          },
-          itemBuilder: (context) => [
-            PopupMenuItem<String>(
-              value: 'refresh',
-              child: Row(children: [
-                Icon(Icons.refresh, color: cpOnSurface(context)),
-                const SizedBox(width: 12),
-                const Expanded(
-                    child: Text('Refresh',
-                        style: TextStyle(fontWeight: FontWeight.w800))),
-              ]),
-            ),
-            PopupMenuItem<String>(
-              value: 'consolidated-menu',
-              enabled: visible.isNotEmpty,
-              child: Row(children: [
-                Icon(Icons.picture_as_pdf,
-                    color: visible.isEmpty
-                        ? cpOutline(context)
-                        : cpOnSurface(context)),
-                const SizedBox(width: 12),
-                const Expanded(
-                    child: Text('Consolidated Menu PDF',
-                        style: TextStyle(fontWeight: FontWeight.w800))),
-              ]),
-            ),
-          ],
-        ),
-        PopupMenuButton<String>(
           icon: const Icon(Icons.filter_list, color: Cp.primary),
           tooltip: 'Filter events',
           onSelected: (value) {
@@ -334,6 +294,46 @@ class _EventsScreenState extends State<EventsScreen> {
                 selected: paymentFilter == 'Unpaid'),
             const PopupMenuDivider(),
             filterMenuItem('clear', Icons.filter_alt_off, 'Clear Filters'),
+          ],
+        ),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Cp.toolbarIcon),
+          tooltip: 'Event options',
+          onSelected: (value) {
+            switch (value) {
+              case 'refresh':
+                widget.refresh();
+                break;
+              case 'consolidated-menu':
+                downloadConsolidatedMenus(context, visible);
+                break;
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'refresh',
+              child: Row(children: [
+                Icon(Icons.refresh, color: cpOnSurface(context)),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text('Refresh',
+                        style: TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            ),
+            PopupMenuItem<String>(
+              value: 'consolidated-menu',
+              enabled: visible.isNotEmpty,
+              child: Row(children: [
+                Icon(Icons.picture_as_pdf,
+                    color: visible.isEmpty
+                        ? cpOutline(context)
+                        : cpOnSurface(context)),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text('Consolidated Menu PDF',
+                        style: TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            ),
           ],
         ),
       ]),
