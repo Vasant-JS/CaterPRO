@@ -2,7 +2,7 @@ part of '../main.dart';
 
 String paymentEventPhrase(String eventName) {
   final cleaned = eventName.trim();
-  return cleaned.isEmpty ? 'event' : 'event with event name $cleaned';
+  return cleaned.isEmpty ? 'event' : 'event: "$cleaned"';
 }
 
 String requestPaymentMessage({
@@ -899,15 +899,16 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> download(BuildContext context) async {
-    showCpSnack(context, 'Downloading invoice...');
     final uri = await api.manualInvoicePdfUri(invoice.id);
-    if (context.mounted) {
-      showDownloadSnack(context, uri,
-          title: '${invoice.eventName} invoice.pdf',
-          kind: 'invoice',
-          successMessage: 'Invoice download started',
-          failureMessage: 'Unable to start download');
-    }
+    final fileName = '${invoice.eventName} invoice.pdf';
+    await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
+    if (context.mounted) showCpSnack(context, '$fileName downloaded');
+  }
+
+  Future<void> sharePdf(BuildContext context) async {
+    final uri = await api.manualInvoicePdfUri(invoice.id);
+    await saveAndShareDownload(
+        title: '${invoice.eventName} invoice.pdf', uri: uri, kind: 'invoice');
   }
 
   Future<void> requestPayment() async {
@@ -934,7 +935,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
             leading: IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: const Icon(Icons.arrow_back, color: Cp.primary))),
-        bottomPadding: 96,
+        bottomPadding: 190,
         children: [
           CpCard(
             color: const Color(0xfffff7ff),
@@ -1036,32 +1037,124 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          color: cpSurface(context),
-          child: Row(children: [
-            Expanded(
-                child: FilledButton.icon(
-                    onPressed: linkedEvent == null || invoice.pending == 0
-                        ? null
-                        : () => recordPayment(context),
-                    style: FilledButton.styleFrom(
-                        backgroundColor: Cp.secondaryContainer,
-                        foregroundColor: const Color(0xff694000)),
-                    icon: const Icon(Icons.payments),
-                    label: const Text('Record Payment',
-                        style: TextStyle(fontWeight: FontWeight.w900)))),
-            const SizedBox(width: 10),
-            IconButton.filledTonal(
-                onPressed: invoice.pending == 0 ? null : requestPayment,
-                icon: const Icon(Icons.chat)),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-                onPressed: () => download(context),
-                icon: const Icon(Icons.download)),
-          ]),
-        ),
+        child: DocumentActionPanel(actions: [
+          DocumentActionSpec(
+              label: 'Request Payment',
+              icon: Icons.message,
+              onPressed: invoice.pending == 0 ? null : requestPayment),
+          DocumentActionSpec(
+              label: 'Record Payment',
+              icon: Icons.payments,
+              onPressed: linkedEvent == null || invoice.pending == 0
+                  ? null
+                  : () async => recordPayment(context),
+              primary: true),
+          DocumentActionSpec(
+              label: 'Download PDF',
+              icon: Icons.picture_as_pdf,
+              onPressed: () => download(context)),
+          DocumentActionSpec(
+              label: 'Share PDF',
+              icon: Icons.ios_share,
+              onPressed: () => sharePdf(context)),
+        ]),
       ),
+    );
+  }
+}
+
+class DocumentActionSpec {
+  const DocumentActionSpec(
+      {required this.label,
+      required this.icon,
+      required this.onPressed,
+      this.primary = false});
+  final String label;
+  final IconData icon;
+  final Future<void> Function()? onPressed;
+  final bool primary;
+}
+
+class DocumentActionPanel extends StatefulWidget {
+  const DocumentActionPanel({super.key, required this.actions});
+  final List<DocumentActionSpec> actions;
+
+  @override
+  State<DocumentActionPanel> createState() => _DocumentActionPanelState();
+}
+
+class _DocumentActionPanelState extends State<DocumentActionPanel> {
+  String? workingLabel;
+
+  Future<void> runAction(DocumentActionSpec action) async {
+    final callback = action.onPressed;
+    if (callback == null || workingLabel != null) return;
+    setState(() => workingLabel = action.label);
+    try {
+      await callback();
+    } catch (error) {
+      if (mounted) {
+        showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => workingLabel = null);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final busy = workingLabel != null;
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      color: cpSurface(context),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (busy) ...[
+          LinearProgressIndicator(
+              color: scheme.primary, backgroundColor: cpSurfaceHigh(context)),
+          const SizedBox(height: 6),
+          Text('$workingLabel...',
+              style: TextStyle(
+                  color: cpOnVariant(context),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
+        ],
+        LayoutBuilder(builder: (context, constraints) {
+          final width = (constraints.maxWidth - 10) / 2;
+          return Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: widget.actions.map((action) {
+              final enabled = action.onPressed != null && !busy;
+              final style = FilledButton.styleFrom(
+                backgroundColor: action.primary
+                    ? scheme.secondaryContainer
+                    : scheme.primaryContainer,
+                foregroundColor: action.primary
+                    ? scheme.onSecondaryContainer
+                    : scheme.onPrimaryContainer,
+                disabledBackgroundColor: cpSurfaceHigh(context),
+                disabledForegroundColor: cpOnVariant(context),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              );
+              return SizedBox(
+                width: width,
+                height: 48,
+                child: FilledButton.icon(
+                  onPressed: enabled ? () => runAction(action) : null,
+                  style: style,
+                  icon: Icon(action.icon, size: 20),
+                  label: Text(action.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              );
+            }).toList(),
+          );
+        }),
+      ]),
     );
   }
 }
@@ -1243,27 +1336,20 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       api.documentUri(event.id, isInvoice ? 'invoice' : 'quotation');
 
   Future<void> download(BuildContext context) async {
-    showCpSnack(context, 'Downloading...');
     final uri = await documentUri();
-    if (context.mounted) {
-      showDownloadSnack(context, uri,
-          title:
-              downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
-          kind: 'invoice',
-          successMessage:
-              '${isInvoice ? 'Invoice' : 'Quotation'} download started',
-          failureMessage: 'Unable to start download');
-    }
+    final fileName =
+        downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation');
+    await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
+    if (context.mounted) showCpSnack(context, '$fileName downloaded');
   }
 
-  Future<void> shareOverWhatsApp(BuildContext context) async {
+  Future<void> sharePdf(BuildContext context) async {
     final uri = await documentUri();
-    final label = isInvoice ? 'invoice' : 'quotation';
-    final text = 'CaterPro $label for ${event.name}: $uri';
-    await launchUrl(
-        Uri.parse('https://wa.me/?text=${Uri.encodeComponent(text)}'),
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank');
+    await saveAndShareDownload(
+        title:
+            downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
+        uri: uri,
+        kind: 'invoice');
   }
 
   Future<void> requestPayment(BuildContext context) async {
@@ -1315,7 +1401,6 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
         .expand((date) => date.menuSlots)
         .expand((slot) => slot.menuItemIds)
         .length;
-    final scheme = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: cpSurface(context),
       body: ScreenFrame(
@@ -1325,7 +1410,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
             leading: IconButton(
                 onPressed: () => Navigator.pop(context),
                 icon: Icon(Icons.arrow_back, color: cpPrimary(context)))),
-        bottomPadding: 98,
+        bottomPadding: 190,
         children: [
           CpCard(
             color: isInvoice
@@ -1435,38 +1520,26 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        child: Container(
-          color: cpSurface(context),
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-          child: Row(children: [
-            Expanded(
-              child: FilledButton.icon(
-                onPressed: pending == 0 ? null : () => recordPayment(context),
-                style: FilledButton.styleFrom(
-                    backgroundColor: scheme.secondaryContainer,
-                    foregroundColor: scheme.onSecondaryContainer,
-                    disabledBackgroundColor: cpSurfaceHigh(context),
-                    disabledForegroundColor: cpOnVariant(context)),
-                icon: Icon(pending == 0 ? Icons.check_circle : Icons.payments),
-                label: Text(
-                    pending == 0 ? 'Payment Complete' : 'Record Payment',
-                    style: const TextStyle(fontWeight: FontWeight.w900)),
-              ),
-            ),
-            const SizedBox(width: 10),
-            IconButton.filledTonal(
-                onPressed: pending == 0 ? null : () => requestPayment(context),
-                icon: const Icon(Icons.chat)),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-                onPressed: () => download(context),
-                icon: const Icon(Icons.download)),
-            const SizedBox(width: 8),
-            IconButton.filledTonal(
-                onPressed: () => shareOverWhatsApp(context),
-                icon: const Icon(Icons.chat)),
-          ]),
-        ),
+        child: DocumentActionPanel(actions: [
+          DocumentActionSpec(
+              label: 'Request Payment',
+              icon: Icons.message,
+              onPressed: pending == 0 ? null : () => requestPayment(context)),
+          DocumentActionSpec(
+              label: 'Record Payment',
+              icon: Icons.payments,
+              onPressed:
+                  pending == 0 ? null : () async => recordPayment(context),
+              primary: true),
+          DocumentActionSpec(
+              label: 'Download PDF',
+              icon: Icons.picture_as_pdf,
+              onPressed: () => download(context)),
+          DocumentActionSpec(
+              label: 'Share PDF',
+              icon: Icons.ios_share,
+              onPressed: () => sharePdf(context)),
+        ]),
       ),
     );
   }

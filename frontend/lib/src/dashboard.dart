@@ -138,20 +138,9 @@ class DashboardScreen extends StatelessWidget {
       final start =
           DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
       final end = start.add(const Duration(days: 2));
-      final eventIds = upcomingMenuEvents.map((event) => event.id).toList();
       showCpSnack(context, 'Preparing upcoming consolidated menu...');
-      final error = await api.consolidatedMenusError(
-          eventIds: eventIds,
-          startDate: dateKey(start),
-          endDate: dateKey(end),
-          title: 'Upcoming Consolidated Menus');
-      if (!context.mounted) return;
-      if (error != null) {
-        showCpSnack(context, error);
-        return;
-      }
-      final uri = await api.consolidatedMenusUri(
-          eventIds: eventIds,
+      final uri = await api.createConsolidatedMenusUri(
+          events: upcomingMenuEvents,
           startDate: dateKey(start),
           endDate: dateKey(end),
           title: 'Upcoming Consolidated Menus');

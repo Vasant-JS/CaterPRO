@@ -1234,6 +1234,7 @@ class _AppShellState extends State<AppShell> {
             onCreate: createEvent,
             services: services,
             customMenus: customMenus,
+            clients: clients,
             customerEvents: events,
             onSaveService: upsertService,
             onDeleteService: removeService),

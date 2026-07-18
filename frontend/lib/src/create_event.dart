@@ -9,6 +9,7 @@ class CreateEventScreen extends StatefulWidget {
       required this.onCreate,
       required this.services,
       required this.customMenus,
+      required this.clients,
       required this.customerEvents,
       required this.onSaveService,
       required this.onDeleteService});
@@ -18,6 +19,7 @@ class CreateEventScreen extends StatefulWidget {
   final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
   final List<CustomMenu> customMenus;
+  final List<AppClient> clients;
   final List<AppEvent> customerEvents;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
@@ -44,12 +46,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   List<CustomerSuggestion> get customerSuggestions {
     final byMobile = <String, CustomerSuggestion>{};
+    for (final client in widget.clients) {
+      final mobile = normalizeMobileNumber(client.mobile);
+      if (mobile.isEmpty) continue;
+      byMobile[mobile] =
+          CustomerSuggestion(name: client.name.trim(), mobile: mobile);
+    }
     for (final event in widget.customerEvents) {
       final mobile = normalizeMobileNumber(event.mobile);
       if (mobile.isEmpty) continue;
       final name =
           event.primaryClient.isEmpty ? event.name : event.primaryClient;
-      byMobile[mobile] = CustomerSuggestion(name: name, mobile: mobile);
+      byMobile.putIfAbsent(
+          mobile, () => CustomerSuggestion(name: name, mobile: mobile));
     }
     final list = byMobile.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
@@ -82,7 +91,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   String? validateDetails() {
     draft.mobile = normalizeMobileNumber(draft.mobile);
-    if (draft.name.trim().isEmpty) return 'Event name is required.';
     if (draft.client.trim().isEmpty) return 'Primary client is required.';
     if (draft.mobile.trim().isEmpty) return 'Mobile number is required.';
     if (draft.mobile.length != 10) return 'Mobile number must be 10 digits.';
@@ -279,10 +287,12 @@ class CreateDetailsStep extends StatefulWidget {
 
 class _CreateDetailsStepState extends State<CreateDetailsStep> {
   List<CustomerSuggestion> matches = [];
+  String suggestionSource = '';
 
-  void updateMatches(String value) {
+  void updateMatches(String value, String source) {
     final q = value.trim().toLowerCase();
     setState(() {
+      suggestionSource = q.isEmpty ? '' : source;
       matches = q.isEmpty
           ? []
           : widget.customers
@@ -299,8 +309,37 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
       widget.draft.client = customer.name;
       widget.draft.mobile = customer.mobile;
       matches = [];
+      suggestionSource = '';
     });
     widget.onChanged();
+  }
+
+  Widget suggestionList(String source) {
+    if (matches.isEmpty || suggestionSource != source) {
+      return const SizedBox.shrink();
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Material(
+        color: cpSurfaceLow(context),
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: matches
+              .map((customer) => ListTile(
+                    dense: true,
+                    leading: Icon(Icons.person, color: cpPrimary(context)),
+                    title: Text(
+                        customer.name.isEmpty
+                            ? 'Unnamed client'
+                            : customer.name,
+                        style: const TextStyle(fontWeight: FontWeight.w900)),
+                    subtitle: Text(customer.mobile),
+                    onTap: () => selectCustomer(customer),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
   }
 
   @override
@@ -319,7 +358,7 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
           ]),
           const SizedBox(height: 20),
           FormFieldBox(
-              label: 'Event Name',
+              label: 'Event Name (Optional)',
               value: widget.draft.name,
               onChanged: (value) {
                 widget.draft.name = value;
@@ -331,32 +370,11 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
             icon: Icons.person_search,
             onChanged: (value) {
               widget.draft.client = value;
-              updateMatches(value);
+              updateMatches(value, 'client');
               widget.onChanged();
             },
           ),
-          if (matches.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Material(
-                color: cpSurfaceLow(context),
-                borderRadius: BorderRadius.circular(12),
-                child: Column(
-                  children: matches
-                      .map((customer) => ListTile(
-                            dense: true,
-                            leading:
-                                Icon(Icons.person, color: cpPrimary(context)),
-                            title: Text(customer.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900)),
-                            subtitle: Text(customer.mobile),
-                            onTap: () => selectCustomer(customer),
-                          ))
-                      .toList(),
-                ),
-              ),
-            ),
+          suggestionList('client'),
           FormFieldBox(
               label: 'Mobile Number (Unique Customer ID)',
               value: widget.draft.mobile,
@@ -364,9 +382,10 @@ class _CreateDetailsStepState extends State<CreateDetailsStep> {
               inputFormatters: mobileInputFormatters,
               onChanged: (value) {
                 widget.draft.mobile = normalizeMobileNumber(value);
-                updateMatches(widget.draft.mobile);
+                updateMatches(widget.draft.mobile, 'mobile');
                 widget.onChanged();
               }),
+          suggestionList('mobile'),
           FormFieldBox(
               label: 'Venue',
               value: widget.draft.venue,
@@ -726,10 +745,6 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
               items: selectedMenuTitles(slot),
               services: slot.additionalServices,
               menuImages: slot.menuImages,
-              onEnabledChanged: (value) {
-                setState(() => slot.enabled = value);
-                widget.onChanged();
-              },
               onPaxChanged: (value) {
                 setState(() => slot.pax = value);
                 widget.onChanged();
@@ -1685,7 +1700,6 @@ class MealSlotCard extends StatelessWidget {
       required this.items,
       required this.services,
       required this.menuImages,
-      required this.onEnabledChanged,
       required this.onPaxChanged,
       required this.onPriceChanged,
       required this.onTimeChanged,
@@ -1698,7 +1712,6 @@ class MealSlotCard extends StatelessWidget {
   final List<String> items;
   final List<Map<String, dynamic>> services;
   final List<Map<String, dynamic>> menuImages;
-  final ValueChanged<bool> onEnabledChanged;
   final ValueChanged<String> onPaxChanged;
   final ValueChanged<String> onPriceChanged;
   final ValueChanged<String> onTimeChanged;
@@ -1710,151 +1723,114 @@ class MealSlotCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final enabled = slot.enabled;
     final primary = cpPrimary(context);
-    final outline = cpOutline(context);
     final onVariant = cpOnVariant(context);
-    return Opacity(
-      opacity: enabled ? 1 : .58,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: CpCard(
-          color: enabled ? Cp.card : Cp.surfaceLow,
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Icon(Icons.restaurant_menu, color: enabled ? primary : outline),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(slot.type,
-                        style: const TextStyle(
-                            fontSize: 18, fontWeight: FontWeight.w900)),
-                    Text(
-                        enabled
-                            ? '${slot.time} | ${slot.pax.isEmpty ? 0 : slot.pax} Members'
-                            : 'Not Scheduled | 0 Members',
-                        style: TextStyle(color: onVariant))
-                  ])),
-              IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline, color: Cp.error)),
-              Switch(
-                  value: enabled,
-                  activeThumbColor: primary,
-                  onChanged: onEnabledChanged),
-            ]),
-            if (enabled) ...[
-              const SizedBox(height: 12),
-              LayoutBuilder(builder: (context, constraints) {
-                final timeField = MenuTimeField(
-                    label: '${slot.type} Time',
-                    value: slot.time,
-                    fallback: defaultMenuTimeForType(slot.type),
-                    onChanged: onTimeChanged);
-                final membersField = FormFieldBox(
-                    label: '${slot.type} Members',
-                    value: slot.pax,
-                    icon: Icons.person,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: onPaxChanged);
-                final priceField = FormFieldBox(
-                    label: 'Price / Member',
-                    value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}',
-                    icon: Icons.currency_rupee,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onChanged: onPriceChanged);
-                if (constraints.maxWidth < 420) {
-                  return Column(children: [
-                    timeField,
-                    Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(child: membersField),
-                          const SizedBox(width: 12),
-                          Expanded(child: priceField),
-                        ]),
-                  ]);
-                }
-                return Row(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: CpCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(Icons.restaurant_menu, color: primary),
+            const SizedBox(width: 12),
+            Expanded(
+                child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(child: timeField),
-                      const SizedBox(width: 12),
-                      Expanded(child: membersField),
-                      const SizedBox(width: 12),
-                      Expanded(child: priceField),
-                    ]);
-              }),
-            ],
-            if (enabled) ...[
-              const SizedBox(height: 12),
-              if (items.isEmpty)
-                Text('No menu items selected.',
-                    style: TextStyle(
-                        color: onVariant, fontStyle: FontStyle.italic))
-              else
-                Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: items
-                        .map((e) => Pill(e, color: Cp.surfaceHigh))
-                        .toList()),
-              if (services.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: services
-                        .map((service) => Pill(additionalServiceLine(service),
-                            color: Cp.primaryFixed))
-                        .toList()),
-              ],
-              if (menuImages.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: menuImages.map((image) {
-                      final name = image['name']?.toString().trim();
-                      return InputChip(
-                        avatar: const Icon(Icons.image, size: 18),
-                        label: Text(
-                            name == null || name.isEmpty ? 'Menu image' : name),
-                        onDeleted: () => onRemoveImage(image),
-                      );
-                    }).toList()),
-              ],
-              const Divider(height: 24),
-              Row(children: [
-                Expanded(
-                    child: MenuSlotActionButton(
-                        icon: Icons.edit,
-                        label: 'Menu',
-                        onPressed: onEditMenu)),
-                Expanded(
-                    child: MenuSlotActionButton(
-                        icon: Icons.room_service,
-                        label: 'Service',
-                        count: services.length,
-                        onPressed: onEditServices)),
-                Expanded(
-                    child: MenuSlotActionButton(
-                        icon: Icons.add_photo_alternate,
-                        label: 'Image',
-                        onPressed: menuImages.length >= 2 ? null : onAddImage)),
-              ]),
-            ],
-            if (!enabled)
-              const Padding(
-                  padding: EdgeInsets.only(top: 8),
-                  child: Text('Menu slot is currently disabled.',
-                      style: TextStyle(
-                          color: Cp.onVariant, fontStyle: FontStyle.italic))),
+                  Text(slot.type,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w900)),
+                  Text(
+                      '${slot.time} | ${slot.pax.isEmpty ? 0 : slot.pax} Members',
+                      style: TextStyle(color: onVariant))
+                ])),
+            IconButton(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline, color: Cp.error)),
           ]),
-        ),
+          const SizedBox(height: 12),
+          LayoutBuilder(builder: (context, constraints) {
+            final timeField = SizedBox(
+              width: 52,
+              child: MenuTimeField(
+                  label: '',
+                  value: slot.time,
+                  fallback: defaultMenuTimeForType(slot.type),
+                  iconOnly: true,
+                  onChanged: onTimeChanged),
+            );
+            final membersField = FormFieldBox(
+                label: 'Members',
+                value: slot.pax,
+                icon: Icons.person,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: onPaxChanged);
+            final priceField = FormFieldBox(
+                label: 'Price / Member',
+                value: slot.pricePerPax == 0 ? '' : '${slot.pricePerPax}',
+                icon: Icons.currency_rupee,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                onChanged: onPriceChanged);
+            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              timeField,
+              const SizedBox(width: 12),
+              Expanded(child: membersField),
+              const SizedBox(width: 12),
+              Expanded(child: priceField),
+            ]);
+          }),
+          const SizedBox(height: 12),
+          if (items.isEmpty)
+            Text('No menu items selected.',
+                style: TextStyle(color: onVariant, fontStyle: FontStyle.italic))
+          else
+            Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children:
+                    items.map((e) => Pill(e, color: Cp.surfaceHigh)).toList()),
+          if (services.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: services
+                    .map((service) => Pill(additionalServiceLine(service),
+                        color: Cp.primaryFixed))
+                    .toList()),
+          ],
+          if (menuImages.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: menuImages.map((image) {
+                  final name = image['name']?.toString().trim();
+                  return InputChip(
+                    avatar: const Icon(Icons.image, size: 18),
+                    label: Text(
+                        name == null || name.isEmpty ? 'Menu image' : name),
+                    onDeleted: () => onRemoveImage(image),
+                  );
+                }).toList()),
+          ],
+          const Divider(height: 24),
+          Row(children: [
+            Expanded(
+                child: MenuSlotActionButton(
+                    icon: Icons.edit, label: 'Menu', onPressed: onEditMenu)),
+            Expanded(
+                child: MenuSlotActionButton(
+                    icon: Icons.room_service,
+                    label: 'Service',
+                    count: services.length,
+                    onPressed: onEditServices)),
+            Expanded(
+                child: MenuSlotActionButton(
+                    icon: Icons.add_photo_alternate,
+                    label: 'Image',
+                    onPressed: menuImages.length >= 2 ? null : onAddImage)),
+          ]),
+        ]),
       ),
     );
   }
@@ -2325,10 +2301,12 @@ class MenuTimeField extends StatelessWidget {
       required this.label,
       required this.value,
       required this.fallback,
+      this.iconOnly = false,
       required this.onChanged});
   final String label;
   final String value;
   final String fallback;
+  final bool iconOnly;
   final ValueChanged<String> onChanged;
 
   Future<void> pickTime(BuildContext context) async {
@@ -2341,6 +2319,23 @@ class MenuTimeField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (iconOnly) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 16),
+        child: IconButton.outlined(
+          tooltip: value.trim().isEmpty ? fallback : value,
+          onPressed: () => pickTime(context),
+          icon: Icon(Icons.schedule, color: cpOutline(context)),
+          style: IconButton.styleFrom(
+            minimumSize: const Size(52, 56),
+            side: BorderSide(color: cpOutline(context)),
+            backgroundColor: cpDark(context) ? cpSurfaceLow(context) : null,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: InkWell(

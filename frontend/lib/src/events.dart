@@ -196,7 +196,7 @@ class _EventsScreenState extends State<EventsScreen> {
       value: value,
       child: Row(children: [
         Icon(selected ? Icons.check_circle : icon,
-            color: selected ? Cp.tertiaryContainer : Cp.primary),
+            color: selected ? Cp.toolbarIcon : cpOnSurface(context)),
         const SizedBox(width: 12),
         Expanded(
             child: Text(label,
@@ -211,22 +211,10 @@ class _EventsScreenState extends State<EventsScreen> {
       showCpSnack(context, 'No events available for consolidated menu');
       return;
     }
-    final eventIds = visibleEvents.map((event) => event.id).toList();
     try {
       showCpSnack(context, 'Preparing consolidated menu...');
-      final error = await widget.api.consolidatedMenusError(
-          eventIds: eventIds,
-          date: dateFilter,
-          title: dateFilter == null
-              ? 'Events Consolidated Menus'
-              : 'Events Consolidated Menus - $dateFilter');
-      if (!context.mounted) return;
-      if (error != null) {
-        showCpSnack(context, error);
-        return;
-      }
-      final uri = await widget.api.consolidatedMenusUri(
-          eventIds: eventIds,
+      final uri = await widget.api.createConsolidatedMenusUri(
+          events: visibleEvents,
           date: dateFilter,
           title: dateFilter == null
               ? 'Events Consolidated Menus'
@@ -252,22 +240,38 @@ class _EventsScreenState extends State<EventsScreen> {
         borderSide: BorderSide(color: cpOutlineVariant(context)));
     return ScreenFrame(
       topBar: TopBar(title: 'Events', actions: [
-        IconButton(onPressed: widget.refresh, icon: const Icon(Icons.refresh)),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert, color: Cp.toolbarIcon),
           tooltip: 'Event options',
           onSelected: (value) {
-            if (value == 'consolidated-menu') {
-              downloadConsolidatedMenus(context, visible);
+            switch (value) {
+              case 'refresh':
+                widget.refresh();
+                break;
+              case 'consolidated-menu':
+                downloadConsolidatedMenus(context, visible);
+                break;
             }
           },
           itemBuilder: (context) => [
+            PopupMenuItem<String>(
+              value: 'refresh',
+              child: Row(children: [
+                Icon(Icons.refresh, color: cpOnSurface(context)),
+                const SizedBox(width: 12),
+                const Expanded(
+                    child: Text('Refresh',
+                        style: TextStyle(fontWeight: FontWeight.w800))),
+              ]),
+            ),
             PopupMenuItem<String>(
               value: 'consolidated-menu',
               enabled: visible.isNotEmpty,
               child: Row(children: [
                 Icon(Icons.picture_as_pdf,
-                    color: visible.isEmpty ? cpOutline(context) : Cp.primary),
+                    color: visible.isEmpty
+                        ? cpOutline(context)
+                        : cpOnSurface(context)),
                 const SizedBox(width: 12),
                 const Expanded(
                     child: Text('Consolidated Menu PDF',
@@ -332,9 +336,6 @@ class _EventsScreenState extends State<EventsScreen> {
             filterMenuItem('clear', Icons.filter_alt_off, 'Clear Filters'),
           ],
         ),
-        IconButton(
-            onPressed: widget.openCreate,
-            icon: const Icon(Icons.add, color: Cp.toolbarIcon)),
       ]),
       children: [
         TextField(

@@ -369,6 +369,38 @@ Future<bool> openDownloadedFile(Uri uri,
       mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
 }
 
+Future<bool> shareDownloadedFile(Uri uri,
+    {required String title, String kind = 'file'}) async {
+  if (!kIsWeb && (uri.scheme == 'content' || uri.scheme == 'file')) {
+    final shared = await downloadChannel.invokeMethod<bool>(
+          'shareFile',
+          {
+            'uri': uri.toString(),
+            'mimeType': mimeTypeForDownload(kind, title),
+            'title': title,
+          },
+        ) ??
+        false;
+    return shared;
+  }
+  return launchUrl(uri,
+      mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+}
+
+Future<Uri> saveAndShareDownload(
+    {required String title,
+    required Uri uri,
+    required String kind,
+    Map<String, String>? headers}) async {
+  final localUri = await saveDownloadToDevice(
+      title: title, uri: uri, kind: kind, headers: headers);
+  final fileName = sanitizeDownloadFileName(title, kind);
+  final shared =
+      await shareDownloadedFile(localUri, title: fileName, kind: kind);
+  if (!shared) throw Exception('Unable to open share sheet');
+  return localUri;
+}
+
 class AppPreferences {
   const AppPreferences(
       {this.textScale = 1,
@@ -2592,6 +2624,47 @@ class ApiService {
     return 'No menus found for the selected events';
   }
 
+  Future<Uri> createConsolidatedMenusUri(
+      {required List<AppEvent> events,
+      String? date,
+      String? startDate,
+      String? endDate,
+      String title = 'Consolidated Menus'}) async {
+    final response = await http.post(
+      Uri.parse('${ApiConfig.baseUrl}/documents/consolidated-menus'),
+      headers: await authHeaders(),
+      body: jsonEncode({
+        'events': events.map((event) => event.toJson()).toList(),
+        if (date != null && date.isNotEmpty) 'date': date,
+        if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
+        if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
+        'title': title,
+      }),
+    );
+    if (response.statusCode != 201) {
+      var message = 'Unable to prepare consolidated menu';
+      try {
+        final body = jsonDecode(response.body);
+        if (body is Map && body['message'] != null) {
+          message = body['message'].toString();
+        }
+      } catch (_) {
+        // Fall through to the friendly default below.
+      }
+      throw Exception(message);
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final exportId = body['id']?.toString() ?? '';
+    if (exportId.isEmpty) {
+      throw Exception('Unable to prepare consolidated menu');
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    return Uri.parse(
+            '${ApiConfig.baseUrl}/documents/consolidated-menus/$exportId')
+        .replace(queryParameters: {'token': token});
+  }
+
   Future<String?> upcomingMenusError({int days = 3}) async {
     final uri = await upcomingMenusUri(days: days);
     final response = await http.get(uri, headers: await authHeaders());
@@ -2827,9 +2900,8 @@ int eventBalance(AppEvent event) =>
     (eventTotal(event) - eventPaid(event) - eventSettledDiscount(event))
         .clamp(0, eventTotal(event));
 bool eventIsIncomplete(AppEvent event) {
-  final hasDetails = event.name.trim().isNotEmpty &&
-      event.mobile.trim().isNotEmpty &&
-      event.primaryClient.trim().isNotEmpty;
+  final hasDetails =
+      event.mobile.trim().isNotEmpty && event.primaryClient.trim().isNotEmpty;
   final hasDates = event.dates.isNotEmpty;
   final hasMenu = event.dates.any((date) => date.menuSlots.isNotEmpty);
   return !hasDetails || !hasDates || !hasMenu;

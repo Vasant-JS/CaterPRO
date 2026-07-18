@@ -29,6 +29,12 @@ class MainActivity : FlutterFragmentActivity() {
                         call.argument<String>("mimeType"),
                         result
                     )
+                    "shareFile" -> shareFile(
+                        call.argument<String>("uri"),
+                        call.argument<String>("mimeType"),
+                        call.argument<String>("title"),
+                        result
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -89,6 +95,25 @@ class MainActivity : FlutterFragmentActivity() {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(Intent.createChooser(intent, "Open with"))
+            result.success(true)
+        } catch (_: Exception) {
+            result.success(false)
+        }
+    }
+
+    private fun shareFile(uriText: String?, mimeType: String?, title: String?, result: MethodChannel.Result) {
+        if (uriText.isNullOrBlank()) {
+            result.success(false)
+            return
+        }
+        try {
+            val uri = Uri.parse(uriText)
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType ?: "*/*"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, title ?: "Share PDF"))
             result.success(true)
         } catch (_: Exception) {
             result.success(false)
