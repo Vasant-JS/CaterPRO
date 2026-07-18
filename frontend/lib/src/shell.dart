@@ -1012,6 +1012,12 @@ class _AppShellState extends State<AppShell> {
     backupCurrentSnapshotQuietly();
   }
 
+  Future<void> savePdfMenuSettings(BusinessProfile profile) async {
+    showCpSnack(context, 'Updating PDF menu settings...');
+    setState(() => businessProfile = profile);
+    backupCurrentSnapshotQuietly();
+  }
+
   void addSystemNotification({
     required String title,
     required String message,
@@ -1277,7 +1283,10 @@ class _AppShellState extends State<AppShell> {
             onOpenEvent: openEventDetails,
             onClose: closeToParent),
         UserManagementScreen(employees: employees, onClose: closeToParent),
-        AppAppearanceScreen(onClose: closeToParent),
+        AppAppearanceScreen(
+            profile: businessProfile,
+            onSaveProfile: savePdfMenuSettings,
+            onClose: closeToParent),
         InvoiceSettingsScreen(
             profile: businessProfile,
             onSave: saveInvoiceSettings,

@@ -287,7 +287,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1 };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1, pdfMenuFontSize: 12 };
 }
 
 function defaultEmployees() {
@@ -2158,26 +2158,31 @@ function menuDocumentTitle(event, date) {
   return `${client}${date ? ` - ${prettyDate(date.date)}` : ''}`;
 }
 
+function menuPdfFontSize(businessProfile = emptyBusinessProfile()) {
+  return Math.min(16, Math.max(10, Number(businessProfile.pdfMenuFontSize || 12) || 12));
+}
+
 function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo) {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('EVENT MENU', 42, 36, { width: 180 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
     .text(`${businessProfile.businessName || 'CaterPro'} | ${pageLabel} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
   doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
   doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+  doc.fillColor('#374151').font(fonts.regular).fontSize(menuFontSize)
     .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
     .text(`Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`, 330, 78, { width: 220, align: 'right' })
     .text(`Venue: ${event.venue || '-'}`, 330, 94, { width: 220, align: 'right' });
   doc.moveTo(42, 116).lineTo(553, 116).strokeColor('#d1d5db').lineWidth(0.6).stroke();
 }
 
-function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false) {
+function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false, fontSize = 12) {
   if (shaded) doc.roundedRect(x - 4, y - 2, width, 12, 2).fill('#f2f7f5');
   doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
   const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize: MENU_PDF_BODY_FONT_SIZE, height: 12 });
+  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize, height: fontSize + 4 });
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -2186,7 +2191,8 @@ function menuFooter(doc, fonts, businessProfile, pageNo) {
   doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
 }
 
-function drawServiceSection(doc, date, y, fonts) {
+function drawServiceSection(doc, date, y, fonts, businessProfile = emptyBusinessProfile()) {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   if (!date.additionalServices.length) return y;
   doc.fillColor('#111827').font(fonts.bold).fontSize(10).text('Service Requirements', 42, y);
   y += 16;
@@ -2195,17 +2201,40 @@ function drawServiceSection(doc, date, y, fonts) {
     if (index > 0 && index % 2 === 0) y += 18;
     const quantity = serviceQuantityText(service);
     doc.rect(x, y + 2, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
+    doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
   });
   return y + 28;
 }
 
+function menuItemGridMetrics(items, fontSize) {
+  const rowHeight = fontSize + 6;
+  return {
+    rowHeight,
+    rows: Math.max(1, Math.ceil(Math.max(items.length, 1) / 2)),
+  };
+}
+
+function drawMenuItemsTwoColumns(doc, items, x, y, width, fonts, fontSize) {
+  if (!items.length) return;
+  const splitAt = Math.ceil(items.length / 2);
+  const columns = [items.slice(0, splitAt), items.slice(splitAt)];
+  const gap = 18;
+  const colWidth = (width - gap) / 2;
+  const rowHeight = fontSize + 6;
+  columns.forEach((columnItems, col) => {
+    columnItems.forEach((item, row) => {
+      drawChefMenuItem(doc, item, x + col * (colWidth + gap), y + row * rowHeight, colWidth, fonts, false, fontSize);
+    });
+  });
+}
+
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile, pageNo }) {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
   let y = 132;
   const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
   if (visibleSlots.length === 0) {
-    y = drawServiceSection(doc, date, y, fonts);
+    y = drawServiceSection(doc, date, y, fonts, businessProfile);
     doc.fillColor('#5f6368').font(fonts.regular).fontSize(11).text('No menu configured for this date.', 42, y + 12);
     menuFooter(doc, fonts, businessProfile, pageNo);
     return pageNo;
@@ -2215,9 +2244,10 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
     const legacyServices = slotIndex === 0 ? date.additionalServices || [] : [];
     const services = [...(slot.additionalServices || []), ...legacyServices];
-    const itemRows = Math.ceil(Math.max(items.length, 1) / 3);
+    const itemMetrics = menuItemGridMetrics(items, menuFontSize);
+    const itemRows = itemMetrics.rows;
     const serviceRows = Math.ceil(services.length / 2);
-    const rowHeight = Math.max(46, 30 + itemRows * 14 + serviceRows * 14 + (services.length ? 12 : 0));
+    const rowHeight = Math.max(52, 32 + itemRows * itemMetrics.rowHeight + serviceRows * 16 + (services.length ? 14 : 0));
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
@@ -2228,28 +2258,24 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
     const line = [slot.time, slot.pax ? `${slot.pax} members` : ''].filter(Boolean).join(' - ');
     doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE).text(line, 364, y + 9, { width: 178, align: 'right' });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize).text(line, 364, y + 9, { width: 178, align: 'right' });
     doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
-    items.forEach((item, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
-      drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
-    });
+    drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
     if (!items.length && (slot.menuImages || []).length) {
-      doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
         .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} attached at end of PDF.`, 56, y + 31, { width: 320 });
     }
     if (services.length) {
-      const serviceY = y + 30 + itemRows * 14 + 7;
-      doc.fillColor('#4b5563').font(fonts.bold).fontSize(MENU_PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
+      const serviceY = y + 30 + itemRows * itemMetrics.rowHeight + 8;
+      doc.fillColor('#4b5563').font(fonts.bold).fontSize(menuFontSize).text('Services', 56, serviceY, { width: 70 });
       services.forEach((service, index) => {
         const col = index % 2;
         const row = Math.floor(index / 2);
         const x = 112 + col * 238;
         const quantity = serviceQuantityText(service);
-        doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-        doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
-          .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
+        doc.rect(x, serviceY + 2 + row * 16, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
+        doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize)
+          .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 16, { width: 220 });
       });
     }
     y += rowHeight + 7;
@@ -2272,10 +2298,11 @@ function menuImageAttachments(dates) {
 }
 
 function drawMenuImagePage({ doc, attachment, fonts, businessProfile, pageNo }) {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   const { date, slot, image } = attachment;
   const title = `${slot.type || 'Menu'} - ${prettyDate(date.date || '')}`;
   doc.fillColor('#111827').font(fonts.bold).fontSize(15).text('UPLOADED MENU IMAGE', 42, 34, { width: 260 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
     .text(`${title}${image.name ? ` - ${image.name}` : ''}`, 42, 56, { width: 500, height: 22 });
   const buffer = imageBufferFromDataUrl(image.dataUrl);
   if (buffer) {
@@ -2372,13 +2399,14 @@ function generateUpcomingMenusPdf({ res, db, events, days = 3, businessProfile =
 }
 
 function consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title = 'Consolidated Menus') {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('CONSOLIDATED EVENT MENU', 42, 36, { width: 260 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+  doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
     .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
   doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
   doc.fillColor('#111827').font(fonts.bold).fontSize(12).text(title, 42, 78, { width: 280 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+  doc.fillColor('#374151').font(fonts.regular).fontSize(menuFontSize)
     .text(`Date: ${prettyDate(date)}`, 330, 80, { width: 220, align: 'right' });
   doc.moveTo(42, 106).lineTo(553, 106).strokeColor('#d1d5db').lineWidth(0.6).stroke();
 }
@@ -2390,6 +2418,7 @@ function addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title) {
 }
 
 function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pageNo, title }) {
+  const menuFontSize = menuPdfFontSize(businessProfile);
   const date = entries[0]?.date?.date || '';
   let y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
   for (const { event, date: eventDate } of entries) {
@@ -2404,14 +2433,14 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
 
     doc.fillColor('#111827').font(fonts.bold).fontSize(12)
       .text(event.primaryClient || event.name || 'Customer', 42, y, { width: 230 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
       .text(`Event: ${event.name || '-'}`, 42, y + 16, { width: 230 })
       .text(`Venue: ${event.venue || '-'}`, 300, y, { width: 252, align: 'right' })
       .text(`Mobile: ${event.mobile || '-'}`, 300, y + 16, { width: 252, align: 'right' });
     y += eventHeaderHeight;
 
     if (!visibleSlots.length) {
-      y = drawServiceSection(doc, eventDate, y, fonts);
+      y = drawServiceSection(doc, eventDate, y, fonts, businessProfile);
       doc.fillColor('#5f6368').font(fonts.regular).fontSize(11)
         .text('No menu configured for this date.', 42, y + 4);
       y += 28;
@@ -2421,9 +2450,10 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
       const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
       const legacyServices = slotIndex === 0 ? eventDate.additionalServices || [] : [];
       const services = [...(slot.additionalServices || []), ...legacyServices];
-      const itemRows = Math.ceil(Math.max(items.length, 1) / 3);
+      const itemMetrics = menuItemGridMetrics(items, menuFontSize);
+      const itemRows = itemMetrics.rows;
       const serviceRows = Math.ceil(services.length / 2);
-      const rowHeight = Math.max(46, 30 + itemRows * 14 + serviceRows * 14 + (services.length ? 12 : 0));
+      const rowHeight = Math.max(52, 32 + itemRows * itemMetrics.rowHeight + serviceRows * 16 + (services.length ? 14 : 0));
       if (y + rowHeight > 766) {
         menuFooter(doc, fonts, businessProfile, pageNo);
         pageNo += 1;
@@ -2432,29 +2462,25 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
       doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
       const line = [slot.time, slot.pax ? `${slot.pax} members` : ''].filter(Boolean).join(' - ');
       doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
-      doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+      doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
         .text(line, 364, y + 9, { width: 178, align: 'right' });
       doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
-      items.forEach((item, index) => {
-        const col = index % 3;
-        const row = Math.floor(index / 3);
-        drawChefMenuItem(doc, item, 56 + col * 166, y + 30 + row * 14, 152, fonts, false);
-      });
+      drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
       if (!items.length && (slot.menuImages || []).length) {
-        doc.fillColor('#4b5563').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
+        doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
           .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} available in the event menu PDF.`, 56, y + 31, { width: 320 });
       }
       if (services.length) {
-        const serviceY = y + 30 + itemRows * 14 + 7;
-        doc.fillColor('#4b5563').font(fonts.bold).fontSize(MENU_PDF_BODY_FONT_SIZE).text('Services', 56, serviceY, { width: 70 });
+        const serviceY = y + 30 + itemRows * itemMetrics.rowHeight + 8;
+        doc.fillColor('#4b5563').font(fonts.bold).fontSize(menuFontSize).text('Services', 56, serviceY, { width: 70 });
         services.forEach((service, index) => {
           const col = index % 2;
           const row = Math.floor(index / 2);
           const x = 112 + col * 238;
           const quantity = serviceQuantityText(service);
-          doc.rect(x, serviceY + 2 + row * 14, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-          doc.fillColor('#202124').font(fonts.regular).fontSize(MENU_PDF_BODY_FONT_SIZE)
-            .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 14, { width: 220 });
+          doc.rect(x, serviceY + 2 + row * 16, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
+          doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize)
+            .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 16, { width: 220 });
         });
       }
       y += rowHeight + 7;
@@ -2953,7 +2979,6 @@ function recordUpdatedAtValue(item) {
 }
 
 const PDF_BODY_FONT_SIZE = 8.5;
-const MENU_PDF_BODY_FONT_SIZE = 10;
 const MENU_PDF_FOOTER_FONT_SIZE = 8;
 
 function recordKeyForSync(item, listKey) {

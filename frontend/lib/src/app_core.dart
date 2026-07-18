@@ -966,6 +966,7 @@ class BusinessProfile {
     this.qrBase64 = '',
     this.documentTemplate = 'modern',
     this.invoiceTextScale = 1,
+    this.pdfMenuFontSize = 12,
   });
 
   final String businessName;
@@ -986,6 +987,7 @@ class BusinessProfile {
   final String qrBase64;
   final String documentTemplate;
   final double invoiceTextScale;
+  final double pdfMenuFontSize;
 
   factory BusinessProfile.fromJson(Map<String, dynamic>? json) {
     final data = json ?? {};
@@ -1011,6 +1013,8 @@ class BusinessProfile {
       documentTemplate: data['documentTemplate']?.toString() ?? 'modern',
       invoiceTextScale:
           double.tryParse(data['invoiceTextScale']?.toString() ?? '') ?? 1,
+      pdfMenuFontSize:
+          double.tryParse(data['pdfMenuFontSize']?.toString() ?? '') ?? 12,
     );
   }
 
@@ -1033,6 +1037,7 @@ class BusinessProfile {
         'qrBase64': qrBase64,
         'documentTemplate': documentTemplate,
         'invoiceTextScale': invoiceTextScale,
+        'pdfMenuFontSize': pdfMenuFontSize,
       };
 }
 

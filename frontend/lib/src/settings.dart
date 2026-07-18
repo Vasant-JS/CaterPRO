@@ -1612,8 +1612,14 @@ class _RoleRow extends StatelessWidget {
 }
 
 class AppAppearanceScreen extends StatefulWidget {
-  const AppAppearanceScreen({super.key, required this.onClose});
+  const AppAppearanceScreen(
+      {super.key,
+      required this.profile,
+      required this.onSaveProfile,
+      required this.onClose});
 
+  final BusinessProfile profile;
+  final Future<void> Function(BusinessProfile profile) onSaveProfile;
   final VoidCallback onClose;
 
   @override
@@ -1622,12 +1628,50 @@ class AppAppearanceScreen extends StatefulWidget {
 
 class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
   late AppPreferences draft = appPreferences.value;
+  late double pdfMenuFontSize = widget.profile.pdfMenuFontSize;
+  bool savingPdfMenu = false;
 
   Future<void> save(AppPreferences next) async {
     final normalized =
         next.copyWith(theme: AppPreferences.normalizeTheme(next.theme));
     setState(() => draft = normalized);
     await appPreferences.save(normalized);
+  }
+
+  BusinessProfile profileWithPdfMenuFontSize() => BusinessProfile(
+        businessName: widget.profile.businessName,
+        serviceType: widget.profile.serviceType,
+        gstin: widget.profile.gstin,
+        gstType: widget.profile.gstType,
+        gstRate: widget.profile.gstRate,
+        pan: widget.profile.pan,
+        address: widget.profile.address,
+        phone: widget.profile.phone,
+        email: widget.profile.email,
+        bankName: widget.profile.bankName,
+        accountNumber: widget.profile.accountNumber,
+        ifsc: widget.profile.ifsc,
+        terms: widget.profile.terms,
+        logoBase64: widget.profile.logoBase64,
+        signatureBase64: widget.profile.signatureBase64,
+        qrBase64: widget.profile.qrBase64,
+        documentTemplate: widget.profile.documentTemplate,
+        invoiceTextScale: widget.profile.invoiceTextScale,
+        pdfMenuFontSize: pdfMenuFontSize,
+      );
+
+  Future<void> savePdfMenuFontSize() async {
+    setState(() => savingPdfMenu = true);
+    try {
+      await widget.onSaveProfile(profileWithPdfMenuFontSize());
+      if (mounted) showCpSnack(context, 'PDF menu font size saved');
+    } catch (e) {
+      if (mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      if (mounted) setState(() => savingPdfMenu = false);
+    }
   }
 
   @override
@@ -1739,6 +1783,33 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
           Text('Selected: ${draft.languageLabel}',
               style: TextStyle(color: scheme.onSurfaceVariant)),
         ])),
+        const SizedBox(height: 14),
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('PDF Menu Font Size',
+              style: TextStyle(
+                  color: scheme.primary, fontWeight: FontWeight.w900)),
+          Slider(
+              min: 10,
+              max: 16,
+              divisions: 6,
+              label: '${pdfMenuFontSize.round()}',
+              value: pdfMenuFontSize.clamp(10, 16),
+              onChanged: (value) => setState(() => pdfMenuFontSize = value)),
+          Text('Preview: Badam Milk / Fruit Punch',
+              style: TextStyle(
+                  fontSize: pdfMenuFontSize, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                  onPressed: savingPdfMenu ? null : savePdfMenuFontSize,
+                  icon: const Icon(Icons.picture_as_pdf),
+                  label: Text(
+                      savingPdfMenu ? 'Saving...' : 'Save PDF Menu Size',
+                      style: const TextStyle(fontWeight: FontWeight.w900)))),
+        ])),
       ],
     );
   }
@@ -1767,6 +1838,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
     _ => 'modern',
   };
   late double invoiceTextScale = widget.profile.invoiceTextScale;
+  late double pdfMenuFontSize = widget.profile.pdfMenuFontSize;
   bool saving = false;
 
   BusinessProfile currentProfile() => BusinessProfile(
@@ -1788,6 +1860,7 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
         qrBase64: widget.profile.qrBase64,
         documentTemplate: documentTemplate,
         invoiceTextScale: invoiceTextScale,
+        pdfMenuFontSize: pdfMenuFontSize,
       );
 
   Future<void> save() async {
@@ -1863,6 +1936,27 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                 Text('Preview: Invoice / Quotation total ${money(25000)}',
                     style: TextStyle(
                         fontSize: 15 * invoiceTextScale,
+                        fontWeight: FontWeight.w700)),
+              ])),
+          const SizedBox(height: 14),
+          CpCard(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                const Text('PDF Menu Font Size',
+                    style: TextStyle(
+                        color: Cp.primary, fontWeight: FontWeight.w900)),
+                Slider(
+                    min: 10,
+                    max: 16,
+                    divisions: 6,
+                    label: '${pdfMenuFontSize.round()}',
+                    value: pdfMenuFontSize.clamp(10, 16),
+                    onChanged: (value) =>
+                        setState(() => pdfMenuFontSize = value)),
+                Text('Preview: Badam Milk / Fruit Punch',
+                    style: TextStyle(
+                        fontSize: pdfMenuFontSize,
                         fontWeight: FontWeight.w700)),
               ])),
           const SizedBox(height: 18),

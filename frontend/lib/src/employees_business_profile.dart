@@ -735,6 +735,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         qrBase64: qrBase64,
         documentTemplate: documentTemplate,
         invoiceTextScale: widget.profile.invoiceTextScale,
+        pdfMenuFontSize: widget.profile.pdfMenuFontSize,
       );
 
   Future<void> save() async {
