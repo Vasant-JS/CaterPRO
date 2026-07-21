@@ -287,7 +287,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', bankName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1, pdfMenuFontSize: 12 };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'modern', invoiceTextScale: 1, pdfMenuFontSize: 12 };
 }
 
 function defaultEmployees() {
@@ -1251,6 +1251,95 @@ function hasKannadaText(value) {
   return /[\u0C80-\u0CFF]/.test(String(value || ''));
 }
 
+function hasDevanagariText(value) {
+  return /[\u0900-\u097F]/.test(String(value || ''));
+}
+
+function fontForText(fonts, value, bold = false) {
+  const source = String(value || '');
+  if (hasKannadaText(source)) return bold ? fonts.kannadaBold : fonts.kannada;
+  if (hasDevanagariText(source)) return bold ? fonts.devanagariBold : fonts.devanagari;
+  return bold ? fonts.bold : fonts.regular;
+}
+
+function needsScriptRuns(value) {
+  const source = String(value || '');
+  const families = [
+    hasKannadaText(source),
+    hasDevanagariText(source),
+    /[A-Za-z0-9]/.test(source),
+  ].filter(Boolean).length;
+  return families > 1;
+}
+
+function scriptTokenWidth(doc, token, fonts, fontSize, bold = false) {
+  doc.font(fontForText(fonts, token, bold)).fontSize(fontSize);
+  return doc.widthOfString(token);
+}
+
+function drawScriptRuns(doc, text, x, y, width, fonts, options = {}) {
+  const fontSize = options.fontSize || 7;
+  const color = options.color || '#202124';
+  const lineGap = options.lineGap ?? Math.max(1, fontSize * 0.12);
+  const lineHeight = fontSize + lineGap + 3;
+  const source = repairMojibake(String(text || ''));
+  const tokens = source.split(/(\s+)/).filter((token) => token.length > 0);
+  let cursorX = x;
+  let cursorY = y;
+  let lineHasText = false;
+  for (const token of tokens) {
+    const isSpace = /^\s+$/.test(token);
+    if (isSpace && !lineHasText) continue;
+    const tokenWidth = scriptTokenWidth(doc, token, fonts, fontSize, options.bold);
+    if (!isSpace && lineHasText && cursorX + tokenWidth > x + width) {
+      cursorX = x;
+      cursorY += lineHeight;
+      lineHasText = false;
+    }
+    if (isSpace && cursorX + tokenWidth > x + width) {
+      cursorX = x;
+      cursorY += lineHeight;
+      lineHasText = false;
+      continue;
+    }
+    doc.fillColor(color).font(fontForText(fonts, token, options.bold)).fontSize(fontSize)
+      .text(token, cursorX, cursorY, { lineBreak: false });
+    cursorX += tokenWidth;
+    if (!isSpace) lineHasText = true;
+  }
+  return cursorY - y + lineHeight;
+}
+
+function scriptRunsHeight(doc, text, width, fonts, options = {}) {
+  const fontSize = options.fontSize || 7;
+  const lineGap = options.lineGap ?? Math.max(1, fontSize * 0.12);
+  const lineHeight = fontSize + lineGap + 3;
+  const source = repairMojibake(String(text || ''));
+  const tokens = source.split(/(\s+)/).filter((token) => token.length > 0);
+  let cursor = 0;
+  let lines = 1;
+  let lineHasText = false;
+  for (const token of tokens) {
+    const isSpace = /^\s+$/.test(token);
+    if (isSpace && !lineHasText) continue;
+    const tokenWidth = scriptTokenWidth(doc, token, fonts, fontSize, options.bold);
+    if (!isSpace && lineHasText && cursor + tokenWidth > width) {
+      lines += 1;
+      cursor = 0;
+      lineHasText = false;
+    }
+    if (isSpace && cursor + tokenWidth > width) {
+      lines += 1;
+      cursor = 0;
+      lineHasText = false;
+      continue;
+    }
+    cursor += tokenWidth;
+    if (!isSpace) lineHasText = true;
+  }
+  return lines * lineHeight;
+}
+
 function repairMojibake(value) {
   const text = String(value || '');
   const looksMojibake = [...text].some((char) => [0x00c3, 0x00c2, 0x00e0].includes(char.charCodeAt(0)));
@@ -1273,6 +1362,42 @@ function repairMojibake(value) {
   }
 }
 
+function drawTextRun(doc, text, x, y, width, fonts, options = {}) {
+  const fontSize = options.fontSize || 7;
+  const color = options.color || '#202124';
+  const source = repairMojibake(String(text || ''));
+  if (!source) return 0;
+  if (needsScriptRuns(source)) {
+    return drawScriptRuns(doc, source, x, y, width, fonts, options);
+  }
+  const textOptions = {
+    width,
+    align: options.align,
+    lineGap: options.lineGap ?? Math.max(1, fontSize * 0.12),
+  };
+  if (options.height != null) textOptions.height = options.height;
+  if (options.ellipsis) textOptions.ellipsis = true;
+  if (options.lineBreak === false) textOptions.lineBreak = false;
+  doc.fillColor(color).font(fontForText(fonts, source, options.bold)).fontSize(fontSize);
+  doc.text(source, x, y, textOptions);
+  return doc.heightOfString(source, textOptions);
+}
+
+function textRunHeight(doc, text, width, fonts, options = {}) {
+  const fontSize = options.fontSize || 7;
+  const source = repairMojibake(String(text || ''));
+  if (!source) return 0;
+  if (needsScriptRuns(source)) {
+    return scriptRunsHeight(doc, source, width, fonts, options);
+  }
+  doc.font(fontForText(fonts, source, options.bold)).fontSize(fontSize);
+  return doc.heightOfString(source, {
+    width,
+    align: options.align,
+    lineGap: options.lineGap ?? Math.max(1, fontSize * 0.12),
+  });
+}
+
 function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
   const fontSize = options.fontSize || 7;
   const color = options.color || '#202124';
@@ -1283,7 +1408,7 @@ function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
   if (parts.length > 1 && hasKannadaText(parts[0])) {
     const kannada = parts[0].trim();
     const english = parts.slice(1).join(' / ').trim();
-    doc.fillColor(color).font(fonts.kannada).fontSize(fontSize).text(kannada, x, y, textOptions);
+    doc.fillColor(color).font(fontForText(fonts, kannada)).fontSize(fontSize).text(kannada, x, y, textOptions);
     const used = Math.min(width * 0.58, doc.widthOfString(kannada) + 4);
     if (english) doc.fillColor(color).font(fonts.regular).fontSize(fontSize - 0.2).text(`/ ${english}`, x + used, y + 0.5, { ...textOptions, width: Math.max(8, width - used) });
     return;
@@ -1300,8 +1425,7 @@ function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
     }
     return;
   }
-  const font = hasKannadaText(source) ? fonts.kannada : fonts.regular;
-  doc.fillColor(color).font(font).fontSize(fontSize).text(source, x, y, textOptions);
+  doc.fillColor(color).font(fontForText(fonts, source)).fontSize(fontSize).text(source, x, y, textOptions);
 }
 
 function prettyDate(value) {
@@ -1377,8 +1501,15 @@ function firstExistingPath(paths) {
 }
 
 function configurePdfFonts(doc) {
+  const assetFont = (name) => path.join(__dirname, 'assets', 'fonts', name);
   const nirmala = firstExistingPath(['C:\\Windows\\Fonts\\Nirmala.ttc']);
-  if (nirmala) {
+  const bundledRegular = firstExistingPath([assetFont('NotoSans-Regular.ttf')]);
+  const bundledBold = firstExistingPath([assetFont('NotoSans-Bold.ttf')]);
+  const bundledKannadaRegular = firstExistingPath([assetFont('NotoSansKannada-Regular.ttf')]);
+  const bundledKannadaBold = firstExistingPath([assetFont('NotoSansKannada-Bold.ttf')]);
+  const bundledDevanagariRegular = firstExistingPath([assetFont('NotoSansDevanagari-Regular.ttf')]);
+  const bundledDevanagariBold = firstExistingPath([assetFont('NotoSansDevanagari-Bold.ttf')]);
+  if (!bundledRegular && !bundledKannadaRegular && !bundledDevanagariRegular && nirmala) {
     doc.registerFont('NirmalaRegular', nirmala, 'NirmalaUI');
     doc.registerFont('NirmalaBold', nirmala, 'NirmalaUI-Bold');
     return {
@@ -1386,33 +1517,55 @@ function configurePdfFonts(doc) {
       bold: 'NirmalaBold',
       kannada: 'NirmalaRegular',
       kannadaBold: 'NirmalaBold',
+      devanagari: 'NirmalaRegular',
+      devanagariBold: 'NirmalaBold',
     };
   }
   const latinRegular = firstExistingPath([
+    bundledRegular,
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans', 'files', 'noto-sans-latin-400-normal.woff'),
     'C:\\Windows\\Fonts\\segoeui.ttf',
     'C:\\Windows\\Fonts\\arial.ttf',
   ]);
   const latinBold = firstExistingPath([
+    bundledBold,
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans', 'files', 'noto-sans-latin-700-normal.woff'),
     'C:\\Windows\\Fonts\\segoeuib.ttf',
     'C:\\Windows\\Fonts\\arialbd.ttf',
   ]);
   const kannadaRegular = firstExistingPath([
+    bundledKannadaRegular,
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-400-normal.woff'),
   ]);
   const kannadaBold = firstExistingPath([
+    bundledKannadaBold,
     path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-kannada', 'files', 'noto-sans-kannada-kannada-700-normal.woff'),
+  ]);
+  const devanagariRegular = firstExistingPath([
+    bundledDevanagariRegular,
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-devanagari', 'files', 'noto-sans-devanagari-devanagari-400-normal.woff'),
+    'C:\\Windows\\Fonts\\Nirmala.ttf',
+    'C:\\Windows\\Fonts\\Nirmala.ttc',
+  ]);
+  const devanagariBold = firstExistingPath([
+    bundledDevanagariBold,
+    path.join(__dirname, 'node_modules', '@fontsource', 'noto-sans-devanagari', 'files', 'noto-sans-devanagari-devanagari-700-normal.woff'),
+    'C:\\Windows\\Fonts\\NirmalaB.ttf',
+    'C:\\Windows\\Fonts\\Nirmala.ttc',
   ]);
   if (latinRegular) doc.registerFont('LatinRegular', latinRegular);
   if (latinBold) doc.registerFont('LatinBold', latinBold);
   if (kannadaRegular) doc.registerFont('KannadaRegular', kannadaRegular);
   if (kannadaBold) doc.registerFont('KannadaBold', kannadaBold);
+  if (devanagariRegular) doc.registerFont('DevanagariRegular', devanagariRegular);
+  if (devanagariBold) doc.registerFont('DevanagariBold', devanagariBold);
   return {
     regular: latinRegular ? 'LatinRegular' : 'Helvetica',
     bold: latinBold ? 'LatinBold' : 'Helvetica-Bold',
     kannada: kannadaRegular ? 'KannadaRegular' : 'Helvetica',
     kannadaBold: kannadaBold ? 'KannadaBold' : 'Helvetica-Bold',
+    devanagari: devanagariRegular ? 'DevanagariRegular' : (kannadaRegular ? 'KannadaRegular' : (latinRegular ? 'LatinRegular' : 'Helvetica')),
+    devanagariBold: devanagariBold ? 'DevanagariBold' : (kannadaBold ? 'KannadaBold' : (latinBold ? 'LatinBold' : 'Helvetica-Bold')),
   };
 }
 
@@ -1462,7 +1615,12 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     doc.rect(36, 28, 523, 76).strokeColor(theme.ink).lineWidth(1).stroke();
     doc.moveTo(366, 28).lineTo(366, 104).strokeColor(theme.ink).lineWidth(0.7).stroke();
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(16).text(businessName, 52, 40, { width: 290 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 52, 62, { width: 290, height: 16 });
+    drawTextRun(doc, businessProfile.address || 'Catering event management', 52, 62, 290, fonts, {
+      fontSize: PDF_BODY_FONT_SIZE,
+      color: theme.muted,
+      height: 16,
+      ellipsis: true,
+    });
     if (contactLine) doc.text(contactLine, 52, 80, { width: 290 });
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(17).text(title, 388, 40, { width: 142, align: 'right' });
     doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 388, 64, { width: 142, align: 'right' });
@@ -1477,7 +1635,12 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
       doc.fillColor('white').font(fonts.bold).fontSize(12).text(businessName.slice(0, 2).toUpperCase(), 24, 50, { width: 42, align: 'center' });
     }
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(19).text(businessName, 106, 32, { width: 260 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 106, 58, { width: 260, height: 16 });
+    drawTextRun(doc, businessProfile.address || 'Catering event management', 106, 58, 260, fonts, {
+      fontSize: PDF_BODY_FONT_SIZE,
+      color: theme.muted,
+      height: 16,
+      ellipsis: true,
+    });
     if (contactLine) doc.text(contactLine, 106, 78, { width: 260 });
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(23).text(title, 392, 34, { width: 148, align: 'right' });
     doc.fillColor(theme.secondary).font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text(number, 392, 66, { width: 148, align: 'right' });
@@ -1492,7 +1655,12 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     doc.fillColor('white').font(fonts.bold).fontSize(14).text(businessName.slice(0, 2).toUpperCase(), 59, 61, { width: 46, align: 'center' });
   }
   doc.fillColor('white').font(fonts.bold).fontSize(17).text(businessName, 116, 42, { width: 258 });
-  doc.font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(businessProfile.address || 'Catering event management', 116, 64, { width: 258, height: 17 });
+  drawTextRun(doc, businessProfile.address || 'Catering event management', 116, 64, 258, fonts, {
+    fontSize: PDF_BODY_FONT_SIZE,
+    color: '#ffffff',
+    height: 17,
+    ellipsis: true,
+  });
   if (contactLine) doc.text(contactLine, 116, 84, { width: 258 });
   doc.font(fonts.bold).fontSize(20).text(title, 390, 42, { width: 140, align: 'right' });
   doc.fillColor('#f6f2df').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 390, 68, { width: 140, align: 'right' });
@@ -1518,12 +1686,24 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
     doc.roundedRect(boxX, boxY, boxW, 8, 4).fill(theme.secondary);
   }
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text('Bill To', boxX + 14, boxY + 15);
-  doc.fillColor(theme.ink).font(fonts.bold).fontSize(10.5).text(event.primaryClient || 'Customer', boxX + 14, boxY + 33, { width: 220 });
+  drawTextRun(doc, event.primaryClient || 'Customer', boxX + 14, boxY + 33, 220, fonts, {
+    fontSize: 10.5,
+    color: theme.ink,
+    bold: true,
+  });
   const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
-  doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
-    .text(event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', boxX + 14, boxY + 51)
-    .text(addressLine, boxX + 14, boxY + 66, { width: 220, height: 13 })
-    .text(`Event: ${event.name || 'Untitled Event'}`, boxX + 14, boxY + 81, { width: 220 });
+  drawTextRun(doc, event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', boxX + 14, boxY + 51, 220, fonts, {
+    fontSize: PDF_BODY_FONT_SIZE,
+    color: theme.muted,
+  });
+  drawTextRun(doc, addressLine, boxX + 14, boxY + 66, 220, fonts, {
+    fontSize: PDF_BODY_FONT_SIZE,
+    color: theme.muted,
+  });
+  drawTextRun(doc, `Event: ${event.name || 'Untitled Event'}`, boxX + 14, boxY + 81, 220, fonts, {
+    fontSize: PDF_BODY_FONT_SIZE,
+    color: theme.muted,
+  });
   if (hasBusinessGst && event.clientGst) doc.text(`Client GSTIN: ${event.clientGst}`, boxX + 14, boxY + 92, { width: 220 });
 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
@@ -1577,24 +1757,27 @@ function ensurePageSpace(doc, y, needed = 44, onNewPage = null) {
 
 function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = documentTheme()) {
   const layout = invoiceTableLayout(theme);
+  const descHeight = textRunHeight(doc, columns.description, layout.descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 });
+  const rowHeight = Math.max(25, descHeight + 9);
   if (theme.name === 'classic') {
-    doc.rect(layout.x, y - 4, layout.w, 25).strokeColor('#111827').lineWidth(0.35).stroke();
-    [296, 364, 450].forEach((x) => doc.moveTo(x, y - 4).lineTo(x, y + 21).strokeColor('#9ca3af').lineWidth(0.3).stroke());
+    doc.rect(layout.x, y - 4, layout.w, rowHeight).strokeColor('#111827').lineWidth(0.35).stroke();
+    [296, 364, 450].forEach((x) => doc.moveTo(x, y - 4).lineTo(x, y - 4 + rowHeight).strokeColor('#9ca3af').lineWidth(0.3).stroke());
   } else if (shaded) {
     if (theme.name === 'elegant') {
-      doc.rect(layout.x, y - 3, layout.w, 25).fill('#fffaf0');
+      doc.rect(layout.x, y - 3, layout.w, rowHeight).fill('#fffaf0');
     } else {
-      doc.roundedRect(layout.x, y - 4, layout.w, 25, 6).fill('#ffffff').strokeColor('#d9e8ea').lineWidth(0.6).stroke();
+      doc.roundedRect(layout.x, y - 4, layout.w, rowHeight, 6).fill('#ffffff').strokeColor('#d9e8ea').lineWidth(0.6).stroke();
     }
   } else if (theme.name === 'modern') {
-    doc.roundedRect(layout.x, y - 4, layout.w, 25, 6).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
+    doc.roundedRect(layout.x, y - 4, layout.w, rowHeight, 6).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
   }
+  drawTextRun(doc, columns.description, layout.descX, y, layout.descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
   doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
-    .text(columns.description, layout.descX, y, { width: layout.descW, height: 16, ellipsis: true })
     .text(columns.qty, layout.qtyX, y, { width: layout.qtyW, align: 'right' })
     .text(columns.rate, layout.rateX, y, { width: layout.rateW, align: 'right' })
     .text(columns.amount, layout.amountX, y, { width: layout.amountW, align: 'right' });
-  if (theme.name === 'elegant') doc.moveTo(layout.x, y + 23).lineTo(layout.x + layout.w, y + 23).strokeColor('#e9dcc2').lineWidth(0.5).stroke();
+  if (theme.name === 'elegant') doc.moveTo(layout.x, y - 4 + rowHeight).lineTo(layout.x + layout.w, y - 4 + rowHeight).strokeColor('#e9dcc2').lineWidth(0.5).stroke();
+  return rowHeight;
 }
 
 function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
@@ -1634,8 +1817,10 @@ function drawTotalsPanel(doc, y, totalRows, fonts, theme = documentTheme()) {
 
 function bankDetailLines(businessProfile = emptyBusinessProfile()) {
   const lines = [];
+  if (businessProfile.accountHolderName) lines.push(`A/C Holder: ${businessProfile.accountHolderName}`);
+  if (businessProfile.accountNumber) lines.push(`A/C No.: ${businessProfile.accountNumber}`);
   if (businessProfile.bankName) lines.push(`Bank: ${businessProfile.bankName}`);
-  if (businessProfile.accountNumber) lines.push(`A/C: ${businessProfile.accountNumber}`);
+  if (businessProfile.branchName) lines.push(`Branch: ${businessProfile.branchName}`);
   if (businessProfile.ifsc) lines.push(`IFSC: ${businessProfile.ifsc}`);
   if (businessProfile.upiId) lines.push(`UPI: ${businessProfile.upiId}`);
   return lines;
@@ -1643,16 +1828,21 @@ function bankDetailLines(businessProfile = emptyBusinessProfile()) {
 
 function drawPaymentDetails(doc, x, y, fonts, theme, businessProfile = emptyBusinessProfile()) {
   const lines = bankDetailLines(businessProfile);
+  const bankText = lines.join('\n');
+  const bankHeight = lines.length > 0
+    ? 14 + Math.max(0, textRunHeight(doc, bankText, 220, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 }))
+    : 0;
   if (lines.length > 0) {
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Bank Details', x, y, { width: 220 });
-    doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
-      .text(lines.join('\n'), x, y + 14, { width: 220, height: 34 });
+    drawTextRun(doc, bankText, x, y + 14, 220, fonts, { fontSize: PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
   }
   if (businessProfile.qrBase64) {
-    const qrY = lines.length > 0 ? y + 52 : y;
+    const qrY = lines.length > 0 ? y + bankHeight + 10 : y;
     drawProfileImage(doc, businessProfile.qrBase64, x, qrY, { fit: [58, 58] });
     doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text('Payment QR', x, qrY + 60, { width: 58, align: 'center' });
+    return bankHeight + 78;
   }
+  return bankHeight;
 }
 
 function totalsPanelHeight(totalRows, theme = documentTheme()) {
@@ -1679,10 +1869,10 @@ function drawDocumentClosing(doc, y, {
   if (notes) doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(notes, metrics.left, y + 43, { width: 260, height: 46 });
 
   const lowerY = Math.max(y + 96, totalsY + totalsH + 18);
-  drawPaymentDetails(doc, metrics.left, lowerY, fonts, theme, businessProfile);
+  const paymentHeight = drawPaymentDetails(doc, metrics.left, lowerY, fonts, theme, businessProfile);
 
   const signatureX = metrics.right - 154;
-  const signatureY = Math.min(Math.max(lowerY + 28, totalsY + totalsH + 36), 716);
+  const signatureY = Math.min(Math.max(lowerY + Math.max(28, paymentHeight + 12), totalsY + totalsH + 36), 716);
   if (businessProfile.signatureBase64) {
     doc.save();
     doc.rect(signatureX + 4, signatureY - 4, 136, 44).fill('#ffffff');
@@ -1748,16 +1938,18 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left, y, { width: metrics.width });
     y += 15;
     for (const slot of visibleSlots) {
-      y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       const amount = Number(slot.pax || 0) * Number(slot.pricePerPax || 0);
-      drawInvoiceRow(doc, y, fonts, {
+      const rowData = {
         description: `${slot.type || 'Meal'}${slot.time ? ` (${slot.time})` : ''}`,
         qty: `${slot.pax || ''}`,
         rate: money(slot.pricePerPax),
         amount: money(amount),
-      }, shaded, theme);
+      };
+      const rowHeight = Math.max(25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 }) + 9);
+      y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+      drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       shaded = !shaded;
-      y += 25;
+      y += rowHeight;
     }
   }
   if ((event.addOns || []).length > 0) {
@@ -1765,15 +1957,17 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text('Event Add-ons', metrics.left, y);
     y += 15;
     for (const addOn of event.addOns || []) {
-      y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
-      drawInvoiceRow(doc, y, fonts, {
+      const rowData = {
         description: addOn.title || 'Add-on',
         qty: '',
         rate: '',
         amount: money(addOn.cost),
-      }, shaded, theme);
+      };
+      const rowHeight = Math.max(25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 }) + 9);
+      y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+      drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       shaded = !shaded;
-      y += 25;
+      y += rowHeight;
     }
   }
 
@@ -1829,15 +2023,17 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   y += theme.name === 'modern' ? 32 : 26;
   let shaded = false;
   for (const finalItem of invoice.items || []) {
-    y = ensurePageSpace(doc, y, 30, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
-    drawInvoiceRow(doc, y, fonts, {
+    const rowData = {
       description: finalItem.title || 'Invoice item',
       qty: finalItem.quantity ? String(finalItem.quantity) : '',
       rate: finalItem.rate ? money(finalItem.rate) : '',
       amount: money(finalItem.amount),
-    }, shaded, theme);
+    };
+    const rowHeight = Math.max(25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 }) + 9);
+    y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
     shaded = !shaded;
-    y += 25;
+    y += rowHeight;
   }
 
   const baseSubtotal = Number(invoice.subtotal ?? invoice.total ?? 0) || (invoice.items || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
@@ -1878,7 +2074,7 @@ function generateAttendancePdfOld({ res, records, employees, month, businessProf
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.roundedRect(32, 28, 531, 58, 8).fill(theme.primary);
   doc.fillColor('white').font(fonts.bold).fontSize(18).text('Attendance Sheet', 48, 44);
-  doc.font(fonts.regular).fontSize(9).text(`${businessProfile.businessName || 'CaterPro'} • ${month}`, 360, 48, { width: 180, align: 'right' });
+  doc.font(fonts.regular).fontSize(9).text(`${businessProfile.businessName || 'CaterPro'} | ${month}`, 360, 48, { width: 180, align: 'right' });
   const byEmployee = new Map();
   for (const employee of employees) byEmployee.set(employee.id, { employee, present: 0, absent: 0, partial: 0, hours: 0, salary: 0 });
   for (const record of records) {
@@ -2166,23 +2362,63 @@ function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo)
   const menuFontSize = menuPdfFontSize(businessProfile);
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('EVENT MENU', 42, 36, { width: 180 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
-    .text(`${businessProfile.businessName || 'CaterPro'} | ${pageLabel} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
-  doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
-  doc.fillColor('#111827').font(fonts.bold).fontSize(10).text(event.primaryClient || event.name || 'Customer', 42, 78, { width: 210 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(menuFontSize)
-    .text(`Event: ${event.name || '-'}`, 42, 94, { width: 240 })
-    .text(`Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`, 330, 78, { width: 220, align: 'right' })
-    .text(`Venue: ${event.venue || '-'}`, 330, 94, { width: 220, align: 'right' });
-  doc.moveTo(42, 116).lineTo(553, 116).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+  drawTextRun(doc, `${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 38, 220, fonts, {
+    fontSize: menuFontSize,
+    color: '#4b5563',
+    align: 'right',
+    lineBreak: false,
+  });
+  drawTextRun(doc, pageLabel, 330, 54, 220, fonts, {
+    fontSize: Math.max(8, menuFontSize - 1),
+    color: '#4b5563',
+    align: 'right',
+    lineBreak: false,
+  });
+  doc.moveTo(42, 70).lineTo(553, 70).strokeColor('#9ca3af').lineWidth(0.7).stroke();
+
+  const leftY = 84;
+  const rightY = 84;
+  const clientH = drawTextRun(doc, event.primaryClient || event.name || 'Customer', 42, leftY, 210, fonts, {
+    fontSize: 10,
+    color: '#111827',
+    bold: true,
+  });
+  const eventH = drawTextRun(doc, `Event: ${event.name || '-'}`, 42, leftY + clientH + 6, 240, fonts, {
+    fontSize: menuFontSize,
+    color: '#374151',
+  });
+  const dateText = `Date: ${prettyDate(date.date)}${date.label ? ` (${date.label})` : ''}`;
+  const dateH = drawTextRun(doc, dateText, 330, rightY, 220, fonts, {
+    fontSize: menuFontSize,
+    color: '#374151',
+    align: 'right',
+  });
+  const venueH = drawTextRun(doc, `Venue: ${event.venue || '-'}`, 330, rightY + dateH + 6, 220, fonts, {
+    fontSize: menuFontSize,
+    color: '#374151',
+    align: 'right',
+  });
+  const bottom = Math.max(leftY + clientH + 6 + eventH, rightY + dateH + 6 + venueH) + 14;
+  doc.moveTo(42, bottom).lineTo(553, bottom).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+  return bottom + 16;
+}
+
+function menuItemText(item = {}) {
+  return item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english || '';
+}
+
+function menuItemTextHeight(doc, item, width, fonts, fontSize = 12) {
+  const text = menuItemText(item);
+  return Math.max(fontSize + 3, textRunHeight(doc, text, width - 16, fonts, { fontSize, lineGap: 1 }) + 1);
 }
 
 function drawChefMenuItem(doc, item, x, y, width, fonts, shaded = false, fontSize = 12) {
-  if (shaded) doc.roundedRect(x - 4, y - 2, width, 12, 2).fill('#f2f7f5');
-  doc.rect(x, y + 1, 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
+  const height = menuItemTextHeight(doc, item, width, fonts, fontSize);
+  if (shaded) doc.roundedRect(x - 4, y - 2, width, height + 2, 2).fill('#f2f7f5');
+  doc.rect(x, y + Math.max(3, fontSize * 0.36), 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
   const textX = x + 12;
-  const text = item.kannada && item.english ? `${item.kannada} / ${item.english}` : item.kannada || item.english;
-  drawSingleLineText(doc, text, textX, y - 1, width - 16, fonts, { fontSize, height: fontSize + 4 });
+  drawTextRun(doc, menuItemText(item), textX, y - 1, width - 16, fonts, { fontSize, lineGap: 1 });
+  return height;
 }
 
 function menuFooter(doc, fonts, businessProfile, pageNo) {
@@ -2191,47 +2427,73 @@ function menuFooter(doc, fonts, businessProfile, pageNo) {
   doc.text(`Page ${pageNo}`, 470, 788, { width: 82, align: 'right', lineBreak: false });
 }
 
+function serviceLineText(service) {
+  const quantity = serviceQuantityText(service);
+  return `${repairMojibake(service.name || '')}${quantity ? ` - ${quantity}` : ''}`;
+}
+
+function twoColumnTextBlockHeight(doc, items, width, fonts, fontSize, textForItem, { checkbox = true } = {}) {
+  if (!items.length) return 0;
+  const splitAt = Math.ceil(items.length / 2);
+  const columns = [items.slice(0, splitAt), items.slice(splitAt)];
+  const gapY = 4;
+  const textW = checkbox ? width - 16 : width;
+  return Math.max(...columns.map((columnItems) =>
+    columnItems.reduce((sum, item) => {
+      const text = textForItem(item);
+      return sum + Math.max(fontSize + 3, textRunHeight(doc, text, textW, fonts, { fontSize, lineGap: 1 }) + 1) + gapY;
+    }, 0)
+  ));
+}
+
+function drawTwoColumnTextBlock(doc, items, x, y, width, fonts, fontSize, textForItem, { checkbox = true, color = '#202124' } = {}) {
+  if (!items.length) return 0;
+  const splitAt = Math.ceil(items.length / 2);
+  const columns = [items.slice(0, splitAt), items.slice(splitAt)];
+  const gap = 18;
+  const colWidth = (width - gap) / 2;
+  const gapY = 4;
+  let maxHeight = 0;
+  columns.forEach((columnItems, col) => {
+    let cursorY = y;
+    columnItems.forEach((item) => {
+      const text = textForItem(item);
+      const textX = x + col * (colWidth + gap) + (checkbox ? 12 : 0);
+      const textW = colWidth - (checkbox ? 16 : 0);
+      if (checkbox) {
+        doc.rect(x + col * (colWidth + gap), cursorY + Math.max(3, fontSize * 0.36), 5, 5).strokeColor('#68747b').lineWidth(0.5).stroke();
+      }
+      const height = Math.max(fontSize + 3, drawTextRun(doc, text, textX, cursorY - 1, textW, fonts, { fontSize, color, lineGap: 1 }) + 1);
+      cursorY += height + gapY;
+    });
+    maxHeight = Math.max(maxHeight, cursorY - y);
+  });
+  return maxHeight;
+}
+
 function drawServiceSection(doc, date, y, fonts, businessProfile = emptyBusinessProfile()) {
   const menuFontSize = menuPdfFontSize(businessProfile);
   if (!date.additionalServices.length) return y;
   doc.fillColor('#111827').font(fonts.bold).fontSize(10).text('Service Requirements', 42, y);
   y += 16;
-  date.additionalServices.forEach((service, index) => {
-    const x = index % 2 === 0 ? 42 : 304;
-    if (index > 0 && index % 2 === 0) y += 18;
-    const quantity = serviceQuantityText(service);
-    doc.rect(x, y + 2, 7, 7).strokeColor('#68747b').lineWidth(0.5).stroke();
-    doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize).text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 14, y, { width: 220 });
-  });
-  return y + 28;
+  const used = drawTwoColumnTextBlock(doc, date.additionalServices, 42, y, 511, fonts, menuFontSize, serviceLineText, { checkbox: true });
+  return y + used + 10;
 }
 
-function menuItemGridMetrics(items, fontSize) {
-  const rowHeight = fontSize + 6;
+function menuItemGridMetrics(doc, items, fontSize, fonts, width) {
+  const height = twoColumnTextBlockHeight(doc, items, width, fonts, fontSize, menuItemText, { checkbox: true });
   return {
-    rowHeight,
-    rows: Math.max(1, Math.ceil(Math.max(items.length, 1) / 2)),
+    height: Math.max(0, height),
   };
 }
 
 function drawMenuItemsTwoColumns(doc, items, x, y, width, fonts, fontSize) {
-  if (!items.length) return;
-  const splitAt = Math.ceil(items.length / 2);
-  const columns = [items.slice(0, splitAt), items.slice(splitAt)];
-  const gap = 18;
-  const colWidth = (width - gap) / 2;
-  const rowHeight = fontSize + 6;
-  columns.forEach((columnItems, col) => {
-    columnItems.forEach((item, row) => {
-      drawChefMenuItem(doc, item, x + col * (colWidth + gap), y + row * rowHeight, colWidth, fonts, false, fontSize);
-    });
-  });
+  return drawTwoColumnTextBlock(doc, items, x, y, width, fonts, fontSize, menuItemText, { checkbox: true });
 }
 
 function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile, pageNo }) {
   const menuFontSize = menuPdfFontSize(businessProfile);
-  menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
-  let y = 132;
+  let y = menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
   const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
   if (visibleSlots.length === 0) {
     y = drawServiceSection(doc, date, y, fonts, businessProfile);
@@ -2244,39 +2506,31 @@ function drawMenuPage({ doc, db, event, date, fonts, pageLabel, businessProfile,
     const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
     const legacyServices = slotIndex === 0 ? date.additionalServices || [] : [];
     const services = [...(slot.additionalServices || []), ...legacyServices];
-    const itemMetrics = menuItemGridMetrics(items, menuFontSize);
-    const itemRows = itemMetrics.rows;
-    const serviceRows = Math.ceil(services.length / 2);
-    const rowHeight = Math.max(52, 32 + itemRows * itemMetrics.rowHeight + serviceRows * 16 + (services.length ? 14 : 0));
+    const itemMetrics = menuItemGridMetrics(doc, items, menuFontSize, fonts, 482);
+    const serviceBlockHeight = services.length
+      ? 16 + twoColumnTextBlockHeight(doc, services, 431, fonts, menuFontSize, serviceLineText, { checkbox: true })
+      : 0;
+    const rowHeight = Math.max(52, 34 + itemMetrics.height + serviceBlockHeight + (services.length ? 12 : 0));
     if (y + rowHeight > 786) {
       menuFooter(doc, fonts, businessProfile, pageNo);
       doc.addPage();
       pageNo += 1;
-      menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
-      y = 132;
+      y = menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo);
     }
     doc.rect(42, y, 511, rowHeight).strokeColor('#d1d5db').lineWidth(0.5).stroke();
     const line = [slot.time, slot.pax ? `${slot.pax} members` : ''].filter(Boolean).join(' - ');
     doc.fillColor('#111827').font(fonts.bold).fontSize(11).text(slot.type || 'Menu', 52, y + 7, { width: 220 });
     doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize).text(line, 364, y + 9, { width: 178, align: 'right' });
     doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
-    drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
+    const usedItemHeight = drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
     if (!items.length && (slot.menuImages || []).length) {
       doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
         .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} attached at end of PDF.`, 56, y + 31, { width: 320 });
     }
     if (services.length) {
-      const serviceY = y + 30 + itemRows * itemMetrics.rowHeight + 8;
+      const serviceY = y + 30 + usedItemHeight + 8;
       doc.fillColor('#4b5563').font(fonts.bold).fontSize(menuFontSize).text('Services', 56, serviceY, { width: 70 });
-      services.forEach((service, index) => {
-        const col = index % 2;
-        const row = Math.floor(index / 2);
-        const x = 112 + col * 238;
-        const quantity = serviceQuantityText(service);
-        doc.rect(x, serviceY + 2 + row * 16, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-        doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize)
-          .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 16, { width: 220 });
-      });
+      drawTwoColumnTextBlock(doc, services, 112, serviceY, 431, fonts, menuFontSize, serviceLineText, { checkbox: true });
     }
     y += rowHeight + 7;
   }
@@ -2402,19 +2656,31 @@ function consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title
   const menuFontSize = menuPdfFontSize(businessProfile);
   doc.rect(0, 0, doc.page.width, doc.page.height).fill('#ffffff');
   doc.fillColor('#111827').font(fonts.bold).fontSize(16).text('CONSOLIDATED EVENT MENU', 42, 36, { width: 260 });
-  doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
-    .text(`${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, { width: 220, align: 'right' });
+  drawTextRun(doc, `${businessProfile.businessName || 'CaterPro'} | Page ${pageNo}`, 330, 39, 220, fonts, {
+    fontSize: menuFontSize,
+    color: '#4b5563',
+    align: 'right',
+    lineBreak: false,
+  });
   doc.moveTo(42, 62).lineTo(553, 62).strokeColor('#9ca3af').lineWidth(0.7).stroke();
-  doc.fillColor('#111827').font(fonts.bold).fontSize(12).text(title, 42, 78, { width: 280 });
-  doc.fillColor('#374151').font(fonts.regular).fontSize(menuFontSize)
-    .text(`Date: ${prettyDate(date)}`, 330, 80, { width: 220, align: 'right' });
-  doc.moveTo(42, 106).lineTo(553, 106).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+  const titleH = drawTextRun(doc, title, 42, 78, 280, fonts, {
+    fontSize: 12,
+    color: '#111827',
+    bold: true,
+  });
+  const dateH = drawTextRun(doc, `Date: ${prettyDate(date)}`, 330, 80, 220, fonts, {
+    fontSize: menuFontSize,
+    color: '#374151',
+    align: 'right',
+  });
+  const bottom = Math.max(78 + titleH, 80 + dateH) + 14;
+  doc.moveTo(42, bottom).lineTo(553, bottom).strokeColor('#d1d5db').lineWidth(0.6).stroke();
+  return bottom + 16;
 }
 
 function addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title) {
   doc.addPage();
-  consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title);
-  return 124;
+  return consolidatedMenuHeader(doc, fonts, businessProfile, date, pageNo, title);
 }
 
 function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pageNo, title }) {
@@ -2423,7 +2689,14 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
   let y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
   for (const { event, date: eventDate } of entries) {
     const visibleSlots = sortedVisibleMenuSlots(eventDate.menuSlots);
-    const eventHeaderHeight = 48;
+    const eventHeaderHeight = Math.max(
+      textRunHeight(doc, event.primaryClient || event.name || 'Customer', 230, fonts, { fontSize: 12, bold: true }) +
+        6 +
+        textRunHeight(doc, `Event: ${event.name || '-'}`, 230, fonts, { fontSize: menuFontSize }),
+      textRunHeight(doc, `Venue: ${event.venue || '-'}`, 252, fonts, { fontSize: menuFontSize, align: 'right' }) +
+        6 +
+        textRunHeight(doc, `Mobile: ${event.mobile || '-'}`, 252, fonts, { fontSize: menuFontSize, align: 'right' })
+    ) + 16;
     const baseEventHeight = eventHeaderHeight + (visibleSlots.length ? 0 : 30);
     if (y + baseEventHeight > 766) {
       menuFooter(doc, fonts, businessProfile, pageNo);
@@ -2431,12 +2704,25 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
       y = addConsolidatedPage(doc, fonts, businessProfile, date, pageNo, title);
     }
 
-    doc.fillColor('#111827').font(fonts.bold).fontSize(12)
-      .text(event.primaryClient || event.name || 'Customer', 42, y, { width: 230 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
-      .text(`Event: ${event.name || '-'}`, 42, y + 16, { width: 230 })
-      .text(`Venue: ${event.venue || '-'}`, 300, y, { width: 252, align: 'right' })
-      .text(`Mobile: ${event.mobile || '-'}`, 300, y + 16, { width: 252, align: 'right' });
+    const clientH = drawTextRun(doc, event.primaryClient || event.name || 'Customer', 42, y, 230, fonts, {
+      fontSize: 12,
+      color: '#111827',
+      bold: true,
+    });
+    drawTextRun(doc, `Event: ${event.name || '-'}`, 42, y + clientH + 6, 230, fonts, {
+      fontSize: menuFontSize,
+      color: '#4b5563',
+    });
+    const venueH = drawTextRun(doc, `Venue: ${event.venue || '-'}`, 300, y, 252, fonts, {
+      fontSize: menuFontSize,
+      color: '#4b5563',
+      align: 'right',
+    });
+    drawTextRun(doc, `Mobile: ${event.mobile || '-'}`, 300, y + venueH + 6, 252, fonts, {
+      fontSize: menuFontSize,
+      color: '#4b5563',
+      align: 'right',
+    });
     y += eventHeaderHeight;
 
     if (!visibleSlots.length) {
@@ -2450,10 +2736,11 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
       const items = slot.menuItemIds.map((id) => menuPartsById(db, id));
       const legacyServices = slotIndex === 0 ? eventDate.additionalServices || [] : [];
       const services = [...(slot.additionalServices || []), ...legacyServices];
-      const itemMetrics = menuItemGridMetrics(items, menuFontSize);
-      const itemRows = itemMetrics.rows;
-      const serviceRows = Math.ceil(services.length / 2);
-      const rowHeight = Math.max(52, 32 + itemRows * itemMetrics.rowHeight + serviceRows * 16 + (services.length ? 14 : 0));
+      const itemMetrics = menuItemGridMetrics(doc, items, menuFontSize, fonts, 482);
+      const serviceBlockHeight = services.length
+        ? 16 + twoColumnTextBlockHeight(doc, services, 431, fonts, menuFontSize, serviceLineText, { checkbox: true })
+        : 0;
+      const rowHeight = Math.max(52, 34 + itemMetrics.height + serviceBlockHeight + (services.length ? 12 : 0));
       if (y + rowHeight > 766) {
         menuFooter(doc, fonts, businessProfile, pageNo);
         pageNo += 1;
@@ -2465,23 +2752,15 @@ function drawConsolidatedMenuDate({ doc, db, entries, fonts, businessProfile, pa
       doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
         .text(line, 364, y + 9, { width: 178, align: 'right' });
       doc.moveTo(52, y + 22).lineTo(543, y + 22).strokeColor('#e5e7eb').lineWidth(0.45).stroke();
-      drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
+      const usedItemHeight = drawMenuItemsTwoColumns(doc, items, 56, y + 30, 482, fonts, menuFontSize);
       if (!items.length && (slot.menuImages || []).length) {
         doc.fillColor('#4b5563').font(fonts.regular).fontSize(menuFontSize)
           .text(`Uploaded menu image${slot.menuImages.length > 1 ? 's' : ''} available in the event menu PDF.`, 56, y + 31, { width: 320 });
       }
       if (services.length) {
-        const serviceY = y + 30 + itemRows * itemMetrics.rowHeight + 8;
+        const serviceY = y + 30 + usedItemHeight + 8;
         doc.fillColor('#4b5563').font(fonts.bold).fontSize(menuFontSize).text('Services', 56, serviceY, { width: 70 });
-        services.forEach((service, index) => {
-          const col = index % 2;
-          const row = Math.floor(index / 2);
-          const x = 112 + col * 238;
-          const quantity = serviceQuantityText(service);
-          doc.rect(x, serviceY + 2 + row * 16, 6, 6).strokeColor('#68747b').lineWidth(0.45).stroke();
-          doc.fillColor('#202124').font(fonts.regular).fontSize(menuFontSize)
-            .text(`${service.name}${quantity ? ` - ${quantity}` : ''}`, x + 11, serviceY + row * 16, { width: 220 });
-        });
+        drawTwoColumnTextBlock(doc, services, 112, serviceY, 431, fonts, menuFontSize, serviceLineText, { checkbox: true });
       }
       y += rowHeight + 7;
     }
