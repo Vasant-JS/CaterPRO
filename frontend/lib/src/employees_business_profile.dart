@@ -211,7 +211,7 @@ class EmployeeCard extends StatelessWidget {
                       color: Cp.primary,
                       fontSize: 17,
                       fontWeight: FontWeight.w900)),
-              Text('${employee.designation} • Age ${employee.age}',
+              Text('${employee.designation} | Age ${employee.age}',
                   style: const TextStyle(
                       color: Cp.onVariant, fontWeight: FontWeight.w700)),
               Text(employee.mobile,
@@ -648,7 +648,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final address = TextEditingController(text: widget.profile.address);
   late final phone = TextEditingController(text: widget.profile.phone);
   late final email = TextEditingController(text: widget.profile.email);
+  late final accountHolderName =
+      TextEditingController(text: widget.profile.accountHolderName);
   late final bankName = TextEditingController(text: widget.profile.bankName);
+  late final branchName =
+      TextEditingController(text: widget.profile.branchName);
   late final accountNumber =
       TextEditingController(text: widget.profile.accountNumber);
   late final ifsc = TextEditingController(text: widget.profile.ifsc);
@@ -684,7 +688,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     address.text = profile.address;
     phone.text = profile.phone;
     email.text = profile.email;
+    accountHolderName.text = profile.accountHolderName;
     bankName.text = profile.bankName;
+    branchName.text = profile.branchName;
     accountNumber.text = profile.accountNumber;
     ifsc.text = profile.ifsc;
     terms.text = profile.terms;
@@ -705,7 +711,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       address,
       phone,
       email,
+      accountHolderName,
       bankName,
+      branchName,
       accountNumber,
       ifsc,
       terms
@@ -726,7 +734,9 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         address: address.text.trim(),
         phone: phone.text.trim().isEmpty ? '' : normalizeMobileText(phone.text),
         email: email.text.trim(),
+        accountHolderName: accountHolderName.text.trim(),
         bankName: bankName.text.trim(),
+        branchName: branchName.text.trim(),
         accountNumber: accountNumber.text.trim(),
         ifsc: ifsc.text.trim().toUpperCase(),
         terms: terms.text.trim(),
@@ -833,7 +843,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
             const SectionTitle('Basic Info', Icons.business),
             EditableInlineField(
                 label: 'Business Name', controller: businessName),
-            EditableInlineField(label: 'Service Type', controller: serviceType),
             const SectionTitle('Tax & Legal', Icons.gavel),
             CheckboxListTile(
               contentPadding: EdgeInsets.zero,
@@ -908,11 +917,14 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                 controller: email,
                 keyboardType: TextInputType.emailAddress),
             const SectionTitle('Settlement Bank', Icons.account_balance),
-            EditableInlineField(label: 'Bank Name', controller: bankName),
+            EditableInlineField(
+                label: 'A/C Holder Name', controller: accountHolderName),
             EditableInlineField(
                 label: 'Account Number',
                 controller: accountNumber,
                 keyboardType: TextInputType.number),
+            EditableInlineField(label: 'Bank', controller: bankName),
+            EditableInlineField(label: 'Branch', controller: branchName),
             EditableInlineField(label: 'IFSC', controller: ifsc),
             const SectionTitle('Terms & Conditions', Icons.description),
             EditableInlineField(label: 'Standard Terms', controller: terms),

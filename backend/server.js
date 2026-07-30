@@ -90,6 +90,10 @@ const supabaseTables = [
   'cp_events',
   'cp_custom_menus',
   'cp_additional_services',
+  'cp_user_menu_items',
+  'cp_user_raw_materials',
+  'cp_user_produce_items',
+  'cp_user_vessel_items',
   'cp_employees',
   'cp_clients',
   'cp_business_profiles',
@@ -112,6 +116,10 @@ const supabaseTableConflicts = {
   cp_event_assignments: 'state_id,user_id,event_id,employee_id',
   cp_attendance: 'state_id,user_id,event_id,employee_id,attendance_date',
   cp_additional_services: 'state_id,user_id,id',
+  cp_user_menu_items: 'state_id,user_id,id',
+  cp_user_raw_materials: 'state_id,user_id,id',
+  cp_user_produce_items: 'state_id,user_id,id',
+  cp_user_vessel_items: 'state_id,user_id,id',
   cp_custom_menus: 'state_id,user_id,id',
   cp_requirement_lists: 'state_id,user_id,id',
   cp_manual_invoices: 'state_id,user_id,id',
@@ -154,6 +162,18 @@ function buildSupabaseRows(db) {
     }
     for (const item of asArray(userData.additionalServices)) {
       rows.cp_additional_services.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', unit: item.unit || '', price: Number(item.price || 0), raw: item });
+    }
+    for (const item of asArray(userData.menuItems)) {
+      rows.cp_user_menu_items.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', english: item.english || '', kannada: item.kannada || '', title: item.title || '', category: item.category || '', meals: asArray(item.meals), veg: item.veg === true, raw: item });
+    }
+    for (const item of asArray(userData.rawMaterials)) {
+      rows.cp_user_raw_materials.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
+    }
+    for (const item of asArray(userData.produceItems)) {
+      rows.cp_user_produce_items.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
+    }
+    for (const item of asArray(userData.vesselItems)) {
+      rows.cp_user_vessel_items.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', category: item.category || '', unit: item.unit || '', raw: item });
     }
     for (const item of asArray(userData.customMenus)) {
       rows.cp_custom_menus.push({ state_id: supabaseStateId, user_id: userId, id: item.id || '', name: item.name || '', type: item.type || '', item_ids: asArray(item.itemIds), raw: item });
@@ -268,7 +288,9 @@ function requireUser(req, res, db) {
     res.status(401).json({ message: 'Unauthorized' });
     return null;
   }
+  ensureUniversal(db);
   db.userData[user.id] = ensureUserDataShape(db.userData[user.id] || emptyUserData());
+  ensureUserCatalogs(db, user.id);
   return user;
 }
 
@@ -283,7 +305,7 @@ function requireAdminUser(req, res, db) {
 }
 
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], customMenus: [], requirementLists: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
+  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], menuItems: [], rawMaterials: [], produceItems: [], vesselItems: [], customMenus: [], requirementLists: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
 }
 
 function emptyBusinessProfile() {
@@ -310,11 +332,39 @@ function ensureUserDataShape(userData) {
   userData.attendance = userData.attendance.map((record) => ({ ...record, payPerHour: Number(record.payPerHour ?? (record.payPerDay ? Math.round(Number(record.payPerDay) / 8) : 0)) }));
   userData.attendance = dedupeBy(userData.attendance, (record) => [record.eventId, record.employeeId, record.date].join('|'));
   userData.additionalServices = userData.additionalServices || [];
+  userData.menuItems = Array.isArray(userData.menuItems) ? userData.menuItems : [];
+  userData.rawMaterials = Array.isArray(userData.rawMaterials) ? normalizeRawMaterialUnits(userData.rawMaterials) : [];
+  userData.produceItems = Array.isArray(userData.produceItems) ? userData.produceItems : [];
+  userData.vesselItems = Array.isArray(userData.vesselItems) ? userData.vesselItems : [];
   userData.customMenus = userData.customMenus || [];
   userData.requirementLists = asArray(userData.requirementLists).map((item) => materialDocumentFromBody(item));
   userData.payments = userData.payments || [];
   userData.manualInvoices = userData.manualInvoices || [];
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
+  return userData;
+}
+
+function cloneCatalog(items = []) {
+  return asArray(items).map((item) => ({ ...item }));
+}
+
+function ensureUserCatalogs(db, userId) {
+  ensureUniversal(db);
+  db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
+  const userData = db.userData[userId];
+  if (!Array.isArray(userData.menuItems) || userData.menuItems.length === 0) {
+    userData.menuItems = cloneCatalog(db.universal.menuItems);
+  }
+  if (!Array.isArray(userData.rawMaterials) || userData.rawMaterials.length === 0) {
+    userData.rawMaterials = cloneCatalog(db.universal.rawMaterials);
+  }
+  if (!Array.isArray(userData.produceItems) || userData.produceItems.length === 0) {
+    userData.produceItems = cloneCatalog(db.universal.produceItems);
+  }
+  if (!Array.isArray(userData.vesselItems) || userData.vesselItems.length === 0) {
+    userData.vesselItems = cloneCatalog(db.universal.vesselItems);
+  }
+  userData.rawMaterials = normalizeRawMaterialUnits(userData.rawMaterials);
   return userData;
 }
 
@@ -2915,7 +2965,7 @@ function menuCatalogLabel(item, language) {
   return kannada || english || item.id || '';
 }
 
-function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
+function generateMenuCatalogPdf({ res, db, menuItems, language = 'both', filters = {} }) {
   const normalizedLanguage = ['kannada', 'english', 'both'].includes(language) ? language : 'both';
   const doc = new PDFDocument({
     size: 'A4',
@@ -2934,7 +2984,7 @@ function generateMenuCatalogPdf({ res, db, language = 'both', filters = {} }) {
   const vegOnly = filters.vegOnly === true || String(filters.vegOnly || '').toLowerCase() === 'true';
   const mealText = (item) => Array.isArray(item.meals) ? item.meals.join(', ') : String(item.meals || '');
 
-  const items = asArray(db.universal?.menuItems)
+  const items = asArray(menuItems || db.universal?.menuItems)
     .map((item) => ({
       ...item,
       english: repairMojibake(item.english || ''),
@@ -3249,6 +3299,7 @@ app.get('/api/bootstrap', (req, res) => {
   ensureUniversal(db);
   const user = requireUser(req, res, db);
   if (!user) return;
+  writeDb(db);
   res.json({ universal: db.universal, userData: db.userData[user.id] });
 });
 
@@ -3314,6 +3365,10 @@ function mergeUserDataForSync(existing = emptyUserData(), incoming = emptyUserDa
     employees: mergeSyncRecordList(current.employees, next.employees, 'employees'),
     attendance: mergeSyncRecordList(current.attendance, next.attendance, 'attendance'),
     additionalServices: mergeSyncRecordList(current.additionalServices, next.additionalServices, 'additionalServices'),
+    menuItems: mergeSyncRecordList(current.menuItems, next.menuItems, 'menuItems'),
+    rawMaterials: mergeSyncRecordList(current.rawMaterials, next.rawMaterials, 'rawMaterials'),
+    produceItems: mergeSyncRecordList(current.produceItems, next.produceItems, 'produceItems'),
+    vesselItems: mergeSyncRecordList(current.vesselItems, next.vesselItems, 'vesselItems'),
     customMenus: mergeSyncRecordList(current.customMenus, next.customMenus, 'customMenus'),
     requirementLists: mergeSyncRecordList(current.requirementLists, next.requirementLists, 'requirementLists'),
     payments: mergeSyncRecordList(current.payments, next.payments, 'payments'),
@@ -3326,7 +3381,7 @@ function backupUserDataForSync(existing = emptyUserData(), incoming = {}) {
   const current = ensureUserDataShape({ ...emptyUserData(), ...existing });
   const next = incoming && typeof incoming === 'object' ? incoming : {};
   const merged = { ...current };
-  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'requirementLists', 'payments', 'manualInvoices']) {
+  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'menuItems', 'rawMaterials', 'produceItems', 'vesselItems', 'customMenus', 'requirementLists', 'payments', 'manualInvoices']) {
     if (Array.isArray(next[key])) merged[key] = next[key];
   }
   if (next.businessProfile && typeof next.businessProfile === 'object') {
@@ -3350,6 +3405,7 @@ app.get('/api/sync/snapshot', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  writeDb(db);
   res.json(syncSnapshotForUser(db, user.id));
 });
 
@@ -3826,16 +3882,19 @@ app.get('/api/requirement-lists/:id/pdf', (req, res) => {
 
 app.get('/api/menu-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
-  res.json(db.universal.menuItems);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json(db.userData[user.id].menuItems);
 });
 
 function handleMenuCatalogPdf(req, res) {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   return generateMenuCatalogPdf({
     res,
     db,
+    menuItems: db.userData[user.id].menuItems,
     language: String(req.query.language || 'both'),
     filters: {
       search: req.query.search,
@@ -3851,11 +3910,13 @@ app.get('/api/menu-catalog.pdf', handleMenuCatalogPdf);
 
 app.post('/api/menu-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const list = db.userData[user.id].menuItems;
   const requestedId = String(req.body.id || '').trim();
-  const idExists = requestedId && db.universal.menuItems.some((entry) => entry.id === requestedId);
+  const idExists = requestedId && list.some((entry) => entry.id === requestedId);
   const item = {
-    id: requestedId && !idExists ? requestedId : nextCatalogId(db.universal.menuItems, 'MNU'),
+    id: requestedId && !idExists ? requestedId : nextCatalogId(list, 'MNU'),
     english: req.body.english || '',
     kannada: req.body.kannada || '',
     title: req.body.title || `${req.body.kannada || ''}/${req.body.english || ''}`,
@@ -3863,112 +3924,159 @@ app.post('/api/menu-items', (req, res) => {
     meals: Array.isArray(req.body.meals) ? req.body.meals : [],
     veg: Boolean(req.body.veg),
   };
-  upsertById(db.universal.menuItems, item);
+  upsertById(list, item);
   writeDb(db);
   res.status(201).json(item);
 });
 
 app.put('/api/menu-items/:id', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
-  const existing = db.universal.menuItems.find((item) => item.id === req.params.id);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const list = db.userData[user.id].menuItems;
+  const existing = list.find((item) => item.id === req.params.id);
   const item = { ...(existing || {}), ...req.body, id: req.body.id || req.params.id };
   if (item.id !== req.params.id) {
-    db.universal.menuItems = db.universal.menuItems.filter((entry) => entry.id !== req.params.id);
+    db.userData[user.id].menuItems = list.filter((entry) => entry.id !== req.params.id);
   }
-  upsertById(db.universal.menuItems, item);
+  upsertById(db.userData[user.id].menuItems, item);
   writeDb(db);
   res.status(existing ? 200 : 201).json(item);
 });
 
+app.delete('/api/menu-items/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].menuItems = db.userData[user.id].menuItems.filter((entry) => entry.id !== req.params.id);
+  writeDb(db);
+  res.status(204).end();
+});
+
 app.get('/api/raw-materials', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   writeDb(db);
-  res.json(db.universal.rawMaterials);
+  res.json(db.userData[user.id].rawMaterials);
 });
 
 app.post('/api/raw-materials', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   const item = { id: req.body.id || makeId('raw'), name: req.body.name || '', category: req.body.category || '', unit: req.body.unit || '' };
-  upsertById(db.universal.rawMaterials, item);
+  upsertById(db.userData[user.id].rawMaterials, item);
   writeDb(db);
   res.status(201).json(item);
 });
 
 app.put('/api/raw-materials/:id', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
-  const existing = db.universal.rawMaterials.find((item) => item.id === req.params.id);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].rawMaterials.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Raw material not found' });
   const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
   if (item.id !== req.params.id) {
-    db.universal.rawMaterials = db.universal.rawMaterials.filter((entry) => entry.id !== req.params.id);
+    db.userData[user.id].rawMaterials = db.userData[user.id].rawMaterials.filter((entry) => entry.id !== req.params.id);
   }
-  upsertById(db.universal.rawMaterials, item);
+  upsertById(db.userData[user.id].rawMaterials, item);
   writeDb(db);
   res.json(item);
 });
 
+app.delete('/api/raw-materials/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].rawMaterials = db.userData[user.id].rawMaterials.filter((entry) => entry.id !== req.params.id);
+  writeDb(db);
+  res.status(204).end();
+});
+
 app.get('/api/produce-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   writeDb(db);
-  res.json(db.universal.produceItems);
+  res.json(db.userData[user.id].produceItems);
 });
 
 app.post('/api/produce-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   const item = { id: req.body.id || makeId('prd'), name: req.body.name || '', category: req.body.category || '', unit: req.body.unit || '' };
-  upsertById(db.universal.produceItems, item);
+  upsertById(db.userData[user.id].produceItems, item);
   writeDb(db);
   res.status(201).json(item);
 });
 
 app.put('/api/produce-items/:id', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
-  const existing = db.universal.produceItems.find((item) => item.id === req.params.id);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].produceItems.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Vegetable/fruit item not found' });
   const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
   if (item.id !== req.params.id) {
-    db.universal.produceItems = db.universal.produceItems.filter((entry) => entry.id !== req.params.id);
+    db.userData[user.id].produceItems = db.userData[user.id].produceItems.filter((entry) => entry.id !== req.params.id);
   }
-  upsertById(db.universal.produceItems, item);
+  upsertById(db.userData[user.id].produceItems, item);
   writeDb(db);
   res.json(item);
 });
 
+app.delete('/api/produce-items/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].produceItems = db.userData[user.id].produceItems.filter((entry) => entry.id !== req.params.id);
+  writeDb(db);
+  res.status(204).end();
+});
+
 app.get('/api/vessel-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   writeDb(db);
-  res.json(db.universal.vesselItems);
+  res.json(db.userData[user.id].vesselItems);
 });
 
 app.post('/api/vessel-items', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
+  const user = requireUser(req, res, db);
+  if (!user) return;
   const item = { id: req.body.id || makeId('ves'), name: req.body.name || '', category: req.body.category || '', unit: req.body.unit || '' };
-  upsertById(db.universal.vesselItems, item);
+  upsertById(db.userData[user.id].vesselItems, item);
   writeDb(db);
   res.status(201).json(item);
 });
 
 app.put('/api/vessel-items/:id', (req, res) => {
   const db = readDb();
-  ensureUniversal(db);
-  const existing = db.universal.vesselItems.find((item) => item.id === req.params.id);
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const existing = db.userData[user.id].vesselItems.find((item) => item.id === req.params.id);
   if (!existing) return res.status(404).json({ message: 'Vessel/utensil item not found' });
   const item = { ...existing, ...req.body, id: req.body.id || req.params.id };
   if (item.id !== req.params.id) {
-    db.universal.vesselItems = db.universal.vesselItems.filter((entry) => entry.id !== req.params.id);
+    db.userData[user.id].vesselItems = db.userData[user.id].vesselItems.filter((entry) => entry.id !== req.params.id);
   }
-  upsertById(db.universal.vesselItems, item);
+  upsertById(db.userData[user.id].vesselItems, item);
   writeDb(db);
   res.json(item);
+});
+
+app.delete('/api/vessel-items/:id', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  db.userData[user.id].vesselItems = db.userData[user.id].vesselItems.filter((entry) => entry.id !== req.params.id);
+  writeDb(db);
+  res.status(204).end();
 });
 
 app.get('/api/events', (req, res) => {

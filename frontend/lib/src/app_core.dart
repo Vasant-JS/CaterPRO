@@ -36,11 +36,11 @@ class _CaterProAppState extends State<CaterProApp> {
           secondary: Cp.secondary,
           onSecondary: Colors.white,
           secondaryContainer: Cp.secondaryContainer,
-          onSecondaryContainer: const Color(0xff2c1700),
+          onSecondaryContainer: const Color(0xff4e6c4b),
           tertiary: Cp.tertiary,
           onTertiary: Colors.white,
           tertiaryContainer: Cp.tertiaryContainer,
-          onTertiaryContainer: Colors.white,
+          onTertiaryContainer: const Color(0xff44410d),
           surface: Cp.surface,
           onSurface: Cp.onSurface,
           surfaceContainerLowest: Cp.card,
@@ -57,18 +57,18 @@ class _CaterProAppState extends State<CaterProApp> {
           seedColor: Cp.primary,
           brightness: Brightness.dark,
         ).copyWith(
-          primary: const Color(0xffb8e5ff),
-          onPrimary: const Color(0xff6fa0be),
-          primaryContainer: const Color(0xff155f82),
-          onPrimaryContainer: const Color(0xffe3f4ff),
-          secondary: const Color(0xffffc266),
-          onSecondary: const Color(0xff422900),
-          secondaryContainer: const Color(0xff6a4300),
-          onSecondaryContainer: const Color(0xffffddb0),
-          tertiary: const Color(0xff70e6a0),
-          onTertiary: const Color(0xff003919),
-          tertiaryContainer: const Color(0xff005228),
-          onTertiaryContainer: const Color(0xff9cf6b8),
+          primary: const Color(0xff8bd987),
+          onPrimary: const Color(0xff002204),
+          primaryContainer: const Color(0xff3c863f),
+          onPrimaryContainer: const Color(0xffe9ffe4),
+          secondary: const Color(0xffafcfa8),
+          onSecondary: const Color(0xff062108),
+          secondaryContainer: const Color(0xff496646),
+          onSecondaryContainer: const Color(0xffe4f8dd),
+          tertiary: const Color(0xffcfc987),
+          onTertiary: const Color(0xff1f1c00),
+          tertiaryContainer: const Color(0xff64602a),
+          onTertiaryContainer: const Color(0xfff8f1aa),
           error: const Color(0xffffb4ab),
           onError: const Color(0xff690005),
           errorContainer: const Color(0xff6f1d1b),
@@ -152,7 +152,7 @@ class _CaterProAppState extends State<CaterProApp> {
             colorScheme: darkScheme,
             appBarTheme: const AppBarTheme(
                 backgroundColor: Color(0xff0b1220),
-                foregroundColor: Color(0xffb8e5ff),
+                foregroundColor: Color(0xff8bd987),
                 elevation: 0),
             bottomSheetTheme: const BottomSheetThemeData(
                 backgroundColor: Color(0xff101827),
@@ -164,11 +164,11 @@ class _CaterProAppState extends State<CaterProApp> {
                 surfaceTintColor: Colors.transparent),
             dividerTheme: const DividerThemeData(color: Color(0xff43536a)),
             floatingActionButtonTheme: const FloatingActionButtonThemeData(
-                backgroundColor: Color(0xff6a4300),
-                foregroundColor: Color(0xffffddb0)),
+                backgroundColor: Color(0xff64602a),
+                foregroundColor: Color(0xfff8f1aa)),
             inputDecorationTheme: InputDecorationTheme(
               labelStyle: const TextStyle(color: Color(0xffd7deea)),
-              floatingLabelStyle: const TextStyle(color: Color(0xffb8e5ff)),
+              floatingLabelStyle: const TextStyle(color: Color(0xff8bd987)),
               prefixIconColor: const Color(0xffd7deea),
               suffixIconColor: const Color(0xffd7deea),
               filled: true,
@@ -179,9 +179,9 @@ class _CaterProAppState extends State<CaterProApp> {
             checkboxTheme: CheckboxThemeData(
               fillColor: WidgetStateProperty.resolveWith((states) =>
                   states.contains(WidgetState.selected)
-                      ? const Color(0xff9bd8ff)
+                      ? const Color(0xff8bd987)
                       : const Color(0xff1b2940)),
-              checkColor: WidgetStateProperty.all(const Color(0xff6fa0be)),
+              checkColor: WidgetStateProperty.all(const Color(0xff002204)),
             ),
             textTheme: textTheme.apply(
                 bodyColor: const Color(0xffeef2f7),
@@ -746,25 +746,25 @@ List<AppNotification> buildEventNotifications(List<AppEvent> events) {
 }
 
 class Cp {
-  static const surface = Color(0xfff8f9fa);
-  static const background = Color(0xfff8f9fa);
+  static const surface = Color(0xfff7fbf2);
+  static const background = Color(0xfff7fbf2);
   static const card = Color(0xffffffff);
-  static const surfaceLow = Color(0xfff3f4f5);
-  static const surfaceHigh = Color(0xffe7e8e9);
-  static const outline = Color(0xff72787f);
-  static const outlineVariant = Color(0xffc1c7cf);
-  static const onSurface = Color(0xff191c1d);
-  static const onVariant = Color(0xff41474e);
-  static const primary = Color(0xff003857);
-  static const primaryContainer = Color(0xff1b4f72);
-  static const primaryFixed = Color(0xffcce5ff);
-  static const toolbarIcon = Color(0xff52afda);
-  static const secondary = Color(0xff865300);
-  static const secondaryContainer = Color(0xfffea520);
-  static const secondaryFixed = Color(0xffffddb9);
-  static const tertiary = Color(0xff003d1c);
-  static const tertiaryContainer = Color(0xff00572a);
-  static const tertiaryFixed = Color(0xff6bfe9c);
+  static const surfaceLow = Color(0xfff2f5ec);
+  static const surfaceHigh = Color(0xffe6e9e1);
+  static const outline = Color(0xff707a6d);
+  static const outlineVariant = Color(0xffc0c9ba);
+  static const onSurface = Color(0xff191d18);
+  static const onVariant = Color(0xff40493e);
+  static const primary = Color(0xff206c29);
+  static const primaryContainer = Color(0xff3c863f);
+  static const primaryFixed = Color(0xffa6f5a1);
+  static const toolbarIcon = Color(0xff8bd987);
+  static const secondary = Color(0xff496646);
+  static const secondaryContainer = Color(0xffcaecc3);
+  static const secondaryFixed = Color(0xffcaecc3);
+  static const tertiary = Color(0xff64602a);
+  static const tertiaryContainer = Color(0xffb3ad6e);
+  static const tertiaryFixed = Color(0xffece5a1);
   static const error = Color(0xffba1a1a);
   static const errorContainer = Color(0xffffdad6);
 }
@@ -842,9 +842,9 @@ Color cpAdaptSurfaceColor(BuildContext context, Color color) {
   }
   if (color == Cp.surfaceLow) return cpSurfaceLow(context);
   if (color == Cp.surfaceHigh) return cpSurfaceHigh(context);
-  if (color == Cp.primaryFixed) return const Color(0xff173f5c);
-  if (color == Cp.secondaryFixed) return const Color(0xff4b3419);
-  if (color == Cp.tertiaryFixed) return const Color(0xff173d2a);
+  if (color == Cp.primaryFixed) return const Color(0xff173d1d);
+  if (color == Cp.secondaryFixed) return const Color(0xff273723);
+  if (color == Cp.tertiaryFixed) return const Color(0xff3d3a17);
   if (color == Cp.primaryContainer) {
     return Theme.of(context).colorScheme.primaryContainer;
   }
@@ -957,7 +957,9 @@ class BusinessProfile {
     this.address = '',
     this.phone = '',
     this.email = '',
+    this.accountHolderName = '',
     this.bankName = '',
+    this.branchName = '',
     this.accountNumber = '',
     this.ifsc = '',
     this.terms = '',
@@ -978,7 +980,9 @@ class BusinessProfile {
   final String address;
   final String phone;
   final String email;
+  final String accountHolderName;
   final String bankName;
+  final String branchName;
   final String accountNumber;
   final String ifsc;
   final String terms;
@@ -1003,7 +1007,9 @@ class BusinessProfile {
       address: data['address']?.toString() ?? '',
       phone: data['phone']?.toString() ?? '',
       email: data['email']?.toString() ?? '',
+      accountHolderName: data['accountHolderName']?.toString() ?? '',
       bankName: data['bankName']?.toString() ?? '',
+      branchName: data['branchName']?.toString() ?? '',
       accountNumber: data['accountNumber']?.toString() ?? '',
       ifsc: data['ifsc']?.toString() ?? '',
       terms: data['terms']?.toString() ?? '',
@@ -1028,7 +1034,9 @@ class BusinessProfile {
         'address': address,
         'phone': phone,
         'email': email,
+        'accountHolderName': accountHolderName,
         'bankName': bankName,
+        'branchName': branchName,
         'accountNumber': accountNumber,
         'ifsc': ifsc,
         'terms': terms,
@@ -2023,8 +2031,9 @@ class ApiService {
   }
 
   Future<List<MenuMasterItem>> getMenuItems() async {
-    final response =
-        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/menu-items'));
+    final response = await getWithRetry(
+        Uri.parse('${ApiConfig.baseUrl}/menu-items'),
+        headers: await authHeaders());
     if (response.statusCode != 200) {
       throw Exception('Unable to load menu items');
     }
@@ -2036,7 +2045,9 @@ class ApiService {
 
   Future<Uri> menuCatalogPdfUri(String language,
       {String search = '', String meal = 'All', bool vegOnly = false}) async {
-    final query = <String, String>{'language': language};
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('auth.token') ?? '';
+    final query = <String, String>{'language': language, 'token': token};
     final normalizedSearch = search.trim();
     if (normalizedSearch.isNotEmpty) query['search'] = normalizedSearch;
     if (meal != 'All') query['meal'] = meal;
@@ -2061,9 +2072,20 @@ class ApiService {
         jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<void> deleteMenuItem(String id) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/menu-items/$id'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Unable to delete menu item');
+    }
+  }
+
   Future<List<RawMaterialItem>> getRawMaterials() async {
-    final response =
-        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/raw-materials'));
+    final response = await getWithRetry(
+        Uri.parse('${ApiConfig.baseUrl}/raw-materials'),
+        headers: await authHeaders());
     if (response.statusCode != 200) {
       throw Exception('Unable to load raw materials');
     }
@@ -2088,9 +2110,20 @@ class ApiService {
         jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<void> deleteRawMaterial(String id) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/raw-materials/$id'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Unable to delete raw material');
+    }
+  }
+
   Future<List<RawMaterialItem>> getProduceItems() async {
-    final response =
-        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/produce-items'));
+    final response = await getWithRetry(
+        Uri.parse('${ApiConfig.baseUrl}/produce-items'),
+        headers: await authHeaders());
     if (response.statusCode != 200) {
       throw Exception('Unable to load vegetables and fruits');
     }
@@ -2115,9 +2148,20 @@ class ApiService {
         jsonDecode(response.body) as Map<String, dynamic>);
   }
 
+  Future<void> deleteProduceItem(String id) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/produce-items/$id'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Unable to delete vegetable/fruit item');
+    }
+  }
+
   Future<List<RawMaterialItem>> getVesselItems() async {
-    final response =
-        await getWithRetry(Uri.parse('${ApiConfig.baseUrl}/vessel-items'));
+    final response = await getWithRetry(
+        Uri.parse('${ApiConfig.baseUrl}/vessel-items'),
+        headers: await authHeaders());
     if (response.statusCode != 200) {
       throw Exception('Unable to load vessels and utensils');
     }
@@ -2140,6 +2184,16 @@ class ApiService {
     }
     return RawMaterialItem.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<void> deleteVesselItem(String id) async {
+    final response = await http.delete(
+      Uri.parse('${ApiConfig.baseUrl}/vessel-items/$id'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception('Unable to delete vessel/utensil item');
+    }
   }
 
   Future<List<EventMaterialDocument>> getRequirementLists() async {
@@ -2859,7 +2913,7 @@ String serviceLine(String name, Object? quantity, Object? unit, Object? price) {
   final parts = <String>[];
   if (count > 0) parts.add('$count ${unit?.toString() ?? ''}'.trim());
   if (amount > 0) parts.add(money(amount));
-  return parts.isEmpty ? name : '$name\n${parts.join(' • ')}';
+  return parts.isEmpty ? name : '$name\n${parts.join(' | ')}';
 }
 
 String additionalServiceLine(Map<String, dynamic> service) => serviceLine(

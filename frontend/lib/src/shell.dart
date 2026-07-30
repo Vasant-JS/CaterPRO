@@ -50,6 +50,7 @@ class _AppShellState extends State<AppShell> {
   String? selectedEventId;
   AppEvent? editingEvent;
   int createSession = 0;
+  int createInitialStep = 0;
   Timer? autoSyncTimer;
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
@@ -97,14 +98,13 @@ class _AppShellState extends State<AppShell> {
             manualInvoices.map((invoice) => invoice.toJson()).toList(),
         'additionalServices':
             services.map((service) => service.toJson()).toList(),
+        'menuItems':
+            MenuMasterScreen.menuItems.map((item) => item.toJson()).toList(),
         'customMenus': customMenus.map((menu) => menu.toJson()).toList(),
         'businessProfile': businessProfile.toJson(),
       };
 
-  Map<String, dynamic> currentUniversalJson() => {
-        'menuItems':
-            MenuMasterScreen.menuItems.map((item) => item.toJson()).toList(),
-      };
+  Map<String, dynamic> currentUniversalJson() => {};
 
   String localId(String prefix) =>
       '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
@@ -360,6 +360,10 @@ class _AppShellState extends State<AppShell> {
         jsonMapList(userData['events']).map(normalizeEventJson).toList();
     normalized['attendance'] =
         dedupeJsonList(userData['attendance'], key: 'attendance');
+    normalized['menuItems'] = jsonMapList(userData['menuItems']);
+    normalized['rawMaterials'] = jsonMapList(userData['rawMaterials']);
+    normalized['produceItems'] = jsonMapList(userData['produceItems']);
+    normalized['vesselItems'] = jsonMapList(userData['vesselItems']);
     return normalized;
   }
 
@@ -547,8 +551,10 @@ class _AppShellState extends State<AppShell> {
         decodeJsonList(normalized['employees'], Employee.fromJson);
     final loadedManualInvoices =
         decodeJsonList(normalized['manualInvoices'], ManualInvoice.fromJson);
-    final menuItems =
-        decodeJsonList(universal['menuItems'], MenuMasterItem.fromJson);
+    final menuSource = jsonMapList(normalized['menuItems']).isNotEmpty
+        ? normalized['menuItems']
+        : universal['menuItems'];
+    final menuItems = decodeJsonList(menuSource, MenuMasterItem.fromJson);
     final additionalServices = decodeJsonList(
         normalized['additionalServices'], AdditionalServiceItem.fromJson);
     final loadedCustomMenus =
@@ -883,6 +889,7 @@ class _AppShellState extends State<AppShell> {
       parentTab = tab == 5 ? parentTab : tab;
       editingEvent = null;
       selectedEventId = null;
+      createInitialStep = 0;
       createSession++;
       tab = 5;
     });
@@ -897,11 +904,12 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  void openEditEvent(AppEvent event) {
+  void openEditEvent(AppEvent event, {int initialStep = 0}) {
     setState(() {
       parentTab = tab == 5 ? parentTab : tab;
       editingEvent = event;
       selectedEventId = event.id;
+      createInitialStep = initialStep.clamp(0, 3).toInt();
       createSession++;
       tab = 5;
     });
@@ -1233,8 +1241,10 @@ class _AppShellState extends State<AppShell> {
             onSaveService: upsertService,
             onDeleteService: removeService),
         CreateEventScreen(
-            key: ValueKey('create-$createSession-${editingEvent?.id ?? 'new'}'),
+            key: ValueKey(
+                'create-$createSession-${editingEvent?.id ?? 'new'}-$createInitialStep'),
             initialEvent: editingEvent,
+            initialStep: createInitialStep,
             onDraftSaved: updateSelectedEvent,
             onClose: closeToParent,
             onCreate: createEvent,
@@ -1253,6 +1263,8 @@ class _AppShellState extends State<AppShell> {
             employees: employees,
             businessProfile: businessProfile,
             onEdit: openEditEvent,
+            onEditStep: (event, step) =>
+                openEditEvent(event, initialStep: step),
             onAddEvent: openCreateEvent,
             onEventUpdated: updateSelectedEvent,
             onEventDeleted: removeSelectedEvent,

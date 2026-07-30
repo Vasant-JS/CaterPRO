@@ -270,9 +270,9 @@ class SettingsScreen extends StatelessWidget {
                 style:
                     const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
             Text(
-                businessProfile.serviceType.isEmpty
+                businessProfile.address.isEmpty
                     ? 'Add your business details'
-                    : businessProfile.serviceType,
+                    : businessProfile.address,
                 style: TextStyle(color: cpOnVariant(context))),
           ]),
         ),
@@ -1648,7 +1648,9 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
         address: widget.profile.address,
         phone: widget.profile.phone,
         email: widget.profile.email,
+        accountHolderName: widget.profile.accountHolderName,
         bankName: widget.profile.bankName,
+        branchName: widget.profile.branchName,
         accountNumber: widget.profile.accountNumber,
         ifsc: widget.profile.ifsc,
         terms: widget.profile.terms,
@@ -1851,7 +1853,9 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
         address: widget.profile.address,
         phone: widget.profile.phone,
         email: widget.profile.email,
+        accountHolderName: widget.profile.accountHolderName,
         bankName: widget.profile.bankName,
+        branchName: widget.profile.branchName,
         accountNumber: widget.profile.accountNumber,
         ifsc: widget.profile.ifsc,
         terms: widget.profile.terms,

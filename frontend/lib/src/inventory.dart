@@ -208,7 +208,7 @@ class _ListsScreenState extends State<ListsScreen> {
                                     if (eventName(list.eventId).isNotEmpty)
                                       eventName(list.eventId),
                                     '${list.items.length} items'
-                                  ].join(' • '),
+                                  ].join(' | '),
                                   style: TextStyle(
                                       color: cpOnVariant(context),
                                       fontWeight: FontWeight.w700))
@@ -886,6 +886,25 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
     }
   }
 
+  Future<void> deleteRawMaterial(RawMaterialItem item) async {
+    final confirmed = await confirmDeleteCatalogItem(context, item.name);
+    if (!confirmed) return;
+    final previous = List<RawMaterialItem>.from(items);
+    setState(() => items.removeWhere((entry) => entry.id == item.id));
+    try {
+      await api.deleteRawMaterial(item.id);
+      if (mounted) showCpSnack(context, 'Raw material deleted');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(previous);
+      });
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Stack(
         children: [
@@ -905,7 +924,7 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
                     SizedBox(width: 10),
                     Expanded(
                         child: Text(
-                            'Universal raw material catalog. Add/edit only. Every user can access these items.',
+                            'Your private raw material catalog. Add, rename, edit, or delete items without sharing them with other users.',
                             style: TextStyle(
                                 color: Cp.primary,
                                 fontWeight: FontWeight.w800)))
@@ -978,7 +997,8 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
                     onEdit: () => showRawMaterialEditor(context, item: item,
                             onSave: (value) {
                           upsertRawMaterial(value);
-                        }))),
+                        }),
+                    onDelete: () => deleteRawMaterial(item))),
             ],
           ),
           Positioned(
@@ -1092,6 +1112,25 @@ class _ProduceItemScreenState extends State<ProduceItemScreen> {
     }
   }
 
+  Future<void> deleteItem(RawMaterialItem item) async {
+    final confirmed = await confirmDeleteCatalogItem(context, item.name);
+    if (!confirmed) return;
+    final previous = List<RawMaterialItem>.from(items);
+    setState(() => items.removeWhere((entry) => entry.id == item.id));
+    try {
+      await api.deleteProduceItem(item.id);
+      if (mounted) showCpSnack(context, 'Vegetable/fruit deleted');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(previous);
+      });
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Stack(
         children: [
@@ -1111,7 +1150,7 @@ class _ProduceItemScreenState extends State<ProduceItemScreen> {
                     SizedBox(width: 10),
                     Expanded(
                         child: Text(
-                            'Universal vegetables and fruits catalog in Kannada. Add/edit only. Every user can access these items.',
+                            'Your private vegetables and fruits catalog. Add, rename, edit, or delete items without sharing them with other users.',
                             style: TextStyle(
                                 color: Cp.primary,
                                 fontWeight: FontWeight.w800)))
@@ -1185,7 +1224,8 @@ class _ProduceItemScreenState extends State<ProduceItemScreen> {
                             item: item,
                             noun: 'Vegetable/Fruit', onSave: (value) {
                           upsertItem(value);
-                        }))),
+                        }),
+                    onDelete: () => deleteItem(item))),
             ],
           ),
           Positioned(
@@ -1300,6 +1340,25 @@ class _VesselItemScreenState extends State<VesselItemScreen> {
     }
   }
 
+  Future<void> deleteItem(RawMaterialItem item) async {
+    final confirmed = await confirmDeleteCatalogItem(context, item.name);
+    if (!confirmed) return;
+    final previous = List<RawMaterialItem>.from(items);
+    setState(() => items.removeWhere((entry) => entry.id == item.id));
+    try {
+      await api.deleteVesselItem(item.id);
+      if (mounted) showCpSnack(context, 'Vessel/utensil deleted');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        items
+          ..clear()
+          ..addAll(previous);
+      });
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Stack(
         children: [
@@ -1319,7 +1378,7 @@ class _VesselItemScreenState extends State<VesselItemScreen> {
                     SizedBox(width: 10),
                     Expanded(
                         child: Text(
-                            'Universal vessels and utensils catalog. Add/edit only. Every user can access these items.',
+                            'Your private vessels and utensils catalog. Add, rename, edit, or delete items without sharing them with other users.',
                             style: TextStyle(
                                 color: Cp.primary,
                                 fontWeight: FontWeight.w800)))
@@ -1393,7 +1452,8 @@ class _VesselItemScreenState extends State<VesselItemScreen> {
                             item: item,
                             noun: 'Vessel/Utensil', onSave: (value) {
                           upsertItem(value);
-                        }))),
+                        }),
+                    onDelete: () => deleteItem(item))),
             ],
           ),
           Positioned(
@@ -1417,9 +1477,14 @@ class _VesselItemScreenState extends State<VesselItemScreen> {
 }
 
 class RawMaterialCard extends StatelessWidget {
-  const RawMaterialCard({super.key, required this.item, required this.onEdit});
+  const RawMaterialCard(
+      {super.key,
+      required this.item,
+      required this.onEdit,
+      required this.onDelete});
   final RawMaterialItem item;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -1449,9 +1514,32 @@ class RawMaterialCard extends StatelessWidget {
                 onPressed: onEdit,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.edit, color: Cp.primary)),
+            IconButton(
+                onPressed: onDelete,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_outline, color: Cp.error)),
           ]),
         ),
       );
+}
+
+Future<bool> confirmDeleteCatalogItem(BuildContext context, String name) async {
+  return await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Delete item?'),
+          content: Text('Delete "$name" from your private catalog?'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Delete')),
+          ],
+        ),
+      ) ??
+      false;
 }
 
 class RawMaterialCardLegacy extends StatelessWidget {
@@ -1485,7 +1573,7 @@ class RawMaterialCardLegacy extends StatelessWidget {
                           color: Cp.primary,
                           fontSize: 17,
                           fontWeight: FontWeight.w500)),
-                  Text('${item.id} • ${item.category}',
+                  Text('${item.id} | ${item.category}',
                       style: const TextStyle(
                           color: Cp.onVariant, fontWeight: FontWeight.w700))
                 ])),

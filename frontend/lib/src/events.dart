@@ -22,10 +22,12 @@ class EventsScreen extends StatefulWidget {
 
 class _EventsScreenState extends State<EventsScreen> {
   final searchController = TextEditingController();
+  final dateChipScrollController = ScrollController();
+  final dateChipKeys = List.generate(15, (_) => GlobalKey());
   String query = '';
   String? clientFilter;
   String? dateFilter;
-  bool showPastEvents = true;
+  bool showPastEvents = false;
   bool showOverduePayments = false;
   String paymentFilter = 'All';
   static const shortMonths = [
@@ -44,9 +46,26 @@ class _EventsScreenState extends State<EventsScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => scrollChipsToToday());
+  }
+
+  @override
   void dispose() {
     searchController.dispose();
+    dateChipScrollController.dispose();
     super.dispose();
+  }
+
+  void scrollChipsToToday() {
+    final context = dateChipKeys[7].currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0,
+      duration: const Duration(milliseconds: 1),
+    );
   }
 
   List<String> get clientOptions {
@@ -75,9 +94,11 @@ class _EventsScreenState extends State<EventsScreen> {
           !event.dates.any((date) => date.date == dateFilter)) {
         return false;
       }
-      if (!showPastEvents &&
-          event.dates.any(
-              (date) => _parseDate(date.date)?.isBefore(todayOnly) ?? false)) {
+      final hasCurrentOrFutureDate = event.dates.any((date) {
+        final parsed = _parseDate(date.date);
+        return parsed != null && !parsed.isBefore(todayOnly);
+      });
+      if (!showPastEvents && dateFilter == null && !hasCurrentOrFutureDate) {
         return false;
       }
       final balance = eventBalance(event);
@@ -181,7 +202,7 @@ class _EventsScreenState extends State<EventsScreen> {
     setState(() {
       clientFilter = null;
       dateFilter = null;
-      showPastEvents = true;
+      showPastEvents = false;
       showOverduePayments = false;
       paymentFilter = 'All';
       query = '';
@@ -281,9 +302,8 @@ class _EventsScreenState extends State<EventsScreen> {
             filterMenuItem('date', Icons.event,
                 dateFilter == null ? 'Filter Date' : 'Date: $dateFilter',
                 selected: dateFilter != null),
-            filterMenuItem('past', Icons.history,
-                showPastEvents ? 'Hide Past Events' : 'Show Past Events',
-                selected: !showPastEvents),
+            filterMenuItem('past', Icons.history, 'Show Old Events',
+                selected: showPastEvents),
             filterMenuItem(
                 'overdue', Icons.warning_amber, 'Show Overdue Payments',
                 selected: showOverduePayments),
@@ -360,12 +380,16 @@ class _EventsScreenState extends State<EventsScreen> {
         ),
         const SizedBox(height: 16),
         SingleChildScrollView(
+          controller: dateChipScrollController,
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: dateChipDates.map((date) {
+            children: dateChipDates.asMap().entries.map((entry) {
+              final index = entry.key;
+              final date = entry.value;
               final key = _dateKey(date);
               final selected = dateFilter == key;
               return Padding(
+                key: dateChipKeys[index],
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
                   label: Text(_dateChipLabel(date)),
@@ -407,7 +431,12 @@ class _EventsScreenState extends State<EventsScreen> {
                 color: Cp.surfaceHigh,
                 textColor: Cp.onVariant,
                 icon: Icons.payments),
-          if (!showPastEvents ||
+          if (showPastEvents)
+            const Pill('Old events',
+                color: Cp.surfaceHigh,
+                textColor: Cp.onVariant,
+                icon: Icons.history),
+          if (showPastEvents ||
               showOverduePayments ||
               clientFilter != null ||
               dateFilter != null ||
@@ -550,7 +579,7 @@ class EventListCard extends StatelessWidget {
                     Row(children: [
                       Icon(Icons.person, size: 16, color: mutedColor),
                       Flexible(
-                          child: Text(' $client • $phone',
+                          child: Text(' $client | $phone',
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                   color: mutedColor,

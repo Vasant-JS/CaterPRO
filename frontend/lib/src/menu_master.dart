@@ -143,6 +143,42 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
     }));
   }
 
+  Future<void> deleteMenuItem(MenuMasterItem item) async {
+    final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Delete menu item?'),
+            content: Text(
+                'Delete "${item.english.isEmpty ? item.kannada : item.english}" from your menu catalog?'),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete')),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed) return;
+    final previous = List<MenuMasterItem>.from(MenuMasterScreen.menuItems);
+    setState(() =>
+        MenuMasterScreen.menuItems.removeWhere((entry) => entry.id == item.id));
+    try {
+      await api.deleteMenuItem(item.id);
+      if (mounted) showCpSnack(context, 'Menu item deleted');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        MenuMasterScreen.menuItems
+          ..clear()
+          ..addAll(previous);
+      });
+      showCpSnack(context, error.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   Future<void> exportMenuCatalogPdf(String language) async {
     final uri = await api.menuCatalogPdfUri(language,
         search: query, meal: selectedMealFilter, vegOnly: vegOnly);
@@ -242,7 +278,7 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                       child: Text(
-                          'Universal menu catalog. Add/edit only. Every user can access these items.',
+                          'Your private menu catalog. Add, rename, edit, or delete items without disclosing them to other app users.',
                           style: TextStyle(
                               color: Theme.of(context)
                                   .colorScheme
@@ -294,12 +330,13 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
             ...visibleItems.map((item) => MenuItemCard(
                 item: item,
                 onEdit: () => showMenuItemEditor(context,
-                    item: item, onSave: upsertMenuItem))),
+                    item: item, onSave: upsertMenuItem),
+                onDelete: () => deleteMenuItem(item))),
             const SizedBox(height: 18),
             CpCard(
                 color: Cp.primaryContainer,
                 child: Text(
-                    'Universal Menu Items\n${MenuMasterScreen.menuItems.length} Items',
+                    'Your Menu Items\n${MenuMasterScreen.menuItems.length} Items',
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 24,
@@ -308,9 +345,14 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
 }
 
 class MenuItemCard extends StatelessWidget {
-  const MenuItemCard({super.key, required this.item, required this.onEdit});
+  const MenuItemCard(
+      {super.key,
+      required this.item,
+      required this.onEdit,
+      required this.onDelete});
   final MenuMasterItem item;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -341,6 +383,10 @@ class MenuItemCard extends StatelessWidget {
                 onPressed: onEdit,
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(Icons.edit, color: Cp.primary)),
+            IconButton(
+                onPressed: onDelete,
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.delete_outline, color: Cp.error)),
           ]),
         ),
       );
@@ -391,7 +437,7 @@ class MenuItemCardLegacy extends StatelessWidget {
                                   fontSize: 15, fontWeight: FontWeight.w800)))
                     ]),
                     const SizedBox(height: 2),
-                    Text('${item.id} • ${item.category} • ${item.meals}',
+                    Text('${item.id} | ${item.category} | ${item.meals}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style:
@@ -865,7 +911,7 @@ class _CustomMenuScreenState extends State<CustomMenuScreen> {
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900)),
                           Text(
-                              '${menu.itemIds.length} items${names.isEmpty ? '' : ' • $names'}',
+                              '${menu.itemIds.length} items${names.isEmpty ? '' : ' | $names'}',
                               style: TextStyle(
                                   color: cpOnVariant(context),
                                   fontWeight: FontWeight.w700)),
@@ -1027,7 +1073,7 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
                         const SizedBox(width: 10),
                         Expanded(
                             child: MarqueeText(
-                                '${item.title}\n${item.id} • ${item.category}',
+                                '${item.title}\n${item.id} | ${item.category}',
                                 style: kannadaMenuTextStyle(context,
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800))),

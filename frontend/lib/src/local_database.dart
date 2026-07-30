@@ -17,12 +17,21 @@ class LocalCaterProDb {
     final dbPath = path_package.join(basePath, 'caterpro_local.db');
     return _db = await openDatabase(
       dbPath,
-      version: 3,
+      version: 5,
       onCreate: (db, version) async => createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) async {
         await createSchema(db);
         if (oldVersion < 3) {
           await addColumnIfMissing(db, 'cp_business_profiles', 'ifsc', 'text');
+        }
+        if (oldVersion < 4) {
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'account_holder_name', 'text');
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'branch_name', 'text');
+        }
+        if (oldVersion < 5) {
+          await createSchema(db);
         }
       },
     );
@@ -69,6 +78,8 @@ class LocalCaterProDb {
           gst_type text,
           gst_rate real,
           ifsc text,
+          account_holder_name text,
+          branch_name text,
           phone text,
           email text,
           raw text not null,
@@ -290,6 +301,23 @@ class LocalCaterProDb {
         )
         ''',
         '''
+        create table if not exists cp_user_menu_items (
+          state_id text not null,
+          user_id text not null,
+          id text not null,
+          english text,
+          kannada text,
+          title text,
+          category text,
+          meals text not null,
+          veg integer,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, user_id, id)
+        )
+        ''',
+        '''
         create table if not exists cp_raw_materials (
           state_id text not null,
           id text not null,
@@ -300,6 +328,20 @@ class LocalCaterProDb {
           synced integer not null default 1,
           updated_at text not null,
           primary key (state_id, id)
+        )
+        ''',
+        '''
+        create table if not exists cp_user_raw_materials (
+          state_id text not null,
+          user_id text not null,
+          id text not null,
+          name text,
+          category text,
+          unit text,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, user_id, id)
         )
         ''',
         '''
@@ -316,6 +358,20 @@ class LocalCaterProDb {
         )
         ''',
         '''
+        create table if not exists cp_user_produce_items (
+          state_id text not null,
+          user_id text not null,
+          id text not null,
+          name text,
+          category text,
+          unit text,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, user_id, id)
+        )
+        ''',
+        '''
         create table if not exists cp_vessel_items (
           state_id text not null,
           id text not null,
@@ -326,6 +382,20 @@ class LocalCaterProDb {
           synced integer not null default 1,
           updated_at text not null,
           primary key (state_id, id)
+        )
+        ''',
+        '''
+        create table if not exists cp_user_vessel_items (
+          state_id text not null,
+          user_id text not null,
+          id text not null,
+          name text,
+          category text,
+          unit text,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, user_id, id)
         )
         ''',
       ];
@@ -358,6 +428,26 @@ class LocalCaterProDb {
       for (final table in userTables) {
         batch.delete(table, where: 'state_id = ?', whereArgs: [stateId]);
       }
+      if (userData.containsKey('menuItems')) {
+        batch.delete('cp_user_menu_items',
+            where: 'state_id = ? and user_id = ?',
+            whereArgs: [stateId, userId]);
+      }
+      if (userData.containsKey('rawMaterials')) {
+        batch.delete('cp_user_raw_materials',
+            where: 'state_id = ? and user_id = ?',
+            whereArgs: [stateId, userId]);
+      }
+      if (userData.containsKey('produceItems')) {
+        batch.delete('cp_user_produce_items',
+            where: 'state_id = ? and user_id = ?',
+            whereArgs: [stateId, userId]);
+      }
+      if (userData.containsKey('vesselItems')) {
+        batch.delete('cp_user_vessel_items',
+            where: 'state_id = ? and user_id = ?',
+            whereArgs: [stateId, userId]);
+      }
       if (universal.containsKey('menuItems')) {
         batch.delete('cp_menu_items',
             where: 'state_id = ?', whereArgs: [stateId]);
@@ -383,13 +473,15 @@ class LocalCaterProDb {
   Future<bool> hasMasterData() async {
     if (kIsWeb) return true;
     final db = await database;
+    final userId = await currentUserId();
     for (final table in [
-      'cp_menu_items',
-      'cp_produce_items',
-      'cp_vessel_items',
+      'cp_user_menu_items',
+      'cp_user_produce_items',
+      'cp_user_vessel_items',
     ]) {
       final rows = await db.rawQuery(
-          'select count(*) as total from $table where state_id = ?', [stateId]);
+          'select count(*) as total from $table where state_id = ? and user_id = ?',
+          [stateId, userId]);
       if (((rows.first['total'] as int?) ?? 0) == 0) return false;
     }
     return true;
@@ -401,6 +493,7 @@ class LocalCaterProDb {
   }) async {
     if (kIsWeb) return;
     final db = await database;
+    final userId = await currentUserId();
     final updatedAt = DateTime.now().toIso8601String();
     final syncedValue = synced ? 1 : 0;
     await db.transaction((txn) async {
@@ -421,7 +514,26 @@ class LocalCaterProDb {
         batch.delete('cp_vessel_items',
             where: 'state_id = ?', whereArgs: [stateId]);
       }
+      batch.delete('cp_user_menu_items',
+          where: 'state_id = ? and user_id = ?', whereArgs: [stateId, userId]);
+      batch.delete('cp_user_raw_materials',
+          where: 'state_id = ? and user_id = ?', whereArgs: [stateId, userId]);
+      batch.delete('cp_user_produce_items',
+          where: 'state_id = ? and user_id = ?', whereArgs: [stateId, userId]);
+      batch.delete('cp_user_vessel_items',
+          where: 'state_id = ? and user_id = ?', whereArgs: [stateId, userId]);
       upsertUniversalRows(batch, universal, updatedAt, syncedValue);
+      upsertUserCatalogRows(
+          batch,
+          userId,
+          {
+            'menuItems': mapList(universal['menuItems']),
+            'rawMaterials': mapList(universal['rawMaterials']),
+            'produceItems': mapList(universal['produceItems']),
+            'vesselItems': mapList(universal['vesselItems']),
+          },
+          updatedAt,
+          syncedValue);
       await batch.commit(noResult: true);
     });
   }
@@ -491,6 +603,8 @@ class LocalCaterProDb {
       'gst_type': profile['gstType']?.toString() ?? '',
       'gst_rate': double.tryParse(profile['gstRate']?.toString() ?? '') ?? 0,
       'ifsc': profile['ifsc']?.toString() ?? '',
+      'account_holder_name': profile['accountHolderName']?.toString() ?? '',
+      'branch_name': profile['branchName']?.toString() ?? '',
       'phone': profile['phone']?.toString() ?? '',
       'email': profile['email']?.toString() ?? '',
       'raw': encode(profile),
@@ -540,6 +654,7 @@ class LocalCaterProDb {
         'updated_at': updatedAt,
       });
     }
+    upsertUserCatalogRows(batch, userId, userData, updatedAt, synced);
     for (final item in mapList(userData['customMenus'])) {
       insert(batch, 'cp_custom_menus', {
         'state_id': stateId,
@@ -571,7 +686,9 @@ class LocalCaterProDb {
         'updated_at': updatedAt,
       });
       for (final date in mapList(event['dates'])) {
-        final dateId = date['id']?.toString() ?? date['date']?.toString() ?? '';
+        final dateId = date['id']?.toString().isNotEmpty == true
+            ? date['id']?.toString() ?? ''
+            : date['date']?.toString() ?? '';
         insert(batch, 'cp_event_dates', {
           'state_id': stateId,
           'user_id': userId,
@@ -590,7 +707,7 @@ class LocalCaterProDb {
             'user_id': userId,
             'event_id': eventId,
             'date_id': dateId,
-            'id': slot['id']?.toString() ?? '${slot['type']}-$dateId',
+            'id': slot['id']?.toString() ?? '',
             'type': slot['type']?.toString() ?? '',
             'delivery_time': slot['time']?.toString() ?? '',
             'pax': int.tryParse(slot['pax']?.toString() ?? '') ?? 0,
@@ -605,36 +722,39 @@ class LocalCaterProDb {
           });
         }
       }
-      for (final item in mapList(event['payments'])) {
+      for (final payment in mapList(event['payments'])) {
         insert(batch, 'cp_event_payments', {
           'state_id': stateId,
           'user_id': userId,
           'event_id': eventId,
-          'id': item['id']?.toString() ?? '',
-          'amount': int.tryParse(item['amount']?.toString() ?? '') ?? 0,
-          'payment_date': item['date']?.toString() ?? '',
-          'mode': item['mode']?.toString() ?? '',
-          'reference': item['reference']?.toString() ?? '',
-          'settled': item['settled'] == true ? 1 : 0,
-          'raw': encode(item),
+          'id': payment['id']?.toString() ?? '',
+          'amount': int.tryParse(payment['amount']?.toString() ?? '') ?? 0,
+          'payment_date': payment['date']?.toString() ?? '',
+          'mode': payment['mode']?.toString() ?? '',
+          'reference': payment['reference']?.toString() ?? '',
+          'settled': payment['settled'] == true ? 1 : 0,
+          'raw': encode(payment),
           'synced': synced,
           'updated_at': updatedAt,
         });
       }
-      for (final item in mapList(event['employeeAssignments'])) {
+      for (final assignment in mapList(event['employeeAssignments'])) {
         insert(batch, 'cp_event_assignments', {
           'state_id': stateId,
           'user_id': userId,
           'event_id': eventId,
-          'employee_id':
-              item['employeeId']?.toString() ?? item['id']?.toString() ?? '',
-          'name': item['name']?.toString() ?? '',
-          'designation': item['designation']?.toString() ?? '',
+          'employee_id': assignment['employeeId']?.toString() ??
+              assignment['id']?.toString() ??
+              '',
+          'name': assignment['name']?.toString() ??
+              assignment['employeeName']?.toString() ??
+              '',
+          'designation': assignment['designation']?.toString() ?? '',
           'pay_per_day':
-              double.tryParse(item['payPerDay']?.toString() ?? '') ?? 0,
+              double.tryParse(assignment['payPerDay']?.toString() ?? '') ?? 0,
           'pay_per_hour':
-              double.tryParse(item['payPerHour']?.toString() ?? '') ?? 0,
-          'raw': encode(item),
+              double.tryParse(assignment['payPerHour']?.toString() ?? '') ?? 0,
+          'raw': encode(assignment),
           'synced': synced,
           'updated_at': updatedAt,
         });
@@ -691,6 +811,65 @@ class LocalCaterProDb {
           'updated_at': updatedAt,
         });
       }
+    }
+  }
+
+  void upsertUserCatalogRows(Batch batch, String userId,
+      Map<String, dynamic> userData, String updatedAt, int synced) {
+    for (final item in mapList(userData['menuItems'])) {
+      insert(batch, 'cp_user_menu_items', {
+        'state_id': stateId,
+        'user_id': userId,
+        'id': item['id']?.toString() ?? '',
+        'english': item['english']?.toString() ?? '',
+        'kannada': item['kannada']?.toString() ?? '',
+        'title': item['title']?.toString() ?? '',
+        'category': item['category']?.toString() ?? '',
+        'meals': encode(item['meals']),
+        'veg': item['veg'] == true ? 1 : 0,
+        'raw': encode(item),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
+    }
+    for (final item in mapList(userData['rawMaterials'])) {
+      insert(batch, 'cp_user_raw_materials', {
+        'state_id': stateId,
+        'user_id': userId,
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        'category': item['category']?.toString() ?? '',
+        'unit': item['unit']?.toString() ?? '',
+        'raw': encode(item),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
+    }
+    for (final item in mapList(userData['produceItems'])) {
+      insert(batch, 'cp_user_produce_items', {
+        'state_id': stateId,
+        'user_id': userId,
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        'category': item['category']?.toString() ?? '',
+        'unit': item['unit']?.toString() ?? '',
+        'raw': encode(item),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
+    }
+    for (final item in mapList(userData['vesselItems'])) {
+      insert(batch, 'cp_user_vessel_items', {
+        'state_id': stateId,
+        'user_id': userId,
+        'id': item['id']?.toString() ?? '',
+        'name': item['name']?.toString() ?? '',
+        'category': item['category']?.toString() ?? '',
+        'unit': item['unit']?.toString() ?? '',
+        'raw': encode(item),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
     }
   }
 
@@ -764,6 +943,14 @@ class LocalCaterProDb {
             await rawRows(db, 'cp_attendance', 'user_id = ?', [userId]),
         'additionalServices': await rawRows(
             db, 'cp_additional_services', 'user_id = ?', [userId]),
+        'menuItems':
+            await rawRows(db, 'cp_user_menu_items', 'user_id = ?', [userId]),
+        'rawMaterials':
+            await rawRows(db, 'cp_user_raw_materials', 'user_id = ?', [userId]),
+        'produceItems':
+            await rawRows(db, 'cp_user_produce_items', 'user_id = ?', [userId]),
+        'vesselItems':
+            await rawRows(db, 'cp_user_vessel_items', 'user_id = ?', [userId]),
         'customMenus':
             await rawRows(db, 'cp_custom_menus', 'user_id = ?', [userId]),
         'manualInvoices':
@@ -795,6 +982,17 @@ class LocalCaterProDb {
 
   Future<bool> hasSnapshotRows(Database db, String userId) async {
     for (final table in userTables.where((table) => table != 'cp_users')) {
+      final rows = await db.rawQuery(
+          'select 1 from $table where state_id = ? and user_id = ? limit 1',
+          [stateId, userId]);
+      if (rows.isNotEmpty) return true;
+    }
+    for (final table in [
+      'cp_user_menu_items',
+      'cp_user_raw_materials',
+      'cp_user_produce_items',
+      'cp_user_vessel_items'
+    ]) {
       final rows = await db.rawQuery(
           'select 1 from $table where state_id = ? and user_id = ? limit 1',
           [stateId, userId]);

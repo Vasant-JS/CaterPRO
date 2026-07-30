@@ -213,6 +213,20 @@ create table if not exists cp_menu_items (
   primary key (state_id, id)
 );
 
+create table if not exists cp_user_menu_items (
+  state_id text not null,
+  user_id text not null,
+  id text not null,
+  english text,
+  kannada text,
+  title text,
+  category text,
+  meals jsonb not null default '[]'::jsonb,
+  veg boolean,
+  raw jsonb not null,
+  primary key (state_id, user_id, id)
+);
+
 create table if not exists cp_raw_materials (
   state_id text not null,
   id text not null,
@@ -221,6 +235,17 @@ create table if not exists cp_raw_materials (
   unit text,
   raw jsonb not null,
   primary key (state_id, id)
+);
+
+create table if not exists cp_user_raw_materials (
+  state_id text not null,
+  user_id text not null,
+  id text not null,
+  name text,
+  category text,
+  unit text,
+  raw jsonb not null,
+  primary key (state_id, user_id, id)
 );
 
 create table if not exists cp_produce_items (
@@ -233,6 +258,17 @@ create table if not exists cp_produce_items (
   primary key (state_id, id)
 );
 
+create table if not exists cp_user_produce_items (
+  state_id text not null,
+  user_id text not null,
+  id text not null,
+  name text,
+  category text,
+  unit text,
+  raw jsonb not null,
+  primary key (state_id, user_id, id)
+);
+
 create table if not exists cp_vessel_items (
   state_id text not null,
   id text not null,
@@ -241,4 +277,15 @@ create table if not exists cp_vessel_items (
   unit text,
   raw jsonb not null,
   primary key (state_id, id)
+);
+
+create table if not exists cp_user_vessel_items (
+  state_id text not null,
+  user_id text not null,
+  id text not null,
+  name text,
+  category text,
+  unit text,
+  raw jsonb not null,
+  primary key (state_id, user_id, id)
 );

@@ -388,7 +388,7 @@ class _ClientCardState extends State<ClientCard> {
                       fontSize: 16,
                       fontWeight: FontWeight.w900)),
               Text(
-                  '${summary.events.length} events • ${summary.invoices.length} bills',
+                  '${summary.events.length} events | ${summary.invoices.length} bills',
                   style: TextStyle(color: mutedColor, fontSize: 12)),
               IconButton(
                 visualDensity: VisualDensity.compact,

@@ -12,8 +12,10 @@ class CreateEventScreen extends StatefulWidget {
       required this.clients,
       required this.customerEvents,
       required this.onSaveService,
-      required this.onDeleteService});
+      required this.onDeleteService,
+      this.initialStep = 0});
   final AppEvent? initialEvent;
+  final int initialStep;
   final ValueChanged<AppEvent> onDraftSaved;
   final VoidCallback onClose;
   final Future<void> Function(EventDraft draft) onCreate;
@@ -33,12 +35,16 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   int step = 0;
   bool saving = false;
   bool autosaving = false;
+  bool hasUnsavedChanges = false;
   String? error;
   late final EventDraft draft;
+
+  bool get isEditing => widget.initialEvent != null;
 
   @override
   void initState() {
     super.initState();
+    step = widget.initialStep.clamp(0, 3).toInt();
     draft = widget.initialEvent == null
         ? EventDraft()
         : EventDraft.fromEvent(widget.initialEvent!);
@@ -104,7 +110,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     final seenDates = <String>{};
     for (final date in draft.dates) {
       final dateError =
-          isoDateValidator(date.date, label: 'Event date', noPast: true);
+          isoDateValidator(date.date, label: 'Event date', noPast: !isEditing);
       if (dateError != null) return dateError;
       if (!seenDates.add(date.date.trim())) return 'Date already added';
       for (final slot in date.slots.where((item) => item.enabled)) {
@@ -130,6 +136,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       final saved = await api.saveEventDraft(draft, eventId: draft.id);
       draft.id = saved.id;
       widget.onDraftSaved(saved);
+      if (mounted) setState(() => hasUnsavedChanges = false);
       return true;
     } catch (e) {
       if (mounted) {
@@ -154,6 +161,50 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     setState(() {
       error = null;
       step++;
+    });
+  }
+
+  void markChanged() {
+    setState(() {
+      hasUnsavedChanges = true;
+      error = null;
+    });
+  }
+
+  Future<String?> confirmStepJump() {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Save changes?'),
+        content: const Text('Save your changes before moving to this step?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, 'skip'),
+              child: const Text('Skip')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, 'save'),
+              child: const Text('Save')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> jumpToStep(int targetStep) async {
+    if (targetStep == step || saving || autosaving) return;
+    if (hasUnsavedChanges) {
+      final choice = await confirmStepJump();
+      if (!mounted || choice == null) return;
+      if (choice == 'save') {
+        final saved = await autosaveDraft();
+        if (!saved || !mounted) return;
+      }
+    }
+    setState(() {
+      error = null;
+      step = targetStep;
     });
   }
 
@@ -185,7 +236,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         ],
       ),
       children: [
-        StepperHeader(active: step),
+        StepperHeader(active: step, onStepTap: jumpToStep),
         const SizedBox(height: 24),
         if (error != null) ...[
           CpCard(
@@ -199,12 +250,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           CreateDetailsStep(
               draft: draft,
               customers: customerSuggestions,
-              onChanged: () => setState(() => error = null)),
+              onChanged: markChanged),
         if (step == 1)
           CreateDatesStep(
               dates: draft.dates,
               onChanged: () {
-                setState(() {});
+                setState(() => hasUnsavedChanges = true);
                 autosaveDraft();
               }),
         if (step == 2)
@@ -212,14 +263,17 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
               dates: draft.dates,
               services: widget.services,
               customMenus: widget.customMenus,
-              onChanged: () => autosaveDraft(),
+              onChanged: () {
+                setState(() => hasUnsavedChanges = true);
+                autosaveDraft();
+              },
               onSaveService: widget.onSaveService,
               onDeleteService: widget.onDeleteService),
         if (step == 3)
           CreateReviewStep(
               draft: draft,
               onChanged: () {
-                setState(() {});
+                setState(() => hasUnsavedChanges = true);
                 autosaveDraft();
               }),
         const SizedBox(height: 20),
@@ -2260,8 +2314,9 @@ class CountBadge extends StatelessWidget {
 }
 
 class StepperHeader extends StatelessWidget {
-  const StepperHeader({super.key, required this.active});
+  const StepperHeader({super.key, required this.active, this.onStepTap});
   final int active;
+  final ValueChanged<int>? onStepTap;
   @override
   Widget build(BuildContext context) {
     final labels = ['Details', 'Dates', 'Menu', 'Review'];
@@ -2269,29 +2324,36 @@ class StepperHeader extends StatelessWidget {
         children: List.generate(
             labels.length,
             (i) => Expanded(
-                    child: Column(children: [
-                  CircleAvatar(
-                      radius: 16,
-                      backgroundColor: i <= active
-                          ? Theme.of(context).colorScheme.primaryContainer
-                          : cpSurfaceHigh(context),
-                      child: Text('${i + 1}',
-                          style: TextStyle(
-                              color: i <= active
+                child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: onStepTap == null ? null : () => onStepTap!(i),
+                    child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Column(children: [
+                          CircleAvatar(
+                              radius: 16,
+                              backgroundColor: i <= active
                                   ? Theme.of(context)
                                       .colorScheme
-                                      .onPrimaryContainer
-                                  : cpOnVariant(context),
-                              fontWeight: FontWeight.w900))),
-                  const SizedBox(height: 4),
-                  Text(labels[i],
-                      style: TextStyle(
-                          color: i <= active
-                              ? cpPrimary(context)
-                              : cpOnVariant(context),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800))
-                ]))));
+                                      .primaryContainer
+                                  : cpSurfaceHigh(context),
+                              child: Text('${i + 1}',
+                                  style: TextStyle(
+                                      color: i <= active
+                                          ? Theme.of(context)
+                                              .colorScheme
+                                              .onPrimaryContainer
+                                          : cpOnVariant(context),
+                                      fontWeight: FontWeight.w900))),
+                          const SizedBox(height: 4),
+                          Text(labels[i],
+                              style: TextStyle(
+                                  color: i <= active
+                                      ? cpPrimary(context)
+                                      : cpOnVariant(context),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800))
+                        ]))))));
   }
 }
 

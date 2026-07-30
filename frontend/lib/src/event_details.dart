@@ -36,6 +36,7 @@ class EventDetailsScreen extends StatelessWidget {
       required this.employees,
       required this.businessProfile,
       required this.onEdit,
+      required this.onEditStep,
       required this.onAddEvent,
       required this.onEventUpdated,
       required this.onEventDeleted,
@@ -46,6 +47,7 @@ class EventDetailsScreen extends StatelessWidget {
   final List<Employee> employees;
   final BusinessProfile businessProfile;
   final ValueChanged<AppEvent> onEdit;
+  final void Function(AppEvent event, int step) onEditStep;
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
   final ValueChanged<String> onEventDeleted;
@@ -260,7 +262,8 @@ class EventDetailsScreen extends StatelessWidget {
                           color: cpPrimary(context),
                           fontSize: 24,
                           fontWeight: FontWeight.w900)),
-                  Text(event.name,
+                  Text(
+                      whatsappClientEventPhrase(whatsappEventClientName(event)),
                       style: TextStyle(
                           color: cpOnVariant(context),
                           fontWeight: FontWeight.w700)),
@@ -280,7 +283,8 @@ class EventDetailsScreen extends StatelessWidget {
                       Navigator.pop(sheetContext);
                       await launchUrl(
                           Uri(scheme: 'mailto', queryParameters: {
-                            'subject': 'Menu - ${event.name}',
+                            'subject':
+                                'Menu - ${whatsappClientEventPhrase(whatsappEventClientName(event))}',
                             'body': message
                           }),
                           mode: LaunchMode.externalApplication);
@@ -370,112 +374,34 @@ class EventDetailsScreen extends StatelessWidget {
   }
 
   String buildEventWhatsAppMessage(AppEvent event) {
-    final eventName = event.name.isEmpty ? 'Event' : event.name;
-    final businessName = businessProfile.businessName.trim().isEmpty
-        ? 'CaterPro'
-        : businessProfile.businessName.trim();
-    final lines = <String>[
-      '*$eventName*',
-      '*Event Details*',
-      '------------------------------',
-    ];
+    final lines = buildFormattedMenuShareLines(event,
+        businessProfile: businessProfile, includeFooter: false);
 
-    if (event.primaryClient.trim().isNotEmpty) {
-      lines.add('*Client:* ${event.primaryClient.trim()}');
-    }
-    if (event.mobile.trim().isNotEmpty) {
-      lines.add('*Phone:* ${event.mobile.trim()}');
-    }
-    if (event.venue.trim().isNotEmpty) {
-      lines.add('*Venue:* ${event.venue.trim()}');
-    }
     if (event.notes.trim().isNotEmpty) {
       lines
         ..add('')
-        ..add('*Notes*')
+        ..add('📝 *NOTES*')
         ..add(event.notes.trim());
-    }
-
-    lines
-      ..add('')
-      ..add('*Dates & Menu*');
-
-    if (event.dates.isEmpty) {
-      lines.add('- No dates configured');
-    } else {
-      for (final date in sortedEventDates(event.dates)) {
-        lines
-          ..add('')
-          ..add('*${readableDateLabel(date.date)}*');
-        if (date.label.trim().isNotEmpty) {
-          lines.add('_${date.label.trim()}_');
-        }
-        final visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
-        if (visibleSlots.isEmpty) {
-          lines.add('- No menu configured');
-        } else {
-          for (final slot in visibleSlots) {
-            final names = slot.menuItemIds
-                .map((id) => menuItemById(id))
-                .whereType<MenuMasterItem>()
-                .map((item) => item.title)
-                .toList();
-            final slotMeta = [
-              if (slot.time.trim().isNotEmpty) slot.time.trim(),
-              '${slot.pax} members',
-              '${whatsAppMoney(slot.pricePerPax)}/member',
-            ].join(' | ');
-            lines
-              ..add('')
-              ..add('*${slot.type} - $slotMeta*');
-            if (names.isEmpty) {
-              lines.add('- Menu items not selected');
-            } else {
-              for (final name in names) {
-                lines.add('- $name');
-              }
-            }
-            if (slot.additionalServices.isNotEmpty) {
-              lines.add('Services:');
-              for (final service in slot.additionalServices) {
-                lines.add('- ${oneLineService(service)}');
-              }
-            }
-            if (slot.menuImages.isNotEmpty) {
-              lines.add(
-                  'Images: ${slot.menuImages.length} menu image${slot.menuImages.length == 1 ? '' : 's'} attached');
-            }
-          }
-        }
-        if (date.additionalServices.isNotEmpty) {
-          lines
-            ..add('')
-            ..add('*Date services*');
-          for (final service in date.additionalServices) {
-            lines.add('- ${oneLineService(service)}');
-          }
-        }
-      }
     }
 
     if (event.addOns.isNotEmpty) {
       lines
         ..add('')
-        ..add('*Add-ons*');
+        ..add('➕ *ADD-ONS*');
       for (final addOn in event.addOns) {
         final title = addOn['title']?.toString() ?? 'Add-on';
         final cost = (addOn['cost'] as num?)?.toInt() ?? 0;
-        lines.add('- $title${cost > 0 ? ' - ${whatsAppMoney(cost)}' : ''}');
+        lines.add('• $title${cost > 0 ? ' | ${whatsAppMoney(cost)}' : ''}');
       }
     }
 
     if (event.employeeAssignments.isNotEmpty) {
       lines
         ..add('')
-        ..add('*Team*');
+        ..add('👥 *TEAM*');
       for (final employee in event.employeeAssignments) {
         lines.add(
-            '- ${employee.employeeName}${employee.designation.isEmpty ? '' : ' (${employee.designation})'}');
+            '• ${employee.employeeName}${employee.designation.isEmpty ? '' : ' (${employee.designation})'}');
       }
     }
 
@@ -484,14 +410,13 @@ class EventDetailsScreen extends StatelessWidget {
     final balance = eventBalance(event);
     lines
       ..add('')
-      ..add('*Payment Summary*')
+      ..add('💳 *PAYMENT SUMMARY*')
       ..add('Total: ${whatsAppMoney(total)}')
       ..add('Paid: ${whatsAppMoney(paid)}')
       ..add('Balance: ${whatsAppMoney(balance)}')
       ..add('')
-      ..add('Thank you for your business')
-      ..add('Regards:')
-      ..add(businessName);
+      ..add(
+          '🙏 Thank you for choosing *${businessDisplayName(businessProfile)}*');
 
     return lines.join('\n');
   }
@@ -577,6 +502,7 @@ class EventDetailsScreen extends StatelessWidget {
                   api: api,
                   employees: employees,
                   businessProfile: businessProfile,
+                  onEditStep: onEditStep,
                   onAddEvent: onAddEvent,
                   onEventUpdated: onEventUpdated)
             ],
@@ -592,6 +518,7 @@ class EventDetailsContent extends StatefulWidget {
       required this.api,
       required this.employees,
       required this.businessProfile,
+      required this.onEditStep,
       required this.onAddEvent,
       required this.onEventUpdated});
   final AppEvent event;
@@ -599,6 +526,7 @@ class EventDetailsContent extends StatefulWidget {
   final ApiService api;
   final List<Employee> employees;
   final BusinessProfile businessProfile;
+  final void Function(AppEvent event, int step) onEditStep;
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
 
@@ -609,38 +537,81 @@ class EventDetailsContent extends StatefulWidget {
 String buildFormattedMenuShareMessage(AppEvent event,
     {AppEventDate? onlyDate,
     BusinessProfile businessProfile = const BusinessProfile()}) {
+  return buildFormattedMenuShareLines(event,
+          onlyDate: onlyDate, businessProfile: businessProfile)
+      .join('\n');
+}
+
+List<String> buildFormattedMenuShareLines(AppEvent event,
+    {AppEventDate? onlyDate,
+    BusinessProfile businessProfile = const BusinessProfile(),
+    bool includeFooter = true}) {
+  final businessName = businessDisplayName(businessProfile);
   final lines = <String>[
-    '*${event.name.isEmpty ? 'Event Menu' : event.name}*',
-    '*Menu Details*',
-    '------------------------------',
+    '🍽 *$businessName – Event Details*',
+    '',
   ];
 
   if (event.primaryClient.trim().isNotEmpty) {
-    lines.add('*Client:* ${event.primaryClient.trim()}');
+    lines.add('👤 Client: ${event.primaryClient.trim()}');
+  }
+  if (event.mobile.trim().isNotEmpty) {
+    lines.add('📞 Mobile: ${event.mobile.trim()}');
   }
   if (event.venue.trim().isNotEmpty) {
-    lines.add('*Venue:* ${event.venue.trim()}');
+    lines.add('📍 Address: ${event.venue.trim()}');
   }
 
   final dates = onlyDate == null ? sortedEventDates(event.dates) : [onlyDate];
   if (dates.isEmpty) {
     lines
+      ..add('📅 Date: ')
+      ..add('⏰ Time: ')
       ..add('')
-      ..add('No menu dates configured.');
-    return lines.join('\n');
+      ..add('----------------------------')
+      ..add('🧺 *SERVICE OPTIONS*')
+      ..add('—')
+      ..add('')
+      ..add('----------------------------')
+      ..add('🍴 *MENU*')
+      ..add('No menu configured.');
+    if (includeFooter) {
+      lines
+        ..add('----------------------------')
+        ..add('🙏 Thank you for choosing *$businessName*');
+    }
+    return lines;
   }
 
   for (final date in dates) {
     final slots = sortedVisibleMenuSlots(date.menuSlots);
+    if (dates.length > 1) {
+      lines.add('');
+    }
     lines
+      ..add('📅 Date: ${whatsAppDateLabel(date.date)}')
+      ..add('⏰ Time: ${whatsAppTimeSummary(slots)}')
       ..add('')
-      ..add('*${readableDateLabel(date.date)}*');
+      ..add('----------------------------')
+      ..add('🧺 *SERVICE OPTIONS*');
     if (date.label.trim().isNotEmpty) {
       lines.add('_${date.label.trim()}_');
     }
 
+    final serviceLines = whatsAppServiceLines(date, slots);
+    if (serviceLines.isEmpty) {
+      lines.add('—');
+    } else {
+      lines.addAll(serviceLines);
+    }
+
+    lines
+      ..add('')
+      ..add('----------------------------')
+      ..add('🍴 *MENU*');
+
     if (slots.isEmpty) {
-      lines.add('- No menu configured');
+      lines.add('No menu configured.');
     } else {
       for (final slot in slots) {
         final itemNames = slot.menuItemIds
@@ -648,34 +619,29 @@ String buildFormattedMenuShareMessage(AppEvent event,
             .whereType<MenuMasterItem>()
             .map((item) => item.title)
             .toList();
-        final slotMeta = [
-          if (slot.time.trim().isNotEmpty) slot.time.trim(),
-          if (slot.pax > 0) '${slot.pax} members',
-        ].join(' | ');
         lines
           ..add('')
-          ..add('*${slot.type}${slotMeta.isEmpty ? '' : ' - $slotMeta'}*');
+          ..add('🔹 ${slot.type}')
+          ..add('👥 Members: ${slot.pax}')
+          ..add('🍽 Items:');
 
         if (itemNames.isEmpty) {
-          lines.add('- Menu items not selected');
+          lines.add('• Menu items not selected');
         } else {
           for (final name in itemNames) {
-            lines.add('- $name');
+            lines.add('• $name');
           }
         }
       }
     }
   }
 
-  final businessName = businessProfile.businessName.trim().isEmpty
-      ? 'CaterPro'
-      : businessProfile.businessName.trim();
-  lines
-    ..add('')
-    ..add('Thank you for your business')
-    ..add('Regards:')
-    ..add(businessName);
-  return lines.join('\n');
+  if (includeFooter) {
+    lines
+      ..add('----------------------------')
+      ..add('🙏 Thank you for choosing *$businessName*');
+  }
+  return lines;
 }
 
 String menuShareOneLineService(Map<String, dynamic> service) {
@@ -691,6 +657,41 @@ String menuShareOneLineService(Map<String, dynamic> service) {
     parts.add(money(price).replaceFirst(RegExp(r'^\s*[^\d-]+'), 'Rs. '));
   }
   return parts.isEmpty ? name : '$name (${parts.join(', ')})';
+}
+
+String businessDisplayName(BusinessProfile businessProfile) {
+  final name = businessProfile.businessName.trim();
+  return name.isEmpty ? 'CaterPro' : name;
+}
+
+String whatsAppDateLabel(String isoDate) {
+  final date = parseIsoDate(isoDate);
+  if (date == null) return isoDate;
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  return '$day-$month-${date.year}';
+}
+
+String whatsAppTimeSummary(List<AppMenuSlot> slots) {
+  final times = slots
+      .where((slot) => slot.time.trim().isNotEmpty)
+      .map((slot) => '${slot.type}: ${slot.time.trim()}')
+      .toList();
+  return times.join(' | ');
+}
+
+List<String> whatsAppServiceLines(
+    AppEventDate date, List<AppMenuSlot> visibleSlots) {
+  final lines = <String>[];
+  for (final service in date.additionalServices) {
+    lines.add('• ${menuShareOneLineService(service)}');
+  }
+  for (final slot in visibleSlots) {
+    for (final service in slot.additionalServices) {
+      lines.add('• ${slot.type}: ${menuShareOneLineService(service)}');
+    }
+  }
+  return lines;
 }
 
 class _EventDetailsContentState extends State<EventDetailsContent> {
@@ -855,6 +856,7 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
           events: widget.events,
           employees: widget.employees,
           businessProfile: widget.businessProfile,
+          onEditStep: widget.onEditStep,
           onAddEvent: widget.onAddEvent,
           onEventUpdated: widget.onEventUpdated),
     ]);
@@ -870,6 +872,7 @@ class EventDetailsTabContent extends StatelessWidget {
       required this.events,
       required this.employees,
       required this.businessProfile,
+      required this.onEditStep,
       required this.onAddEvent,
       required this.onEventUpdated});
   final int tab;
@@ -878,6 +881,7 @@ class EventDetailsTabContent extends StatelessWidget {
   final List<AppEvent> events;
   final List<Employee> employees;
   final BusinessProfile businessProfile;
+  final void Function(AppEvent event, int step) onEditStep;
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
 
@@ -904,32 +908,40 @@ class EventDetailsTabContent extends StatelessWidget {
             ? const EmptyStateCard(
                 title: 'No dates configured',
                 message: 'Add event dates and menu types from the create flow.')
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: event.dates
-                    .map((date) => EventDateMenuCard(
-                        date: date,
-                        onShareWhatsApp: () async {
-                          await shareMenuDateOnWhatsApp(
-                              context,
-                              event,
-                              buildFormattedMenuShareMessage(event,
-                                  onlyDate: date,
-                                  businessProfile: businessProfile));
-                        },
-                        onDownload: () async {
-                          final uri = await api.documentUri(event.id, 'menu',
-                              dateId: date.id);
-                          if (context.mounted) {
-                            showDownloadSnack(context, uri,
-                                title: downloadTitleForEvent(event, 'menu',
-                                    dateId: date.id),
-                                kind: 'menu',
-                                successMessage: 'Menu download started',
-                                failureMessage: 'Unable to start download');
-                          }
-                        }))
-                    .toList());
+            : Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: () => onEditStep(event, 2),
+                    icon: const Icon(Icons.edit_calendar),
+                    label: const Text('Edit menus & members',
+                        style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                ...event.dates.map((date) => EventDateMenuCard(
+                    date: date,
+                    onShareWhatsApp: () async {
+                      await shareMenuDateOnWhatsApp(
+                          context,
+                          event,
+                          buildFormattedMenuShareMessage(event,
+                              onlyDate: date,
+                              businessProfile: businessProfile));
+                    },
+                    onDownload: () async {
+                      final uri = await api.documentUri(event.id, 'menu',
+                          dateId: date.id);
+                      if (context.mounted) {
+                        showDownloadSnack(context, uri,
+                            title: downloadTitleForEvent(event, 'menu',
+                                dateId: date.id),
+                            kind: 'menu',
+                            successMessage: 'Menu download started',
+                            failureMessage: 'Unable to start download');
+                      }
+                    }))
+              ]);
       case 2:
         final total = eventTotal(event);
         final paid = eventPaid(event);

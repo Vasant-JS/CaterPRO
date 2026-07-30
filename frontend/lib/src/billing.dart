@@ -1,20 +1,37 @@
 part of '../main.dart';
 
-String paymentEventPhrase(String eventName) {
-  final cleaned = eventName.trim();
-  return cleaned.isEmpty ? 'event' : 'event: "$cleaned"';
+String whatsappClientName(String clientName) {
+  final cleaned = clientName.trim();
+  return cleaned.isEmpty ? 'Customer' : cleaned;
+}
+
+String whatsappPossessiveName(String clientName) {
+  final cleaned = whatsappClientName(clientName);
+  return cleaned.toLowerCase().endsWith('s') ? "$cleaned'" : "$cleaned's";
+}
+
+String whatsappClientEventPhrase(String clientName) {
+  return '${whatsappPossessiveName(clientName)} event';
+}
+
+String whatsappEventClientName(AppEvent event) {
+  final client = event.primaryClient.trim();
+  if (client.isNotEmpty) return client;
+  final mobile = event.mobile.trim();
+  if (mobile.isNotEmpty) return mobile;
+  return 'Customer';
 }
 
 String requestPaymentMessage({
   required String documentType,
   required String clientName,
-  required String eventName,
   required String amount,
 }) {
   final isQuotation = documentType == 'quotation';
+  final displayClient = whatsappClientName(clientName);
   return [
-    'Hi, ${clientName.trim().isEmpty ? 'Customer' : clientName.trim()}',
-    'The $documentType amount for the ${paymentEventPhrase(eventName)} is $amount.',
+    'Hi, $displayClient',
+    'The $documentType amount for ${whatsappClientEventPhrase(displayClient)} is $amount.',
     isQuotation
         ? 'Kindly make the payment to confirm the order. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.'
         : 'Kindly make the payment. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.',
@@ -49,8 +66,23 @@ class BillingScreen extends StatefulWidget {
 class _BillingScreenState extends State<BillingScreen> {
   int selectedTab = 0;
 
-  List<AppEvent> get quotationEvents =>
-      widget.events.where((event) => event.payments.isEmpty).toList();
+  bool eventDateSurpassed(AppEvent event) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return event.dates.any((date) {
+      final parsed = parseIsoDate(date.date);
+      return parsed != null && parsed.isBefore(today);
+    });
+  }
+
+  List<AppEvent> get quotationEvents => widget.events
+      .where((event) => event.payments.isEmpty && !eventDateSurpassed(event))
+      .toList();
+
+  List<AppEvent> get autoInvoiceEvents => widget.events
+      .where((event) => event.payments.isEmpty && eventDateSurpassed(event))
+      .toList();
+
   List<({AppEvent event, AppPayment payment})> get invoicePayments => [
         for (final event in widget.events)
           for (final payment in event.payments)
@@ -185,7 +217,9 @@ class _BillingScreenState extends State<BillingScreen> {
       selectedColor: selectedColor,
       labelStyle: TextStyle(
           color: selected
-              ? (cpDark(context) ? const Color(0xff6fa0be) : Colors.white)
+              ? (cpDark(context)
+                  ? Theme.of(context).colorScheme.onPrimary
+                  : Colors.white)
               : cpOnVariant(context),
           fontWeight: FontWeight.w900),
       label: Text('$label ($count)'),
@@ -199,8 +233,13 @@ class _BillingScreenState extends State<BillingScreen> {
         quotationEvents.fold<int>(0, (sum, event) => sum + eventTotal(event));
     final totalInvoiceValue =
         invoicePayments.fold<int>(0, (sum, item) => sum + item.payment.amount) +
+            autoInvoiceEvents.fold<int>(
+                0, (sum, event) => sum + eventBalance(event)) +
             widget.manualInvoices
                 .fold<int>(0, (sum, invoice) => sum + invoice.total);
+    final invoiceCount = invoicePayments.length +
+        autoInvoiceEvents.length +
+        widget.manualInvoices.length;
     return ScreenFrame(
       topBar: TopBar(
           title: 'Billing',
@@ -233,8 +272,7 @@ class _BillingScreenState extends State<BillingScreen> {
             child: Row(children: [
               tabChip(0, 'Quotations', quotationEvents.length),
               const SizedBox(width: 8),
-              tabChip(1, 'Invoices',
-                  invoicePayments.length + widget.manualInvoices.length)
+              tabChip(1, 'Invoices', invoiceCount)
             ])),
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
@@ -247,7 +285,7 @@ class _BillingScreenState extends State<BillingScreen> {
             ...quotationEvents.map((event) => BillingDocumentCard(
                   title: event.name,
                   subtitle:
-                      '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} • ${event.mobile}',
+                      '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
                   code: 'QUOTE-${event.id.toUpperCase()}',
                   amountLabel: 'Event Total',
                   amount: money(eventTotal(event)),
@@ -262,15 +300,33 @@ class _BillingScreenState extends State<BillingScreen> {
                   onTap: () => openDocumentDetails(event, 'quotation'),
                 )),
         ] else ...[
-          if (invoicePayments.isEmpty && widget.manualInvoices.isEmpty)
+          if (invoiceCount == 0)
             const EmptyStateCard(
                 title: 'No invoices yet',
                 message:
-                    'Invoices appear here after any payment is recorded for an event.')
+                    'Invoices appear here after an event date is passed or any payment is recorded.')
           else ...[
+            ...autoInvoiceEvents.map((event) => BillingDocumentCard(
+                  title: event.name.isEmpty ? 'Invoice' : event.name,
+                  subtitle:
+                      '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
+                  code: 'INV-${event.id.toUpperCase()}',
+                  amountLabel: 'Balance Due',
+                  amount: money(eventBalance(event)),
+                  dateLabel: event.dates.isEmpty
+                      ? 'No dates'
+                      : event.dates.map((date) => date.date).join(', '),
+                  status: eventBalance(event) == 0 ? 'Settled' : 'Invoice',
+                  statusColor: eventBalance(event) == 0
+                      ? Cp.tertiaryContainer
+                      : Cp.primary,
+                  icon: Icons.receipt_long,
+                  onDownload: () => downloadDocument(context, event, 'invoice'),
+                  onTap: () => openDocumentDetails(event, 'invoice'),
+                )),
             ...widget.manualInvoices.map((invoice) => BillingDocumentCard(
                   title: invoice.eventName,
-                  subtitle: '${invoice.clientName} • ${invoice.mobile}',
+                  subtitle: '${invoice.clientName} | ${invoice.mobile}',
                   code: invoice.invoiceNumber.isEmpty
                       ? 'INV-${invoice.id.toUpperCase()}'
                       : invoice.invoiceNumber,
@@ -288,7 +344,7 @@ class _BillingScreenState extends State<BillingScreen> {
             ...invoicePayments.map((item) => BillingDocumentCard(
                   title: item.event.name,
                   subtitle:
-                      '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} • ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' • ${item.payment.reference}'}',
+                      '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} | ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' | ${item.payment.reference}'}',
                   code: 'INV-${item.payment.id.toUpperCase()}',
                   amountLabel: 'Payment Amount',
                   amount: money(item.payment.amount),
@@ -420,7 +476,7 @@ class _ClientLookupFieldState extends State<ClientLookupField> {
                   normalizeMobileText(client.mobile),
                   client.address.isNotEmpty ? client.address : client.city,
                   client.gst
-                ].where((item) => item.trim().isNotEmpty).join(' • ')),
+                ].where((item) => item.trim().isNotEmpty).join(' | ')),
                 onTap: () {
                   widget.onSelected(client);
                   focusNode.unfocus();
@@ -915,7 +971,6 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
-        eventName: invoice.eventName,
         amount: money(invoice.pending));
     await launchUrl(
         Uri.parse(
@@ -972,7 +1027,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                         ? 'C'
                         : invoice.clientName[0].toUpperCase(),
                     label: 'Client Name',
-                    value: '${invoice.clientName} • ${invoice.mobile}'),
+                    value: '${invoice.clientName} | ${invoice.mobile}'),
               ),
               if (invoice.clientAddress.isNotEmpty)
                 SmallInfoBlock(
@@ -1359,7 +1414,6 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
-        eventName: event.name,
         amount: money(amount));
     await launchUrl(
         Uri.parse(
@@ -1488,7 +1542,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                 Icon(Icons.chevron_right)
               ]),
               const SizedBox(height: 8),
-              Text('$menuCount menu slots • $menuItems selected items',
+              Text('$menuCount menu slots | $menuItems selected items',
                   style: TextStyle(
                       color: cpOnVariant(context),
                       fontWeight: FontWeight.w700)),
