@@ -49,7 +49,8 @@ class BillingScreen extends StatefulWidget {
       required this.onSaveManualInvoice,
       required this.onAddManualInvoice,
       required this.onOpenEvent,
-      required this.onEventUpdated});
+      required this.onEventUpdated,
+      required this.onAudit});
   final List<AppEvent> events;
   final List<AppClient> clients;
   final List<ManualInvoice> manualInvoices;
@@ -58,6 +59,7 @@ class BillingScreen extends StatefulWidget {
   final VoidCallback onAddManualInvoice;
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final AuditLogger onAudit;
 
   @override
   State<BillingScreen> createState() => _BillingScreenState();
@@ -172,7 +174,8 @@ class _BillingScreenState extends State<BillingScreen> {
           type: type,
           api: widget.api,
           onOpenEvent: widget.onOpenEvent,
-          onEventUpdated: widget.onEventUpdated),
+          onEventUpdated: widget.onEventUpdated,
+          onAudit: widget.onAudit),
     ));
   }
 
@@ -205,7 +208,8 @@ class _BillingScreenState extends State<BillingScreen> {
             linkedInvoices: linkedInvoicesForClient(client),
             api: widget.api,
             onOpenEvent: widget.onOpenEvent,
-            onEventUpdated: widget.onEventUpdated)));
+            onEventUpdated: widget.onEventUpdated,
+            onAudit: widget.onAudit)));
   }
 
   Widget tabChip(int index, String label, int count) {
@@ -915,6 +919,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
       required this.api,
       required this.onOpenEvent,
       required this.onEventUpdated,
+      required this.onAudit,
       this.linkedEvent});
   final ManualInvoice invoice;
   final AppClient client;
@@ -924,6 +929,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   final ApiService api;
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final AuditLogger onAudit;
 
   void openClientInfo(BuildContext context) {
     Navigator.of(context).push(MaterialPageRoute(
@@ -957,8 +963,11 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   Future<void> download(BuildContext context) async {
     final uri = await api.manualInvoicePdfUri(invoice.id);
     final fileName = '${invoice.eventName} invoice.pdf';
-    await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
-    if (context.mounted) showCpSnack(context, '$fileName downloaded');
+    final localUri =
+        await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
+    await openDownloadedFile(localUri,
+        title: sanitizeDownloadFileName(fileName, 'invoice'), kind: 'invoice');
+    if (context.mounted) showCpSnack(context, 'Opening $fileName');
   }
 
   Future<void> sharePdf(BuildContext context) async {
@@ -968,15 +977,31 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment() async {
+    final uri = await api.manualInvoicePdfUri(invoice.id);
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
         amount: money(invoice.pending));
-    await launchUrl(
-        Uri.parse(
-            'https://wa.me/91${invoice.mobile}?text=${Uri.encodeComponent(text)}'),
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank');
+    await saveAndShareDownload(
+        title: '${invoice.eventName} invoice.pdf',
+        uri: uri,
+        kind: 'invoice',
+        text: text);
+    onAudit(
+      action: 'requestPayment',
+      entityType: 'manualInvoice',
+      entityId: invoice.id,
+      entityLabel: invoice.invoiceNumber.isEmpty
+          ? invoice.eventName
+          : invoice.invoiceNumber,
+      summary:
+          'Requested payment for invoice ${invoice.invoiceNumber.isEmpty ? invoice.eventName : invoice.invoiceNumber}',
+      metadata: {
+        'client': invoice.clientName,
+        'mobile': invoice.mobile,
+        'amount': invoice.pending,
+      },
+    );
   }
 
   @override
@@ -1027,7 +1052,8 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                         ? 'C'
                         : invoice.clientName[0].toUpperCase(),
                     label: 'Client Name',
-                    value: '${invoice.clientName} | ${invoice.mobile}'),
+                    value: cleanDisplayText(
+                        '${invoice.clientName} | ${invoice.mobile}')),
               ),
               if (invoice.clientAddress.isNotEmpty)
                 SmallInfoBlock(
@@ -1284,6 +1310,9 @@ class BillingDocumentCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cleanTitle = cleanDisplayText(title);
+    final cleanSubtitle = cleanDisplayText(subtitle);
+    final cleanCode = cleanDisplayText(code);
     final accent = cpPrimary(context);
     final muted = cpOnVariant(context);
     final outline = cpOutline(context);
@@ -1300,15 +1329,15 @@ class BillingDocumentCard extends StatelessWidget {
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(title,
+                  Text(cleanTitle,
                       style: TextStyle(
                           color: accent,
                           fontSize: 18,
                           fontWeight: FontWeight.w900)),
-                  Text(subtitle,
+                  Text(cleanSubtitle,
                       style:
                           TextStyle(color: muted, fontWeight: FontWeight.w700)),
-                  Text(code,
+                  Text(cleanCode,
                       style: TextStyle(
                           color: outline,
                           fontSize: 11,
@@ -1371,6 +1400,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       required this.api,
       required this.onOpenEvent,
       required this.onEventUpdated,
+      required this.onAudit,
       this.payment});
   final AppEvent event;
   final AppClient client;
@@ -1379,6 +1409,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   final ApiService api;
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final AuditLogger onAudit;
   final AppPayment? payment;
 
   bool get isInvoice => type == 'invoice';
@@ -1394,8 +1425,11 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final uri = await documentUri();
     final fileName =
         downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation');
-    await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
-    if (context.mounted) showCpSnack(context, '$fileName downloaded');
+    final localUri =
+        await saveDownloadToDevice(title: fileName, uri: uri, kind: 'invoice');
+    await openDownloadedFile(localUri,
+        title: sanitizeDownloadFileName(fileName, 'invoice'), kind: 'invoice');
+    if (context.mounted) showCpSnack(context, 'Opening $fileName');
   }
 
   Future<void> sharePdf(BuildContext context) async {
@@ -1411,15 +1445,30 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final client =
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
     final amount = isInvoice ? eventBalance(event) : eventTotal(event);
+    final uri = await documentUri();
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
         amount: money(amount));
-    await launchUrl(
-        Uri.parse(
-            'https://wa.me/${event.mobile}?text=${Uri.encodeComponent(text)}'),
-        mode: LaunchMode.externalApplication,
-        webOnlyWindowName: '_blank');
+    await saveAndShareDownload(
+        title:
+            downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
+        uri: uri,
+        kind: 'invoice',
+        text: text);
+    onAudit(
+      action: 'requestPayment',
+      entityType: isInvoice ? 'eventInvoice' : 'quotation',
+      entityId: event.id,
+      entityLabel: event.name,
+      summary:
+          'Requested payment for ${isInvoice ? 'invoice' : 'quotation'} ${event.name}',
+      metadata: {
+        'client': client,
+        'mobile': event.mobile,
+        'amount': amount,
+      },
+    );
   }
 
   void openClientInfo(BuildContext context) {
@@ -1729,7 +1778,7 @@ class DetailNavTile extends StatelessWidget {
                           color: cpOnVariant(context),
                           fontSize: 11,
                           fontWeight: FontWeight.w800)),
-                  Text(value,
+                  Text(cleanDisplayText(value),
                       style: const TextStyle(
                           fontSize: 17, fontWeight: FontWeight.w800))
                 ])),
@@ -1746,7 +1795,7 @@ class SmallInfoBlock extends StatelessWidget {
   Widget build(BuildContext context) =>
       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
-        Text(value,
+        Text(cleanDisplayText(value),
             style: TextStyle(
                 color: cpOnVariant(context), fontWeight: FontWeight.w700))
       ]);

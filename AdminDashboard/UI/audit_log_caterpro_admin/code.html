@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Audit Log | CaterPro Admin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        [data-weight="fill"] .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1;
+        }
+        /* Custom scrollbar for high-density feel */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #bfc9bd;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #707a6f;
+        }
+        .json-key { color: #0e6430; font-weight: 600; }
+        .json-string { color: #0d6d2c; }
+        .diff-remove { background-color: #ffdad6; text-decoration: line-through; }
+        .diff-add { background-color: #cdffd2; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#eaf7ed",
+                        "surface-bright": "#f0fdf3",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#9df7a5",
+                        "on-surface": "#131e18",
+                        "on-secondary-container": "#187432",
+                        "primary": "#0e6430",
+                        "on-secondary-fixed": "#002108",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#9df7a5",
+                        "tertiary": "#535851",
+                        "tertiary-fixed": "#e0e4db",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d0ddd4",
+                        "on-surface-variant": "#404940",
+                        "primary-container": "#2f7d46",
+                        "surface-container": "#e4f1e7",
+                        "surface-container-highest": "#d9e6dc",
+                        "surface-variant": "#d9e6dc",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#005224",
+                        "on-primary-fixed": "#00210b",
+                        "tertiary-container": "#6b7069",
+                        "surface-container-high": "#dfebe2",
+                        "primary-fixed-dim": "#89d897",
+                        "on-primary-container": "#cdffd2",
+                        "secondary": "#0d6d2c",
+                        "outline": "#707a6f",
+                        "on-background": "#131e18",
+                        "outline-variant": "#bfc9bd",
+                        "on-secondary-fixed-variant": "#00531e",
+                        "tertiary-fixed-dim": "#c3c8bf",
+                        "inverse-on-surface": "#e7f4ea",
+                        "on-tertiary-fixed-variant": "#434842",
+                        "surface-tint": "#1b6c37",
+                        "error": "#ba1a1a",
+                        "secondary-fixed-dim": "#82da8b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#f0f4eb",
+                        "inverse-primary": "#89d897",
+                        "primary-fixed": "#a4f5b2",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f0fdf3",
+                        "inverse-surface": "#28332d",
+                        "on-tertiary-fixed": "#181d18",
+                        "surface": "#f0fdf3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "row_height_standard": "56px",
+                        "gutter": "16px",
+                        "stack_md": "16px",
+                        "container_padding": "24px",
+                        "stack_sm": "8px",
+                        "row_height_dense": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "data-mono": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background font-body-md text-on-background selection:bg-secondary-container">
+<!-- Sidebar Navigation -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container border-r border-outline-variant flex flex-col justify-between py-gutter z-50">
+<div>
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">restaurant</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-surface">CaterPro</h1>
+<p class="text-label-sm font-label-sm text-on-surface-variant opacity-70">Admin Console</p>
+</div>
+</div>
+<nav class="space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">dashboard</span> Dashboard
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">group</span> Clients
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">receipt_long</span> Subscriptions
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">layers</span> Plans
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-4 border-primary bg-surface-container-high transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">history</span> Audit Log
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span> Settings
+                </a>
+</nav>
+</div>
+<div class="px-4 space-y-1">
+<div class="p-3 mb-4 rounded-xl bg-primary-container text-on-primary-container flex items-center justify-between">
+<span class="font-label-md text-label-md">Production</span>
+<span class="w-2 h-2 rounded-full bg-secondary-fixed animate-pulse"></span>
+</div>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">account_circle</span> Admin Profile
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">logout</span> Logout
+            </a>
+</div>
+</aside>
+<!-- Top App Bar -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low border-b border-outline-variant shadow-sm flex items-center justify-between px-container_padding ml-[260px] w-[calc(100%-260px)]">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full pl-10 pr-4 py-1.5 bg-surface-container-highest border-none rounded-full text-body-sm focus:ring-2 focus:ring-primary/20 transition-shadow outline-none" placeholder="Search logs..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container-high rounded-full transition-all">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<div class="h-8 w-px bg-outline-variant mx-2"></div>
+<button class="flex items-center gap-2 px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md hover:opacity-90 active:scale-[0.98] transition-all" onclick="exportLogs()">
+<span class="material-symbols-outlined text-[20px]">download</span> Export Audit Log
+            </button>
+<img class="w-8 h-8 rounded-full border border-outline-variant" data-alt="A professional headshot of a female administrative executive in her 30s, wearing business casual attire, with a soft-focus office background. The lighting is bright and natural, maintaining the clean, modern aesthetic of the CaterPro design system. The image is circular-cropped and high-resolution." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBWVQpK-IdnTFMFVPnpKNJhSeSJtOp_hZB-4QeBn9u4fuW2yUCBFIJI76wVYGN25MtI-ytnBV7eBBZBuUaRSb7d9FEfQbP1Yvh2P3yXDNbRgtDIEzTi-5xQk2xAyaifwGheB9f4SrvgFGxe6TAUvI1q0hFvvdnnaygWH7xsPcfSXzx7J4orxlnhqxJIHRyDMQqAriZE4ThN1T64Q3LWJI1S4uY-d6Ih7vBsFN32qnWE_RM-6npKk9aj9g"/>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-[260px] p-container_padding">
+<!-- Dashboard Header -->
+<div class="mb-8 flex items-end justify-between">
+<div>
+<h2 class="font-display-lg text-display-lg text-on-surface mb-1">System Audit Log</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Track all administrative changes and system events across the platform.</p>
+</div>
+<div class="flex items-center gap-3">
+<div class="bg-surface-container border border-outline-variant rounded-lg flex p-1">
+<button class="px-4 py-1.5 bg-white shadow-sm rounded-md font-label-md text-label-md text-primary">All Events</button>
+<button class="px-4 py-1.5 font-label-md text-label-md text-on-surface-variant hover:text-on-surface">Security</button>
+<button class="px-4 py-1.5 font-label-md text-label-md text-on-surface-variant hover:text-on-surface">Operations</button>
+</div>
+</div>
+</div>
+<!-- Filters Section -->
+<section class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+<div class="bg-white p-4 rounded-xl border border-outline-variant shadow-sm">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-2">Date Range</label>
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-outline">calendar_today</span>
+<input class="w-full text-body-sm border-none focus:ring-0 p-0" type="text" value="Oct 24, 2023 - Oct 31, 2023"/>
+</div>
+</div>
+<div class="bg-white p-4 rounded-xl border border-outline-variant shadow-sm">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-2">Admin User</label>
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-outline">person_search</span>
+<select class="w-full text-body-sm border-none focus:ring-0 p-0 appearance-none bg-transparent">
+<option>All Admins</option>
+<option>Sarah Jenkins</option>
+<option>Michael Chen</option>
+<option>Operations Bot</option>
+</select>
+</div>
+</div>
+<div class="bg-white p-4 rounded-xl border border-outline-variant shadow-sm">
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-2">Action Type</label>
+<div class="flex items-center gap-2 text-on-surface">
+<span class="material-symbols-outlined text-outline">settings_suggest</span>
+<select class="w-full text-body-sm border-none focus:ring-0 p-0 appearance-none bg-transparent">
+<option>All Actions</option>
+<option>User Updated</option>
+<option>Plan Deleted</option>
+<option>API Key Revoked</option>
+<option>Configuration Changed</option>
+</select>
+</div>
+</div>
+<div class="bg-white p-4 rounded-xl border border-outline-variant shadow-sm flex items-end">
+<button class="w-full flex items-center justify-center gap-2 py-2 border border-outline text-on-surface-variant font-label-md text-label-md rounded-lg hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[20px]">filter_list</span> Clear All Filters
+                </button>
+</div>
+</section>
+<!-- Audit Table -->
+<div class="bg-white rounded-xl border border-outline-variant shadow-sm overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Timestamp</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Admin</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Action</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Entity</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Summary</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">IP/Device</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-center">Result</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-bright transition-colors cursor-pointer group" onclick="toggleDrawer('Sarah Jenkins', 'User Updated', 'User-8829', 'Changed subscription tier from Basic to Pro.')">
+<td class="px-6 py-4 font-data-mono text-data-mono text-on-surface-variant">2023-10-31 14:22:05</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container text-[10px] flex items-center justify-center font-bold">SJ</div>
+<span class="font-label-md text-label-md">Sarah Jenkins</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">User Updated</span>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-label-md">USR_882910</td>
+<td class="px-6 py-4 text-body-sm max-w-[200px] truncate">Subscription tier changed to 'Pro_Annual'</td>
+<td class="px-6 py-4 text-data-mono text-xs opacity-60">192.168.1.44 (Chrome/macOS)</td>
+<td class="px-6 py-4 text-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-bright transition-colors cursor-pointer" onclick="toggleDrawer('Michael Chen', 'Plan Deleted', 'Plan-X', 'Deleted high-volume enterprise plan #12.')">
+<td class="px-6 py-4 font-data-mono text-data-mono text-on-surface-variant">2023-10-31 12:45:12</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-primary-fixed text-on-primary-fixed text-[10px] flex items-center justify-center font-bold">MC</div>
+<span class="font-label-md text-label-md">Michael Chen</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">Plan Deleted</span>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-label-md">PLAN_V12_ENT</td>
+<td class="px-6 py-4 text-body-sm max-w-[200px] truncate">Archived legacy enterprise billing schema</td>
+<td class="px-6 py-4 text-data-mono text-xs opacity-60">45.22.112.9 (Firefox/Linux)</td>
+<td class="px-6 py-4 text-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-bright transition-colors cursor-pointer bg-error-container/10" onclick="toggleDrawer('Admin System', 'Login Failed', 'Auth', 'Failed login attempt from unrecognized IP.')">
+<td class="px-6 py-4 font-data-mono text-data-mono text-on-surface-variant">2023-10-31 09:15:33</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-tertiary-container text-white text-[10px] flex items-center justify-center font-bold">AS</div>
+<span class="font-label-md text-label-md">System Bot</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-error-container text-on-error-container">Security Alert</span>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-label-md">AUTH_SRV</td>
+<td class="px-6 py-4 text-body-sm max-w-[200px] truncate">Brute force detection active: 5 failed attempts</td>
+<td class="px-6 py-4 text-data-mono text-xs opacity-60">203.0.113.1 (Unknown/Android)</td>
+<td class="px-6 py-4 text-center">
+<span class="material-symbols-outlined text-error" style="font-variation-settings: 'FILL' 1;">error</span>
+</td>
+</tr>
+<!-- Repeat Rows for Density -->
+<tr class="hover:bg-surface-bright transition-colors cursor-pointer border-b border-outline-variant">
+<td class="px-6 py-4 font-data-mono text-data-mono text-on-surface-variant">2023-10-30 18:10:00</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container text-[10px] flex items-center justify-center font-bold">SJ</div>
+<span class="font-label-md text-label-md">Sarah Jenkins</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Client Added</span>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-label-md">CLT_77221</td>
+<td class="px-6 py-4 text-body-sm max-w-[200px] truncate">New corporate catering partner onboarded</td>
+<td class="px-6 py-4 text-data-mono text-xs opacity-60">192.168.1.44 (Chrome/macOS)</td>
+<td class="px-6 py-4 text-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-bright transition-colors cursor-pointer border-b border-outline-variant">
+<td class="px-6 py-4 font-data-mono text-data-mono text-on-surface-variant">2023-10-30 16:05:44</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded-full bg-primary-fixed text-on-primary-fixed text-[10px] flex items-center justify-center font-bold">MC</div>
+<span class="font-label-md text-label-md">Michael Chen</span>
+</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Plan Updated</span>
+</td>
+<td class="px-6 py-4 text-on-surface-variant font-label-md">PLAN_BASIC</td>
+<td class="px-6 py-4 text-body-sm max-w-[200px] truncate">Adjusted monthly seat limits for Basic Tier</td>
+<td class="px-6 py-4 text-data-mono text-xs opacity-60">45.22.112.9 (Firefox/Linux)</td>
+<td class="px-6 py-4 text-center">
+<span class="material-symbols-outlined text-secondary" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="px-6 py-4 bg-surface-container-low flex items-center justify-between">
+<span class="text-label-sm text-on-surface-variant">Showing 1 to 5 of 1,248 entries</span>
+<div class="flex items-center gap-2">
+<button class="p-2 border border-outline-variant rounded hover:bg-surface-container transition-colors disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined text-[20px]">chevron_left</span>
+</button>
+<button class="w-8 h-8 flex items-center justify-center bg-primary text-on-primary rounded font-label-md text-label-md">1</button>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-surface-container rounded font-label-md text-label-md">2</button>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-surface-container rounded font-label-md text-label-md">3</button>
+<span class="px-2 text-on-surface-variant">...</span>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-surface-container rounded font-label-md text-label-md">42</button>
+<button class="p-2 border border-outline-variant rounded hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[20px]">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Side-over Drawer (Hidden by default) -->
+<div class="fixed inset-0 bg-black/40 z-50 transition-opacity opacity-0 pointer-events-none" id="drawer-overlay" onclick="toggleDrawer()"></div>
+<div class="fixed top-0 right-0 h-full w-[500px] bg-white shadow-2xl z-[60] transform translate-x-full transition-transform duration-300 ease-in-out border-l border-outline-variant" id="drawer">
+<div class="h-full flex flex-col">
+<!-- Drawer Header -->
+<div class="p-6 border-b border-outline-variant flex items-center justify-between bg-surface-container-low">
+<div>
+<h3 class="font-title-lg text-title-lg text-on-surface" id="drawer-title">Action Details</h3>
+<p class="text-body-sm text-on-surface-variant" id="drawer-subtitle">Investigating administrative change</p>
+</div>
+<button class="p-2 hover:bg-surface-variant rounded-full transition-colors" onclick="toggleDrawer()">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+<!-- Drawer Content -->
+<div class="flex-1 overflow-y-auto p-6 space-y-8">
+<!-- Meta Info -->
+<div class="grid grid-cols-2 gap-4">
+<div class="space-y-1">
+<span class="text-label-sm font-label-sm text-outline uppercase">Admin</span>
+<p class="font-body-md font-semibold" id="drawer-admin">Sarah Jenkins</p>
+</div>
+<div class="space-y-1 text-right">
+<span class="text-label-sm font-label-sm text-outline uppercase">Action</span>
+<p class="font-body-md" id="drawer-action">User Updated</p>
+</div>
+<div class="space-y-1">
+<span class="text-label-sm font-label-sm text-outline uppercase">Entity ID</span>
+<p class="font-data-mono text-data-mono" id="drawer-entity">USR_882910</p>
+</div>
+<div class="space-y-1 text-right">
+<span class="text-label-sm font-label-sm text-outline uppercase">Status</span>
+<p class="text-secondary font-bold">SUCCESS</p>
+</div>
+</div>
+<!-- JSON Diff -->
+<div>
+<div class="flex items-center justify-between mb-3">
+<h4 class="font-label-md text-label-md text-on-surface font-bold">JSON Payload Diff</h4>
+<span class="text-xs bg-outline-variant/30 px-2 py-1 rounded">Delta Mode</span>
+</div>
+<div class="bg-inverse-surface text-inverse-on-surface rounded-xl p-6 font-data-mono text-[13px] leading-relaxed shadow-inner">
+<pre><span class="text-gray-500">{</span>
+  <span class="json-key">"user_id"</span>: <span class="json-string">"882910"</span>,
+  <span class="json-key">"event"</span>: <span class="json-string">"SUBSCRIPTION_RENEWAL"</span>,
+  <span class="json-key">"previous_state"</span>: {
+    <span class="json-key">"tier"</span>: <span class="json-string">"Basic"</span>,
+    <span class="json-key">"price_monthly"</span>: <span class="json-string">"$49.00"</span>,
+    <span class="json-key">"features"</span>: [
+      <span class="json-string">"standard_reporting"</span>,
+      <span class="json-string">"limited_storage"</span>
+    ]
+  },
+  <span class="json-key">"current_state"</span>: {
+    <span class="json-key">"tier"</span>: <span class="diff-add json-string">"Pro_Annual"</span>,
+    <span class="json-key">"price_annual"</span>: <span class="diff-add json-string">"$499.00"</span>,
+    <span class="json-key">"features"</span>: [
+      <span class="json-string">"standard_reporting"</span>,
+      <span class="json-string">"unlimited_storage"</span>,
+      <span class="diff-add json-string">"advanced_analytics"</span>
+    ]
+  },
+  <span class="json-key">"requested_at"</span>: <span class="json-string">"2023-10-31T14:22:05Z"</span>,
+  <span class="json-key">"origin_ip"</span>: <span class="json-string">"192.168.1.44"</span>
+<span class="text-gray-500">}</span></pre>
+</div>
+</div>
+<!-- Summary -->
+<div class="p-4 bg-surface-container rounded-lg border border-outline-variant">
+<h4 class="font-label-md text-label-md text-on-surface font-bold mb-2">Internal Note</h4>
+<p class="text-body-sm text-on-surface-variant italic" id="drawer-summary">
+                        User requested upgrade via customer support portal. Processed by administrative bypass to apply legacy discount code 'CATERPRO2023'.
+                    </p>
+</div>
+</div>
+<!-- Drawer Footer -->
+<div class="p-6 border-t border-outline-variant bg-surface-container-low flex gap-3">
+<button class="flex-1 py-2 px-4 bg-surface-container-highest text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-variant transition-all">Copy JSON</button>
+<button class="flex-1 py-2 px-4 bg-primary text-on-primary font-label-md text-label-md rounded-lg hover:opacity-90 transition-all">Download Log Entry</button>
+</div>
+</div>
+</div>
+<!-- Notification Toast (For Export Action) -->
+<div class="fixed bottom-6 right-6 bg-inverse-surface text-inverse-on-surface px-6 py-3 rounded-lg shadow-xl translate-y-24 transition-transform duration-300 z-[100] flex items-center gap-3" id="toast">
+<span class="material-symbols-outlined text-secondary">check_circle</span>
+<span class="font-label-md text-label-md">Audit log export started. Your download will begin shortly.</span>
+</div>
+<script>
+        function toggleDrawer(admin, action, entity, summary) {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('drawer-overlay');
+            
+            if (drawer.classList.contains('translate-x-full')) {
+                // Open
+                if(admin) document.getElementById('drawer-admin').innerText = admin;
+                if(action) document.getElementById('drawer-action').innerText = action;
+                if(entity) document.getElementById('drawer-entity').innerText = entity;
+                if(summary) document.getElementById('drawer-summary').innerText = summary;
+                
+                drawer.classList.remove('translate-x-full');
+                overlay.classList.remove('opacity-0', 'pointer-events-none');
+                document.body.style.overflow = 'hidden';
+            } else {
+                // Close
+                drawer.classList.add('translate-x-full');
+                overlay.classList.add('opacity-0', 'pointer-events-none');
+                document.body.style.overflow = 'auto';
+            }
+        }
+
+        function exportLogs() {
+            const toast = document.getElementById('toast');
+            toast.classList.remove('translate-y-24');
+            setTimeout(() => {
+                toast.classList.add('translate-y-24');
+            }, 3000);
+        }
+    </script>
+</body></html>

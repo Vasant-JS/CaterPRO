@@ -1,6 +1,6 @@
 part of '../main.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen(
       {super.key,
       required this.api,
@@ -10,6 +10,7 @@ class DashboardScreen extends StatelessWidget {
       required this.openEvents,
       required this.openClients,
       required this.openBilling,
+      required this.openEmployees,
       required this.openInvoice,
       required this.openCustomMenus,
       required this.openLists,
@@ -22,11 +23,26 @@ class DashboardScreen extends StatelessWidget {
   final VoidCallback openEvents;
   final VoidCallback openClients;
   final VoidCallback openBilling;
+  final VoidCallback openEmployees;
   final VoidCallback openInvoice;
   final VoidCallback openCustomMenus;
   final VoidCallback openLists;
   final ValueChanged<AppEvent> openDetails;
   final VoidCallback refresh;
+
+  @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  int upcomingDurationDays = 3;
+  static const upcomingDurationOptions = [
+    (label: 'Tomorrow', days: 1),
+    (label: 'Next 3 days', days: 3),
+    (label: 'Next 7 days', days: 7),
+    (label: 'Next 15 days', days: 15),
+    (label: 'Next 30 days', days: 30),
+  ];
 
   bool upcomingDate(AppEventDate date) {
     final parsed = parseIsoDate(date.date);
@@ -34,7 +50,7 @@ class DashboardScreen extends StatelessWidget {
     final now = DateTime.now();
     final tomorrow =
         DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-    final end = tomorrow.add(const Duration(days: 2));
+    final end = tomorrow.add(Duration(days: upcomingDurationDays - 1));
     return !parsed.isBefore(tomorrow) && !parsed.isAfter(end);
   }
 
@@ -80,7 +96,8 @@ class DashboardScreen extends StatelessWidget {
   bool isSameMonth(DateTime date, DateTime month) =>
       date.year == month.year && date.month == month.month;
 
-  Iterable<AppEvent> monthlyEvents(DateTime month) => events.where((event) {
+  Iterable<AppEvent> monthlyEvents(DateTime month) =>
+      widget.events.where((event) {
         final firstDate = eventFirstDate(event);
         return firstDate != null && isSameMonth(firstDate, month);
       });
@@ -117,7 +134,7 @@ class DashboardScreen extends StatelessWidget {
       showCpSnack(context, 'Preparing monthly report...');
       final monthKey =
           '${month.year}-${month.month.toString().padLeft(2, '0')}';
-      final uri = await api.monthlyReportPdfUri(monthKey);
+      final uri = await widget.api.monthlyReportPdfUri(monthKey);
       if (!context.mounted) return;
       showDownloadSnack(context, uri,
           title: 'Monthly report $monthKey.pdf',
@@ -137,9 +154,9 @@ class DashboardScreen extends StatelessWidget {
       final now = DateTime.now();
       final start =
           DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
-      final end = start.add(const Duration(days: 2));
+      final end = start.add(Duration(days: upcomingDurationDays - 1));
       showCpSnack(context, 'Preparing upcoming consolidated menu...');
-      final uri = await api.createConsolidatedMenusUri(
+      final uri = await widget.api.createConsolidatedMenusUri(
           events: upcomingMenuEvents,
           startDate: dateKey(start),
           endDate: dateKey(end),
@@ -165,10 +182,11 @@ class DashboardScreen extends StatelessWidget {
     final revenue = monthlyRevenue(month);
     final pending = monthlyDue(month);
     final overdueEvents =
-        events.where((event) => eventBalance(event) > 0).length;
-    final upcomingEvents =
-        events.where((event) => upcomingDatesFor(event).isNotEmpty).toList();
-    final upcomingMenuEvents = events
+        widget.events.where((event) => eventBalance(event) > 0).length;
+    final upcomingEvents = widget.events
+        .where((event) => upcomingDatesFor(event).isNotEmpty)
+        .toList();
+    final upcomingMenuEvents = widget.events
         .where((event) => upcomingMenuDatesFor(event).isNotEmpty)
         .toList();
     final trend = sixMonthRevenue(now);
@@ -180,7 +198,7 @@ class DashboardScreen extends StatelessWidget {
         subtitle: 'Welcome back',
         actions: [
           IconButton(
-              onPressed: refresh,
+              onPressed: widget.refresh,
               icon: const Icon(Icons.refresh_rounded, color: Cp.primary))
         ],
       ),
@@ -244,47 +262,36 @@ class DashboardScreen extends StatelessWidget {
                   icon: Icons.calendar_month,
                   label: 'Events',
                   color: Cp.primaryContainer,
-                  onTap: openEvents),
+                  onTap: widget.openEvents),
               DashboardActionButton(
                   icon: Icons.fact_check,
                   label: 'Ready Menu',
                   color: Cp.surfaceHigh,
-                  onTap: openCustomMenus),
+                  onTap: widget.openCustomMenus),
               DashboardActionButton(
-                  icon: Icons.payments,
-                  label: 'Payment',
+                  icon: Icons.badge,
+                  label: 'Employees',
                   color: Cp.secondaryContainer,
-                  onTap: openBilling),
+                  onTap: widget.openEmployees),
               DashboardActionButton(
                   icon: Icons.person_add_alt,
                   label: 'Clients',
                   color: Cp.surfaceHigh,
-                  onTap: openClients),
+                  onTap: widget.openClients),
               DashboardActionButton(
                   icon: Icons.description_outlined,
                   label: 'Invoice',
                   color: Cp.surfaceHigh,
-                  onTap: openInvoice),
+                  onTap: widget.openInvoice),
               DashboardActionButton(
                   icon: Icons.checklist,
                   label: 'Lists',
                   color: Cp.surfaceHigh,
-                  onTap: openLists),
+                  onTap: widget.openLists),
             ],
           ),
         ),
         const SizedBox(height: 18),
-        RevenueTrendCard(
-            value: revenue,
-            due: pending,
-            values: trend,
-            maxValue: maxTrend,
-            onReportTap: () => downloadMonthlyReport(context, month),
-            monthLabels: List.generate(
-                6,
-                (index) =>
-                    monthShort(DateTime(now.year, now.month - 5 + index)))),
-        const SizedBox(height: 22),
         Row(
           children: [
             Expanded(child: SectionHeader('Upcoming Deliveries')),
@@ -304,8 +311,38 @@ class DashboardScreen extends StatelessWidget {
                 color: Cp.primary.withValues(alpha: .1), textColor: Cp.primary),
           ],
         ),
+        const SizedBox(height: 10),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: upcomingDurationOptions.map((option) {
+              final selected = upcomingDurationDays == option.days;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(option.label),
+                  selected: selected,
+                  selectedColor: cpPrimary(context),
+                  backgroundColor: cpCard(context),
+                  side: BorderSide(
+                      color: selected
+                          ? cpPrimary(context)
+                          : cpOutlineVariant(context)),
+                  labelStyle: TextStyle(
+                      color: selected
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : cpOnSurface(context),
+                      fontWeight: FontWeight.w900),
+                  showCheckmark: false,
+                  onSelected: (_) =>
+                      setState(() => upcomingDurationDays = option.days),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
         const SizedBox(height: 12),
-        if (loading)
+        if (widget.loading)
           const Center(
               child: Padding(
                   padding: EdgeInsets.all(24),
@@ -313,10 +350,11 @@ class DashboardScreen extends StatelessWidget {
         else if (upcomingEvents.isEmpty)
           EmptyStateCard(
               title: t('No upcoming events'),
-              message: t(
-                  'Events from tomorrow and the next 2 days will appear here.'),
-              actionLabel: events.isEmpty ? t('Create Event') : null,
-              onAction: events.isEmpty ? openCreate : null)
+              message: t(upcomingDurationDays == 1
+                  ? 'Events scheduled for tomorrow will appear here.'
+                  : 'Events from tomorrow and the next $upcomingDurationDays days will appear here.'),
+              actionLabel: widget.events.isEmpty ? t('Create Event') : null,
+              onAction: widget.events.isEmpty ? widget.openCreate : null)
         else
           ...upcomingEvents.map((event) {
             final dates = upcomingDatesFor(event);
@@ -339,8 +377,19 @@ class DashboardScreen extends StatelessWidget {
                 members: members,
                 itemCount: itemCount,
                 slots: slots,
-                onTap: () => openDetails(event));
+                onTap: () => widget.openDetails(event));
           }),
+        const SizedBox(height: 22),
+        RevenueTrendCard(
+            value: revenue,
+            due: pending,
+            values: trend,
+            maxValue: maxTrend,
+            onReportTap: () => downloadMonthlyReport(context, month),
+            monthLabels: List.generate(
+                6,
+                (index) =>
+                    monthShort(DateTime(now.year, now.month - 5 + index)))),
       ],
     );
   }

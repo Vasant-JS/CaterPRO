@@ -6,6 +6,25 @@ const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 
+function loadLocalEnvFile() {
+  const envPath = path.join(__dirname, '.env');
+  if (!fs.existsSync(envPath)) return;
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+    const index = trimmed.indexOf('=');
+    const key = trimmed.slice(0, index).trim();
+    let value = trimmed.slice(index + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+loadLocalEnvFile();
+
 const app = express();
 const port = Number(process.env.PORT || 8787);
 const supabaseUrl = process.env.SUPABASE_URL || '';
@@ -75,7 +94,11 @@ async function saveSupabaseDb(db) {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' }),
   );
-  await syncSupabaseTables(db);
+  try {
+    await syncSupabaseTables(db);
+  } catch (error) {
+    console.warn('Supabase reporting-table sync skipped:', error.message);
+  }
 }
 
 const supabaseTables = [
@@ -233,14 +256,32 @@ async function upsertSupabaseRows(table, rows) {
   }
 }
 
+function isMissingSupabaseTableError(error) {
+  const message = String(error?.message || '');
+  return error?.code === 'PGRST205' || message.includes('Could not find the table');
+}
+
 async function syncSupabaseTables(db) {
   if (!supabase) return;
   const rowsByTable = buildSupabaseRows(db);
+  const skippedTables = [];
   for (const table of supabaseTables) {
-    await supabaseRequest(supabase.from(table).delete().eq('state_id', supabaseStateId));
+    try {
+      await supabaseRequest(supabase.from(table).delete().eq('state_id', supabaseStateId));
+    } catch (error) {
+      if (isMissingSupabaseTableError(error)) {
+        skippedTables.push(table);
+        continue;
+      }
+      throw error;
+    }
   }
   for (const table of [...supabaseTables].reverse()) {
+    if (skippedTables.includes(table)) continue;
     await upsertSupabaseRows(table, rowsByTable[table]);
+  }
+  if (skippedTables.length) {
+    console.warn(`Supabase reporting tables not found and skipped: ${skippedTables.join(', ')}`);
   }
 }
 
@@ -261,7 +302,8 @@ async function initializeStorage() {
   requireSupabaseConfigured();
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
-    runtimeDb = supabaseDb;
+    runtimeDb = ensureAdminUser(supabaseDb);
+    scheduleSupabaseSave(runtimeDb);
     console.log(`CaterPro storage: loaded Supabase state "${supabaseStateId}"`);
     return;
   }
@@ -304,8 +346,34 @@ function requireAdminUser(req, res, db) {
   return user;
 }
 
+function ensureAdminUser(db) {
+  const adminEmail = String(process.env.ADMIN_EMAIL || 'admin@caterpro.in').trim().toLowerCase();
+  const adminPassword = String(process.env.ADMIN_PASSWORD || 'password');
+  if (!adminEmail.includes('@')) return db;
+  db.users = asArray(db.users);
+  db.userData = db.userData || {};
+  const existing = asArray(db.users).find((user) => String(user.email || '').toLowerCase() === adminEmail);
+  if (existing) {
+    existing.role = existing.role || 'admin';
+    db.userData[existing.id] = db.userData[existing.id] || emptyUserData();
+    return db;
+  }
+  const admin = {
+    id: 'admin',
+    name: 'CaterPro Admin',
+    email: adminEmail,
+    password: adminPassword,
+    role: 'admin',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  db.users.push(admin);
+  db.userData[admin.id] = emptyUserData();
+  return db;
+}
+
 function emptyUserData() {
-  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], menuItems: [], rawMaterials: [], produceItems: [], vesselItems: [], customMenus: [], requirementLists: [], payments: [], manualInvoices: [], businessProfile: emptyBusinessProfile() };
+  return { events: [], clients: [], employees: [], attendance: [], additionalServices: [], menuItems: [], rawMaterials: [], produceItems: [], vesselItems: [], customMenus: [], requirementLists: [], payments: [], manualInvoices: [], auditLogs: [], businessProfile: emptyBusinessProfile() };
 }
 
 function emptyBusinessProfile() {
@@ -340,6 +408,7 @@ function ensureUserDataShape(userData) {
   userData.requirementLists = asArray(userData.requirementLists).map((item) => materialDocumentFromBody(item));
   userData.payments = userData.payments || [];
   userData.manualInvoices = userData.manualInvoices || [];
+  userData.auditLogs = asArray(userData.auditLogs);
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
   return userData;
 }
@@ -1508,8 +1577,8 @@ function pdfFilename(parts) {
   return `${name || 'caterpro-document'}.pdf`;
 }
 
-function setPdfAttachment(res, parts) {
-  res.setHeader('Content-Disposition', `attachment; filename="${pdfFilename(parts)}"`);
+function setPdfAttachment(res, parts, disposition = 'attachment') {
+  res.setHeader('Content-Disposition', `${disposition}; filename="${pdfFilename(parts)}"`);
 }
 
 function amountInWords(value) {
@@ -1951,7 +2020,7 @@ function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = fal
   doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(`Generated by CaterPro on ${prettyDate(new Date().toISOString().slice(0, 10))}`, metrics.left, 786, { width: metrics.width, align: 'center', lineBreak: false });
 }
 
-function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile(), clients = [] }) {
+function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile(), clients = [], disposition = 'attachment' }) {
   const isInvoice = type === 'invoice';
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
   const number = documentNumber(isInvoice ? 'INV' : 'QUOTE', event);
@@ -1970,7 +2039,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
-  setPdfAttachment(res, [title, eventClientName(event), event.name || event.id, number]);
+  setPdfAttachment(res, [title, eventClientName(event), event.name || event.id, number], disposition);
   doc.pipe(res);
 
   writeDocumentHeader(doc, title, documentEvent, number, fonts, businessProfile);
@@ -2046,7 +2115,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   doc.end();
 }
 
-function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusinessProfile() }) {
+function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusinessProfile(), disposition = 'attachment' }) {
   const number = invoice.invoiceNumber || documentNumber('INV', { id: invoice.id });
   const event = {
     id: invoice.id,
@@ -2062,7 +2131,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
-  setPdfAttachment(res, ['INVOICE', invoice.clientName || 'Client', invoice.eventName || invoice.id, number]);
+  setPdfAttachment(res, ['INVOICE', invoice.clientName || 'Client', invoice.eventName || invoice.id, number], disposition);
   doc.pipe(res);
 
   writeDocumentHeader(doc, 'INVOICE', event, number, fonts, businessProfile);
@@ -3208,7 +3277,7 @@ const apiDocs = {
   demoUser: { email: 'admin@caterpro.in', password: 'password' },
   ownership: {
     universal: ['menuItems', 'rawMaterials', 'produceItems', 'vesselItems'],
-    userOwned: ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'requirementLists', 'businessProfile', 'payments', 'manualInvoices'],
+    userOwned: ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'customMenus', 'requirementLists', 'businessProfile', 'payments', 'manualInvoices', 'auditLogs'],
   },
 };
 
@@ -3261,6 +3330,563 @@ app.post('/api/admin/users', (req, res) => {
     message: 'User inserted',
     user: { id: user.id, name: user.name, email: user.email },
   });
+});
+
+function rupees(value) {
+  return Number(value || 0);
+}
+
+function adminUserData(db, userId) {
+  const raw = db.userData?.[userId] || {};
+  return {
+    ...emptyUserData(),
+    ...raw,
+    events: asArray(raw.events),
+    clients: asArray(raw.clients),
+    employees: asArray(raw.employees),
+    attendance: asArray(raw.attendance),
+    additionalServices: asArray(raw.additionalServices),
+    menuItems: asArray(raw.menuItems),
+    rawMaterials: asArray(raw.rawMaterials),
+    produceItems: asArray(raw.produceItems),
+    vesselItems: asArray(raw.vesselItems),
+    customMenus: asArray(raw.customMenus),
+    requirementLists: asArray(raw.requirementLists),
+    payments: asArray(raw.payments),
+    manualInvoices: asArray(raw.manualInvoices),
+    auditLogs: asArray(raw.auditLogs),
+    businessProfile: { ...emptyBusinessProfile(), ...(raw.businessProfile || {}) },
+  };
+}
+
+function adminManualInvoiceTotal(invoice) {
+  return rupees(invoice.total ?? asArray(invoice.items).reduce((sum, item) => sum + rupees(item.amount), 0));
+}
+
+function adminManualInvoicePaid(invoice) {
+  return rupees(invoice.advance) + rupees(invoice.settlement) + rupees(invoice.paidAmount) + rupees(invoice.settlementAmount);
+}
+
+function adminManualInvoicePending(invoice) {
+  return Math.max(0, rupees(invoice.pending ?? (adminManualInvoiceTotal(invoice) - adminManualInvoicePaid(invoice))));
+}
+
+function adminEventDateValue(event) {
+  const dates = asArray(event.dates).map((date) => String(date.date || '')).filter(Boolean).sort();
+  return dates[0] || '';
+}
+
+function adminEventDateSurpassed(event) {
+  const today = new Date().toISOString().slice(0, 10);
+  return asArray(event.dates).some((date) => String(date.date || '') < today);
+}
+
+function adminClientName(user, userData, mobile = '') {
+  const normalized = normalizeMobile(mobile);
+  const client = asArray(userData.clients).find((item) => normalizeMobile(item.mobile) === normalized);
+  return client?.name || user.name || user.email || 'Client';
+}
+
+function adminUserMetrics(db, user) {
+  const userData = adminUserData(db, user.id);
+  const eventSummary = asArray(userData.events).reduce((summary, event) => {
+    const totals = eventTotals(normalizeEventShape(event));
+    summary.earned += totals.total;
+    summary.paid += totals.paid + totals.discount;
+    summary.pending += totals.balance;
+    return summary;
+  }, { earned: 0, paid: 0, pending: 0 });
+  const invoiceSummary = asArray(userData.manualInvoices).reduce((summary, invoice) => {
+    summary.earned += adminManualInvoiceTotal(invoice);
+    summary.paid += adminManualInvoicePaid(invoice);
+    summary.pending += adminManualInvoicePending(invoice);
+    return summary;
+  }, { earned: 0, paid: 0, pending: 0 });
+  const profile = userData.businessProfile || emptyBusinessProfile();
+  const businessName = profile.businessName || user.name || user.email || 'Unnamed Business';
+  const lastSyncCandidates = [
+    user.updatedAt,
+    profile.updatedAt,
+    ...asArray(userData.clients).map((item) => item.updatedAt),
+    ...asArray(userData.events).map((item) => item.updatedAt),
+    ...asArray(userData.manualInvoices).map((item) => item.updatedAt),
+  ].filter(Boolean).sort();
+  return {
+    id: user.id,
+    name: user.name || '',
+    email: user.email || '',
+    role: user.role || '',
+    businessName,
+    ownerName: user.name || businessName,
+    phone: profile.phone || '',
+    city: profile.city || profile.address || '',
+    plan: user.plan || profile.plan || 'Pro',
+    status: user.status || 'Active',
+    subscriptionStatus: user.subscriptionStatus || 'Active',
+    billingCycle: user.billingCycle || '',
+    nextRenewal: user.nextRenewal || '',
+    clientCount: asArray(userData.clients).length,
+    eventCount: asArray(userData.events).length,
+    invoiceCount: asArray(userData.manualInvoices).length,
+    menuItemCount: asArray(userData.menuItems).length,
+    employeeCount: asArray(userData.employees).length,
+    auditCount: asArray(userData.auditLogs).length,
+    totalEarning: eventSummary.earned + invoiceSummary.earned,
+    paidAmount: eventSummary.paid + invoiceSummary.paid,
+    pendingPayment: eventSummary.pending + invoiceSummary.pending,
+    lastSyncAt: lastSyncCandidates.at(-1) || null,
+    businessProfile: profile,
+  };
+}
+
+function isConsoleOnlyAdminUser(user) {
+  return String(user.email || '').toLowerCase() === 'admin@caterpro.in'
+    && rupees(user.totalEarning) === 0
+    && rupees(user.pendingPayment) === 0
+    && rupees(user.clientCount) === 0
+    && rupees(user.eventCount) === 0
+    && rupees(user.invoiceCount) === 0
+    && rupees(user.menuItemCount) === 0
+    && rupees(user.employeeCount) === 0;
+}
+
+function adminEventDto(event) {
+  const normalized = normalizeEventShape(event);
+  const totals = eventTotals(normalized);
+  return {
+    id: normalized.id,
+    name: normalized.name || '',
+    primaryClient: normalized.primaryClient || normalized.clientName || '',
+    mobile: normalized.mobile || '',
+    venue: normalized.venue || '',
+    date: adminEventDateValue(normalized),
+    status: normalized.status || (totals.balance <= 0 && totals.total > 0 ? 'Paid' : 'Pending'),
+    total: totals.total,
+    paid: totals.paid,
+    balance: totals.balance,
+    dates: asArray(normalized.dates),
+    menuTypes: asArray(normalized.dates).flatMap((date) => asArray(date.menuSlots).map((slot) => slot.type).filter(Boolean)),
+  };
+}
+
+function adminInvoiceDtos(userData) {
+  const eventDocuments = asArray(userData.events).flatMap((event) => {
+    const normalized = normalizeEventShape(event);
+    const totals = eventTotals(normalized);
+    if (!asArray(normalized.payments).length && !adminEventDateSurpassed(normalized)) {
+      return [{
+        id: normalized.id,
+        type: 'Quotation',
+        pdfType: 'quotation',
+        documentNumber: `QUOTE-${String(normalized.id || '').toUpperCase()}`,
+        clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
+        mobile: normalized.mobile || '',
+        eventName: normalized.name || '',
+        date: adminEventDateValue(normalized),
+        total: totals.total,
+        paid: 0,
+        pending: totals.total,
+        source: 'event',
+        eventId: normalized.id,
+      }];
+    }
+    if (!asArray(normalized.payments).length) {
+      return [{
+        id: normalized.id,
+        type: 'Invoice',
+        pdfType: 'invoice',
+        documentNumber: `INV-${String(normalized.id || '').toUpperCase()}`,
+        clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
+        mobile: normalized.mobile || '',
+        eventName: normalized.name || '',
+        date: adminEventDateValue(normalized),
+        total: totals.balance,
+        paid: totals.paid,
+        pending: totals.balance,
+        source: 'event',
+        eventId: normalized.id,
+      }];
+    }
+    return asArray(normalized.payments).map((payment) => ({
+      id: normalized.id,
+      type: 'Invoice',
+      pdfType: 'invoice',
+      documentNumber: `INV-${String(payment.id || normalized.id || '').toUpperCase()}`,
+      clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
+      mobile: normalized.mobile || '',
+      eventName: normalized.name || '',
+      date: payment.date || adminEventDateValue(normalized),
+      total: Number(payment.amount || 0),
+      paid: totals.paid,
+      pending: totals.balance,
+      source: 'event',
+      eventId: normalized.id,
+      paymentId: payment.id || '',
+    }));
+  });
+  const manualInvoices = asArray(userData.manualInvoices).map((invoice) => ({
+    id: invoice.id || invoice.invoiceNumber || '',
+    type: 'Invoice',
+    pdfType: 'manual-invoice',
+    documentNumber: invoice.invoiceNumber || documentNumber('INV', invoice),
+    clientName: invoice.clientName || 'Client',
+    mobile: invoice.mobile || '',
+    eventName: invoice.eventName || '',
+    date: invoice.invoiceDate || invoice.eventDate || '',
+    total: adminManualInvoiceTotal(invoice),
+    paid: adminManualInvoicePaid(invoice),
+    pending: adminManualInvoicePending(invoice),
+    source: 'manual',
+    invoiceId: invoice.id || invoice.invoiceNumber || '',
+  }));
+  return [...eventDocuments, ...manualInvoices].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+}
+
+function adminSelectedUser(db, req) {
+  const requested = String(req.query.userId || req.params.userId || '').trim();
+  const users = asArray(db.users)
+    .map((user) => adminUserMetrics(db, user))
+    .filter((user) => !isConsoleOnlyAdminUser(user));
+  if (requested) return asArray(db.users).find((user) => user.id === requested) || null;
+  const firstUserId = users[0]?.id || asArray(db.users)[0]?.id || '';
+  return asArray(db.users).find((user) => user.id === firstUserId) || null;
+}
+
+function requireAdminTargetUser(req, res, db) {
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return null;
+  const targetUser = adminSelectedUser(db, req);
+  if (!targetUser) {
+    res.status(404).json({ message: 'User not found' });
+    return null;
+  }
+  db.userData[targetUser.id] = ensureUserDataShape(db.userData?.[targetUser.id] || emptyUserData());
+  return targetUser;
+}
+
+function menuItemFromAdminBody(body = {}, existing = {}, list = []) {
+  const mealsValue = Array.isArray(body.meals)
+    ? body.meals
+    : String(body.meals || existing.meals || '')
+      .split(',')
+      .map((meal) => meal.trim())
+      .filter(Boolean);
+  const english = String(body.english ?? existing.english ?? '').trim();
+  const kannada = String(body.kannada ?? existing.kannada ?? '').trim();
+  return {
+    ...existing,
+    id: String(body.id || existing.id || nextCatalogId(list, 'MNU')).trim(),
+    english,
+    kannada,
+    title: String(body.title ?? existing.title ?? [kannada, english].filter(Boolean).join('/')).trim(),
+    category: String(body.category ?? existing.category ?? '').trim(),
+    meals: mealsValue,
+    veg: body.veg === undefined ? existing.veg !== false : Boolean(body.veg),
+    disabled: body.disabled === undefined ? Boolean(existing.disabled) : Boolean(body.disabled),
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || new Date().toISOString(),
+  };
+}
+
+async function writeDbAndFlush(db) {
+  writeDb(db);
+  await flushSupabaseWrites();
+}
+
+function adminUserPayload(db, user) {
+  const userData = adminUserData(db, user.id);
+  const metrics = adminUserMetrics(db, user);
+  const events = asArray(userData.events).map(adminEventDto).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  const invoices = adminInvoiceDtos(userData);
+  return {
+    user: metrics,
+    businessProfile: userData.businessProfile,
+    clients: asArray(userData.clients),
+    events,
+    invoices,
+    menuItems: asArray(userData.menuItems),
+    customMenus: asArray(userData.customMenus),
+    rawMaterials: asArray(userData.rawMaterials),
+    produceItems: asArray(userData.produceItems),
+    vesselItems: asArray(userData.vesselItems),
+    employees: asArray(userData.employees),
+    attendance: asArray(userData.attendance),
+    reports: {
+      totalRevenue: metrics.totalEarning,
+      pendingPayment: metrics.pendingPayment,
+      paidAmount: metrics.paidAmount,
+      monthlyOrders: events.length,
+      invoiceCount: invoices.length,
+    },
+    auditLogs: asArray(userData.auditLogs),
+  };
+}
+
+function customMenuFromAdminBody(body = {}, existing = {}) {
+  return {
+    ...existing,
+    id: String(body.id || existing.id || makeId('cmenu')).trim(),
+    name: String(body.name ?? existing.name ?? '').trim(),
+    type: String(body.type ?? existing.type ?? '').trim(),
+    itemIds: asArray(body.itemIds ?? existing.itemIds).map((item) => String(item || '').trim()).filter(Boolean),
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || body.createdAt || new Date().toISOString(),
+  };
+}
+
+app.get('/api/admin/overview', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const users = asArray(db.users).map((user) => adminUserMetrics(db, user));
+  const businessUsers = users.filter((user) => !isConsoleOnlyAdminUser(user));
+  const totals = businessUsers.reduce((summary, user) => {
+    summary.totalEarning += user.totalEarning;
+    summary.pendingPayment += user.pendingPayment;
+    summary.events += user.eventCount;
+    summary.clients += user.clientCount;
+    summary.invoices += user.invoiceCount;
+    return summary;
+  }, { totalEarning: 0, pendingPayment: 0, events: 0, clients: 0, invoices: 0 });
+  res.json({
+    admin: { id: admin.id, name: admin.name, email: admin.email },
+    totals: {
+      users: businessUsers.length,
+      activeUsers: businessUsers.filter((user) => String(user.status).toLowerCase() === 'active').length,
+      trialUsers: businessUsers.filter((user) => String(user.plan).toLowerCase().includes('trial')).length,
+      ...totals,
+    },
+    users: businessUsers,
+    storage: { stateId: supabaseStateId, supabaseEnabled: Boolean(supabase) },
+  });
+});
+
+app.get('/api/admin/profile', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  res.json({
+    id: admin.id,
+    name: admin.name || '',
+    email: admin.email || '',
+    role: admin.role || 'admin',
+    phone: admin.phone || '',
+    designation: admin.designation || 'Super Admin',
+    avatarUrl: admin.avatarUrl || '',
+    status: admin.status || 'Active',
+    createdAt: admin.createdAt || '',
+    updatedAt: admin.updatedAt || '',
+  });
+});
+
+app.put('/api/admin/profile', async (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const nextEmail = req.body.email === undefined
+    ? String(admin.email || '').trim().toLowerCase()
+    : String(req.body.email || '').trim().toLowerCase();
+  if (!nextEmail.includes('@')) return res.status(400).json({ message: 'Valid email is required' });
+  const emailOwner = asArray(db.users).find((user) => user.id !== admin.id && String(user.email || '').toLowerCase() === nextEmail);
+  if (emailOwner) return res.status(409).json({ message: 'Email is already used by another user' });
+  if (req.body.name !== undefined) admin.name = String(req.body.name || '').trim();
+  admin.email = nextEmail;
+  if (req.body.phone !== undefined) admin.phone = String(req.body.phone || '').trim();
+  if (req.body.designation !== undefined) admin.designation = String(req.body.designation || '').trim();
+  if (req.body.avatarUrl !== undefined) admin.avatarUrl = String(req.body.avatarUrl || '').trim();
+  if (req.body.status !== undefined) admin.status = String(req.body.status || '').trim() || 'Active';
+  if (req.body.password) admin.password = String(req.body.password);
+  admin.role = admin.role || 'admin';
+  admin.updatedAt = new Date().toISOString();
+  await writeDbAndFlush(db);
+  res.json({
+    id: admin.id,
+    name: admin.name || '',
+    email: admin.email || '',
+    role: admin.role || 'admin',
+    phone: admin.phone || '',
+    designation: admin.designation || 'Super Admin',
+    avatarUrl: admin.avatarUrl || '',
+    status: admin.status || 'Active',
+    createdAt: admin.createdAt || '',
+    updatedAt: admin.updatedAt || '',
+  });
+});
+
+app.get('/api/admin/users', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  res.json(asArray(db.users)
+    .map((user) => adminUserMetrics(db, user))
+    .filter((user) => !isConsoleOnlyAdminUser(user)));
+});
+
+app.put('/api/admin/users/:userId', async (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const user = asArray(db.users).find((entry) => entry.id === req.params.userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  db.userData[user.id] = ensureUserDataShape(db.userData?.[user.id] || emptyUserData());
+  const profile = db.userData[user.id].businessProfile || emptyBusinessProfile();
+  if (req.body.name !== undefined) user.name = String(req.body.name || '').trim();
+  if (req.body.email !== undefined) user.email = String(req.body.email || '').trim().toLowerCase();
+  if (req.body.plan !== undefined) user.plan = String(req.body.plan || '').trim();
+  if (req.body.status !== undefined) user.status = String(req.body.status || '').trim() || 'Active';
+  if (req.body.subscriptionStatus !== undefined) user.subscriptionStatus = String(req.body.subscriptionStatus || '').trim();
+  if (req.body.billingCycle !== undefined) user.billingCycle = String(req.body.billingCycle || '').trim();
+  if (req.body.nextRenewal !== undefined) user.nextRenewal = String(req.body.nextRenewal || '').trim();
+  if (req.body.businessName !== undefined) profile.businessName = String(req.body.businessName || '').trim();
+  if (req.body.phone !== undefined) profile.phone = String(req.body.phone || '').trim();
+  if (req.body.city !== undefined) profile.city = String(req.body.city || '').trim();
+  if (req.body.address !== undefined) profile.address = String(req.body.address || '').trim();
+  profile.updatedAt = new Date().toISOString();
+  user.updatedAt = new Date().toISOString();
+  db.userData[user.id].businessProfile = profile;
+  await writeDbAndFlush(db);
+  res.json(adminUserMetrics(db, user));
+});
+
+app.get('/api/admin/users/:userId', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const user = adminSelectedUser(db, req);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  res.json(adminUserPayload(db, user));
+});
+
+app.get('/api/admin/client-data', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const user = adminSelectedUser(db, req);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  res.json(adminUserPayload(db, user));
+});
+
+app.get('/api/admin/users/:userId/events/:eventId/documents/:type', (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  if (!['quotation', 'invoice'].includes(req.params.type)) {
+    return res.status(400).json({ message: 'Document type must be quotation or invoice' });
+  }
+  const event = findUserEvent(db, targetUser.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  return generateEventPdf({
+    res,
+    db,
+    event,
+    type: req.params.type,
+    businessProfile: db.userData[targetUser.id].businessProfile,
+    clients: db.userData[targetUser.id].clients || [],
+    disposition: 'inline',
+  });
+});
+
+app.get('/api/admin/users/:userId/manual-invoices/:invoiceId/pdf', (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const invoice = asArray(db.userData[targetUser.id].manualInvoices)
+    .find((item) => item.id === req.params.invoiceId || item.invoiceNumber === req.params.invoiceId);
+  if (!invoice) return res.status(404).json({ message: 'Manual invoice not found' });
+  return generateManualInvoicePdf({
+    res,
+    invoice,
+    businessProfile: db.userData[targetUser.id].businessProfile,
+    disposition: 'inline',
+  });
+});
+
+app.put('/api/admin/users/:userId/menu-items/:itemId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].menuItems;
+  const existing = list.find((item) => item.id === req.params.itemId);
+  const item = menuItemFromAdminBody({ ...req.body, id: req.body.id || req.params.itemId }, existing || {}, list);
+  if (item.id !== req.params.itemId) {
+    db.userData[targetUser.id].menuItems = list.filter((entry) => entry.id !== req.params.itemId);
+  }
+  upsertById(db.userData[targetUser.id].menuItems, item);
+  await writeDbAndFlush(db);
+  res.status(existing ? 200 : 201).json(item);
+});
+
+app.delete('/api/admin/users/:userId/menu-items/:itemId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const before = db.userData[targetUser.id].menuItems.length;
+  db.userData[targetUser.id].menuItems = db.userData[targetUser.id].menuItems
+    .filter((entry) => entry.id !== req.params.itemId);
+  if (db.userData[targetUser.id].menuItems.length === before) {
+    return res.status(404).json({ message: 'Menu item not found' });
+  }
+  await writeDbAndFlush(db);
+  res.status(204).end();
+});
+
+app.post('/api/admin/users/:userId/menu-items/import', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].menuItems;
+  const rows = asArray(req.body.items);
+  if (!rows.length) return res.status(400).json({ message: 'No menu items supplied' });
+  let created = 0;
+  let updated = 0;
+  for (const row of rows) {
+    const requestedId = String(row.id || '').trim();
+    const existing = requestedId ? list.find((item) => item.id === requestedId) : null;
+    const item = menuItemFromAdminBody(row, existing || {}, list);
+    if (existing) updated += 1;
+    else created += 1;
+    upsertById(list, item);
+  }
+  await writeDbAndFlush(db);
+  res.json({ message: 'Menu import completed', created, updated, count: list.length });
+});
+
+app.post('/api/admin/users/:userId/custom-menus', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].customMenus;
+  const menu = customMenuFromAdminBody(req.body, {});
+  upsertById(list, menu);
+  await writeDbAndFlush(db);
+  res.status(201).json(menu);
+});
+
+app.put('/api/admin/users/:userId/custom-menus/:menuId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].customMenus;
+  const existing = list.find((menu) => menu.id === req.params.menuId);
+  if (!existing) return res.status(404).json({ message: 'Custom menu not found' });
+  const menu = customMenuFromAdminBody({ ...req.body, id: req.params.menuId }, existing);
+  upsertById(list, menu);
+  await writeDbAndFlush(db);
+  res.json(menu);
+});
+
+app.delete('/api/admin/users/:userId/custom-menus/:menuId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const before = db.userData[targetUser.id].customMenus.length;
+  db.userData[targetUser.id].customMenus = db.userData[targetUser.id].customMenus
+    .filter((menu) => menu.id !== req.params.menuId);
+  if (db.userData[targetUser.id].customMenus.length === before) {
+    return res.status(404).json({ message: 'Custom menu not found' });
+  }
+  await writeDbAndFlush(db);
+  res.status(204).end();
 });
 
 function changePasswordHandler(req, res) {
@@ -3317,6 +3943,7 @@ function recordKeyForSync(item, listKey) {
   if (listKey === 'attendance') return [item.eventId, item.employeeId, item.date].map((value) => value || '').join('|');
   if (listKey === 'selectedServices') return [item.serviceId || item.id || item.name, item.count || item.quantity || ''].map((value) => value || '').join('|');
   if (listKey === 'materialItems') return [item.itemId || item.id || item.name, item.quantity || ''].map((value) => value || '').join('|');
+  if (listKey === 'auditLogs') return [item.id, item.action, item.entityType, item.entityId, item.createdAt].map((value) => value || '').join('|');
   return item.id || item.mobile || item.name || JSON.stringify(item);
 }
 
@@ -3373,6 +4000,7 @@ function mergeUserDataForSync(existing = emptyUserData(), incoming = emptyUserDa
     requirementLists: mergeSyncRecordList(current.requirementLists, next.requirementLists, 'requirementLists'),
     payments: mergeSyncRecordList(current.payments, next.payments, 'payments'),
     manualInvoices: mergeSyncRecordList(current.manualInvoices, next.manualInvoices, 'manualInvoices'),
+    auditLogs: mergeSyncRecordList(current.auditLogs, next.auditLogs, 'auditLogs'),
     businessProfile: mergeSyncRecord(current.businessProfile || {}, next.businessProfile || {}, 'businessProfile'),
   });
 }
@@ -3381,7 +4009,7 @@ function backupUserDataForSync(existing = emptyUserData(), incoming = {}) {
   const current = ensureUserDataShape({ ...emptyUserData(), ...existing });
   const next = incoming && typeof incoming === 'object' ? incoming : {};
   const merged = { ...current };
-  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'menuItems', 'rawMaterials', 'produceItems', 'vesselItems', 'customMenus', 'requirementLists', 'payments', 'manualInvoices']) {
+  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'menuItems', 'rawMaterials', 'produceItems', 'vesselItems', 'customMenus', 'requirementLists', 'payments', 'manualInvoices', 'auditLogs']) {
     if (Array.isArray(next[key])) merged[key] = next[key];
   }
   if (next.businessProfile && typeof next.businessProfile === 'object') {
@@ -3464,6 +4092,29 @@ function exportBackup(req, res) {
 app.get('/api/backup', exportBackup);
 app.get('/api/backup/export', exportBackup);
 
+app.get('/api/admin/audit-logs', (req, res) => {
+  const db = readDb();
+  const admin = requireAdminUser(req, res, db);
+  if (!admin) return;
+  const userIdFilter = String(req.query.userId || '').trim();
+  const limit = Math.min(1000, Math.max(1, Number(req.query.limit || 200) || 200));
+  const logs = [];
+  for (const user of asArray(db.users)) {
+    if (userIdFilter && user.id !== userIdFilter) continue;
+    const userData = ensureUserDataShape(db.userData?.[user.id] || emptyUserData());
+    for (const entry of asArray(userData.auditLogs)) {
+      logs.push({
+        ...entry,
+        userId: user.id,
+        userName: user.name || '',
+        userEmail: user.email || '',
+      });
+    }
+  }
+  logs.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  res.json(logs.slice(0, limit));
+});
+
 app.post('/api/backup/import', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
@@ -3494,6 +4145,7 @@ app.post('/api/backup/import', (req, res) => {
       customMenus: db.userData[user.id].customMenus.length,
       requirementLists: db.userData[user.id].requirementLists.length,
       manualInvoices: db.userData[user.id].manualInvoices.length,
+      auditLogs: db.userData[user.id].auditLogs.length,
       menuItems: db.universal.menuItems.length,
       rawMaterials: db.universal.rawMaterials.length,
       produceItems: db.universal.produceItems.length,
@@ -4556,6 +5208,15 @@ async function pushLocalToSupabase(req, res) {
 }
 
 app.post('/api/storage/push-local-to-supabase', pushLocalToSupabase);
+
+const adminDashboardPath = path.join(__dirname, '..', 'AdminDashboard');
+if (fs.existsSync(path.join(adminDashboardPath, 'pages', 'login.html'))) {
+  app.use('/admin/assets', express.static(path.join(adminDashboardPath, 'assets')));
+  app.use('/admin/pages', express.static(path.join(adminDashboardPath, 'pages')));
+  app.get(['/admin', '/admin/'], (req, res) => {
+    res.redirect('/admin/pages/login.html');
+  });
+}
 
 const webBuildPath = path.join(__dirname, '..', 'frontend', 'build', 'web');
 const webMimeTypes = {

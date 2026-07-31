@@ -1,0 +1,18 @@
+.cp-brand-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid rgba(112, 122, 111, 0.28);
+}
+
+.cp-login-logo {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid rgba(112, 122, 111, 0.24);
+}
+

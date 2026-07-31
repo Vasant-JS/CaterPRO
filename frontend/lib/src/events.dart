@@ -27,6 +27,7 @@ class _EventsScreenState extends State<EventsScreen> {
   String query = '';
   String? clientFilter;
   String? dateFilter;
+  DateTimeRange? dateRangeFilter;
   bool showPastEvents = false;
   bool showOverduePayments = false;
   String paymentFilter = 'All';
@@ -59,13 +60,22 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   void scrollChipsToToday() {
-    final context = dateChipKeys[7].currentContext;
-    if (context == null) return;
-    Scrollable.ensureVisible(
-      context,
-      alignment: 0,
-      duration: const Duration(milliseconds: 1),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final context = dateChipKeys[7].currentContext;
+      if (context != null) {
+        Scrollable.ensureVisible(
+          context,
+          alignment: 0,
+          duration: const Duration(milliseconds: 1),
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        );
+        return;
+      }
+      if (!dateChipScrollController.hasClients) return;
+      final maxScroll = dateChipScrollController.position.maxScrollExtent;
+      dateChipScrollController.jumpTo((7 * 112).clamp(0, maxScroll).toDouble());
+    });
   }
 
   List<String> get clientOptions {
@@ -94,11 +104,26 @@ class _EventsScreenState extends State<EventsScreen> {
           !event.dates.any((date) => date.date == dateFilter)) {
         return false;
       }
+      if (dateRangeFilter != null &&
+          !event.dates.any((date) {
+            final parsed = _parseDate(date.date);
+            if (parsed == null) return false;
+            final start = DateTime(dateRangeFilter!.start.year,
+                dateRangeFilter!.start.month, dateRangeFilter!.start.day);
+            final end = DateTime(dateRangeFilter!.end.year,
+                dateRangeFilter!.end.month, dateRangeFilter!.end.day);
+            return !parsed.isBefore(start) && !parsed.isAfter(end);
+          })) {
+        return false;
+      }
       final hasCurrentOrFutureDate = event.dates.any((date) {
         final parsed = _parseDate(date.date);
         return parsed != null && !parsed.isBefore(todayOnly);
       });
-      if (!showPastEvents && dateFilter == null && !hasCurrentOrFutureDate) {
+      if (!showPastEvents &&
+          dateFilter == null &&
+          dateRangeFilter == null &&
+          !hasCurrentOrFutureDate) {
         return false;
       }
       final balance = eventBalance(event);
@@ -128,6 +153,9 @@ class _EventsScreenState extends State<EventsScreen> {
   String _dateChipLabel(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}, ${shortMonths[date.month - 1]}';
 
+  String _rangeLabel(DateTimeRange range) =>
+      '${_dateKey(range.start)} to ${_dateKey(range.end)}';
+
   List<DateTime> get dateChipDates {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -136,7 +164,10 @@ class _EventsScreenState extends State<EventsScreen> {
 
   void toggleDateFilter(DateTime date) {
     final key = _dateKey(date);
-    setState(() => dateFilter = dateFilter == key ? null : key);
+    setState(() {
+      dateFilter = dateFilter == key ? null : key;
+      if (dateFilter != null) dateRangeFilter = null;
+    });
   }
 
   Future<void> chooseClient() async {
@@ -146,6 +177,8 @@ class _EventsScreenState extends State<EventsScreen> {
       builder: (context) => SafeArea(
         top: false,
         child: Container(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * .72),
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
           decoration: BoxDecoration(
               color: cpSurface(context),
@@ -173,14 +206,21 @@ class _EventsScreenState extends State<EventsScreen> {
                     leading: const Icon(Icons.all_inclusive, color: Cp.primary),
                     title: const Text('All Clients'),
                     onTap: () => Navigator.pop(context, null)),
-                ...clientOptions.map((client) => ListTile(
-                    leading: Icon(
-                        client == clientFilter
-                            ? Icons.check_circle
-                            : Icons.person,
-                        color: Cp.primary),
-                    title: Text(client),
-                    onTap: () => Navigator.pop(context, client))),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: clientOptions
+                        .map((client) => ListTile(
+                            leading: Icon(
+                                client == clientFilter
+                                    ? Icons.check_circle
+                                    : Icons.person,
+                                color: Cp.primary),
+                            title: Text(client),
+                            onTap: () => Navigator.pop(context, client)))
+                        .toList(),
+                  ),
+                ),
               ]),
         ),
       ),
@@ -195,13 +235,36 @@ class _EventsScreenState extends State<EventsScreen> {
         lastDate: DateTime(2035),
         initialDate: DateTime.now());
     if (picked == null) return;
-    setState(() => dateFilter = _dateKey(picked));
+    setState(() {
+      dateFilter = _dateKey(picked);
+      dateRangeFilter = null;
+    });
+  }
+
+  Future<void> chooseDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: dateRangeFilter ??
+          DateTimeRange(
+            start: DateTime(now.year, now.month, now.day),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+    );
+    if (picked == null) return;
+    setState(() {
+      dateRangeFilter = picked;
+      dateFilter = null;
+    });
   }
 
   void clearFilters() {
     setState(() {
       clientFilter = null;
       dateFilter = null;
+      dateRangeFilter = null;
       showPastEvents = false;
       showOverduePayments = false;
       paymentFilter = 'All';
@@ -237,8 +300,14 @@ class _EventsScreenState extends State<EventsScreen> {
       final uri = await widget.api.createConsolidatedMenusUri(
           events: visibleEvents,
           date: dateFilter,
+          startDate:
+              dateRangeFilter == null ? null : _dateKey(dateRangeFilter!.start),
+          endDate:
+              dateRangeFilter == null ? null : _dateKey(dateRangeFilter!.end),
           title: dateFilter == null
-              ? 'Events Consolidated Menus'
+              ? dateRangeFilter == null
+                  ? 'Events Consolidated Menus'
+                  : 'Events Consolidated Menus - ${_rangeLabel(dateRangeFilter!)}'
               : 'Events Consolidated Menus - $dateFilter');
       if (!context.mounted) return;
       showDownloadSnack(context, uri,
@@ -272,6 +341,9 @@ class _EventsScreenState extends State<EventsScreen> {
               case 'date':
                 chooseDate();
                 break;
+              case 'date-range':
+                chooseDateRange();
+                break;
               case 'past':
                 setState(() => showPastEvents = !showPastEvents);
                 break;
@@ -302,6 +374,13 @@ class _EventsScreenState extends State<EventsScreen> {
             filterMenuItem('date', Icons.event,
                 dateFilter == null ? 'Filter Date' : 'Date: $dateFilter',
                 selected: dateFilter != null),
+            filterMenuItem(
+                'date-range',
+                Icons.date_range,
+                dateRangeFilter == null
+                    ? 'Filter Date Range'
+                    : 'Range: ${_rangeLabel(dateRangeFilter!)}',
+                selected: dateRangeFilter != null),
             filterMenuItem('past', Icons.history, 'Show Old Events',
                 selected: showPastEvents),
             filterMenuItem(
@@ -426,6 +505,11 @@ class _EventsScreenState extends State<EventsScreen> {
                 color: Cp.surfaceHigh,
                 textColor: Cp.onVariant,
                 icon: Icons.event),
+          if (dateRangeFilter != null)
+            Pill(_rangeLabel(dateRangeFilter!),
+                color: Cp.surfaceHigh,
+                textColor: Cp.onVariant,
+                icon: Icons.date_range),
           if (paymentFilter != 'All')
             Pill(paymentFilter,
                 color: Cp.surfaceHigh,
@@ -440,6 +524,7 @@ class _EventsScreenState extends State<EventsScreen> {
               showOverduePayments ||
               clientFilter != null ||
               dateFilter != null ||
+              dateRangeFilter != null ||
               paymentFilter != 'All' ||
               query.isNotEmpty)
             InkWell(

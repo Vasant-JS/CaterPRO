@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CaterPro Admin - Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0fdf3; /* surface */
+        }
+        .settings-card {
+            border: 1px solid #D8DBD3;
+            background: #FFFFFF;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+        }
+        .settings-card:hover {
+            box-shadow: 0px 2px 4px rgba(31, 42, 36, 0.05);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-low": "#eaf7ed",
+                      "surface-bright": "#f0fdf3",
+                      "on-secondary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "secondary-fixed": "#9df7a5",
+                      "on-surface": "#131e18",
+                      "on-secondary-container": "#187432",
+                      "primary": "#0e6430",
+                      "on-secondary-fixed": "#002108",
+                      "on-error": "#ffffff",
+                      "secondary-container": "#9df7a5",
+                      "tertiary": "#535851",
+                      "tertiary-fixed": "#e0e4db",
+                      "error-container": "#ffdad6",
+                      "surface-dim": "#d0ddd4",
+                      "on-surface-variant": "#404940",
+                      "primary-container": "#2f7d46",
+                      "surface-container": "#e4f1e7",
+                      "surface-container-highest": "#d9e6dc",
+                      "surface-variant": "#d9e6dc",
+                      "on-primary": "#ffffff",
+                      "on-primary-fixed-variant": "#005224",
+                      "on-primary-fixed": "#00210b",
+                      "tertiary-container": "#6b7069",
+                      "surface-container-high": "#dfebe2",
+                      "primary-fixed-dim": "#89d897",
+                      "on-primary-container": "#cdffd2",
+                      "secondary": "#0d6d2c",
+                      "outline": "#707a6f",
+                      "on-background": "#131e18",
+                      "outline-variant": "#bfc9bd",
+                      "on-secondary-fixed-variant": "#00531e",
+                      "tertiary-fixed-dim": "#c3c8bf",
+                      "inverse-on-surface": "#e7f4ea",
+                      "on-tertiary-fixed-variant": "#434842",
+                      "surface-tint": "#1b6c37",
+                      "error": "#ba1a1a",
+                      "secondary-fixed-dim": "#82da8b",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-container": "#f0f4eb",
+                      "inverse-primary": "#89d897",
+                      "primary-fixed": "#a4f5b2",
+                      "on-tertiary": "#ffffff",
+                      "background": "#f0fdf3",
+                      "inverse-surface": "#28332d",
+                      "on-tertiary-fixed": "#181d18",
+                      "surface": "#f0fdf3"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sidebar_width": "260px",
+                      "row_height_standard": "56px",
+                      "gutter": "16px",
+                      "stack_md": "16px",
+                      "container_padding": "24px",
+                      "stack_sm": "8px",
+                      "row_height_dense": "40px"
+              },
+              "fontFamily": {
+                      "headline-md": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "label-md": ["Inter"],
+                      "body-md": ["Inter"],
+                      "data-mono": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "title-lg": ["Inter"],
+                      "label-sm": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+      </script>
+</head>
+<body class="bg-surface">
+<!-- SideNavBar (Shared Component) -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container border-r border-outline-variant flex flex-col justify-between py-4 z-50">
+<div>
+<div class="px-6 mb-8">
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-surface">CaterPro</h1>
+<p class="text-label-sm text-on-surface-variant opacity-70">Admin Console</p>
+</div>
+<nav class="space-y-1">
+<!-- Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<!-- Clients -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">group</span>
+<span class="font-label-md text-label-md">Clients</span>
+</a>
+<!-- Subscriptions -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-md text-label-md">Subscriptions</span>
+</a>
+<!-- Plans -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">layers</span>
+<span class="font-label-md text-label-md">Plans</span>
+</a>
+<!-- Audit Log -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-md text-label-md">Audit Log</span>
+</a>
+<!-- Settings (ACTIVE) -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-4 border-primary bg-surface-container-high" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md font-bold">Settings</span>
+</a>
+</nav>
+</div>
+<div class="px-4 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="font-label-md text-label-md">Admin Profile</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-md text-label-md">Logout</span>
+</a>
+</div>
+</aside>
+<!-- TopAppBar (Shared Component) -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low border-b border-outline-variant shadow-sm flex items-center justify-between px-container_padding ml-[260px] w-[calc(100%-260px)]">
+<div class="flex items-center gap-4">
+<h2 class="font-title-lg text-title-lg font-bold text-on-surface">CaterPro Admin</h2>
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="pl-10 pr-4 py-1 bg-white border border-outline-variant rounded-lg text-body-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all w-64" placeholder="Search settings..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined p-2 text-on-surface-variant hover:bg-surface-container transition-colors rounded-full">notifications</button>
+<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="Professional headshot of a catering administrator, corporate light-mode studio photography with soft green-tinted background, sharp focus, friendly expression, clean professional attire." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOnhBckUfz242GA1etHl6NGN516qkoqOT3m_8q5mtx51WkcvOFsMIbHTQTH4fcDpBDVjXi7JCf0FbK96NJ2CkVA1KNHNjHgdNvKQvh0BQk80dNFVOLOmJoPcQKJ1BDNQQE0BwOuZrHomvQt_slAHTnFowNGe_kyr9YLbl_S-PCAQLB-9q0I5o_5eMPoN8296GnJcDiILNnHWVGLNgmkWMELv3y3Ng3P7lHPNOuTP7Z8mLeGxZJl35vzw"/>
+</div>
+<button class="bg-primary text-white font-label-md text-label-md px-4 py-2 rounded-lg hover:opacity-90 active:scale-95 transition-all">Create</button>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="ml-[260px] p-container_padding">
+<div class="max-w-5xl mx-auto">
+<div class="flex items-end justify-between mb-8">
+<div>
+<h3 class="font-display-lg text-display-lg text-on-surface">Settings</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Global configuration for the CaterPro enterprise environment.</p>
+</div>
+<div class="flex gap-3">
+<button class="px-6 py-2 border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg hover:bg-surface-container-highest transition-colors">Reset</button>
+<button class="px-6 py-2 bg-primary text-on-primary font-label-md text-label-md rounded-lg hover:opacity-90 shadow-sm transition-all active:scale-[0.98]">Save Changes</button>
+</div>
+</div>
+<!-- Bento Layout for Forms -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+<!-- Section: Admin Account & Security -->
+<div class="md:col-span-7 space-y-6">
+<!-- Admin Account -->
+<div class="settings-card p-6">
+<div class="flex items-center gap-2 mb-6 text-primary">
+<span class="material-symbols-outlined">manage_accounts</span>
+<h4 class="font-title-lg text-title-lg font-bold">Admin Account</h4>
+</div>
+<div class="space-y-4">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Admin Email Address</label>
+<input class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" type="email" value="admin@caterpro.internal"/>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">New Password</label>
+<input class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" placeholder="••••••••" type="password"/>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Confirm Password</label>
+<input class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" placeholder="••••••••" type="password"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Defaults -->
+<div class="settings-card p-6">
+<div class="flex items-center gap-2 mb-6 text-primary">
+<span class="material-symbols-outlined">tune</span>
+<h4 class="font-title-lg text-title-lg font-bold">Defaults &amp; Intervals</h4>
+</div>
+<div class="grid grid-cols-2 gap-6">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Session Timeout (min)</label>
+<select class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
+<option>15 Minutes</option>
+<option selected="">30 Minutes</option>
+<option>60 Minutes</option>
+<option>Never</option>
+</select>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Backup Frequency</label>
+<select class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none bg-white">
+<option>Every 6 Hours</option>
+<option selected="">Daily</option>
+<option>Weekly</option>
+</select>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Sync Interval (sec)</label>
+<input class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" type="number" value="300"/>
+</div>
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Default Trial Days</label>
+<input class="w-full px-4 py-2 border border-outline-variant rounded-lg font-body-md text-body-md focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all" type="number" value="14"/>
+</div>
+</div>
+</div>
+</div>
+<!-- Section: Branding & Database -->
+<div class="md:col-span-5 space-y-6">
+<!-- Branding Section -->
+<div class="settings-card p-6">
+<div class="flex items-center gap-2 mb-6 text-primary">
+<span class="material-symbols-outlined">palette</span>
+<h4 class="font-title-lg text-title-lg font-bold">Branding</h4>
+</div>
+<div class="space-y-6">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-2">Upload Brand Logo</label>
+<div class="border-2 border-dashed border-outline-variant rounded-lg p-8 flex flex-col items-center justify-center bg-surface-container-lowest hover:bg-surface-container transition-colors cursor-pointer group">
+<span class="material-symbols-outlined text-4xl text-on-surface-variant mb-2 group-hover:text-primary transition-colors">cloud_upload</span>
+<p class="font-label-md text-label-md text-on-surface-variant">Click to upload SVG or PNG</p>
+<p class="text-[10px] text-on-surface-variant opacity-60">Max size 2MB</p>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center justify-between">
+<label class="font-label-sm text-label-sm text-on-surface-variant">Primary Brand Color</label>
+<div class="flex items-center gap-2">
+<span class="font-data-mono text-data-mono text-on-surface-variant uppercase">#0E6430</span>
+<div class="w-10 h-10 rounded-lg bg-primary border border-outline-variant cursor-pointer"></div>
+</div>
+</div>
+<div class="flex items-center justify-between">
+<label class="font-label-sm text-label-sm text-on-surface-variant">Accent Highlight Color</label>
+<div class="flex items-center gap-2">
+<span class="font-data-mono text-data-mono text-on-surface-variant uppercase">#89D897</span>
+<div class="w-10 h-10 rounded-lg bg-primary-fixed-dim border border-outline-variant cursor-pointer"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Database Section -->
+<div class="settings-card p-6 bg-surface-container-lowest">
+<div class="flex items-center gap-2 mb-6 text-primary">
+<span class="material-symbols-outlined">database</span>
+<h4 class="font-title-lg text-title-lg font-bold">Database Connection</h4>
+</div>
+<div class="space-y-4">
+<div>
+<label class="block font-label-sm text-label-sm text-on-surface-variant mb-1">Connection String</label>
+<textarea class="w-full px-4 py-2 border border-outline-variant rounded-lg font-data-mono text-data-mono focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all h-24 bg-surface-container-highest/20" readonly="">postgresql://caterpro_admin:*************@db.cluster-ca-central-1.aws.com:5432/production_v4</textarea>
+</div>
+<div class="flex items-center gap-4">
+<button class="flex-1 bg-surface-container text-on-surface-variant font-label-md text-label-md px-4 py-2 rounded-lg hover:bg-surface-container-highest transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-lg">sync</span>
+                                    Sync Now
+                                </button>
+<button class="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button>
+</div>
+<div class="p-3 bg-surface-container rounded-lg border border-outline-variant/50 flex items-start gap-3">
+<span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+<div>
+<p class="text-label-sm font-bold text-on-surface">Connection Active</p>
+<p class="text-[11px] text-on-surface-variant">Last ping successful: 2 minutes ago</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Action Bar for Mobile/Small views (Hidden on large) -->
+<div class="fixed bottom-0 left-[260px] right-0 bg-white/80 backdrop-blur-md p-4 border-t border-outline-variant md:hidden flex justify-end gap-3 z-30">
+<button class="px-4 py-2 border border-outline-variant text-on-surface font-label-md text-label-md rounded-lg">Reset</button>
+<button class="px-4 py-2 bg-primary text-on-primary font-label-md text-label-md rounded-lg">Save</button>
+</div>
+</div>
+</main>
+<!-- Visual Polish: Decorative Gradient Glow -->
+<div class="fixed top-0 right-0 -z-10 w-[500px] h-[500px] bg-primary/5 rounded-full blur-[100px] opacity-30 pointer-events-none"></div>
+<div class="fixed bottom-0 left-[260px] -z-10 w-[400px] h-[400px] bg-secondary/5 rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
+<script>
+        // Micro-interaction for buttons
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', function() {
+                this.classList.add('scale-95');
+                setTimeout(() => this.classList.remove('scale-95'), 100);
+            });
+        });
+
+        // Simple sync simulation
+        const syncBtn = document.querySelector('button:has(span:contains("sync"))');
+        if(syncBtn) {
+            syncBtn.addEventListener('click', function() {
+                const icon = this.querySelector('.material-symbols-outlined');
+                icon.classList.add('animate-spin');
+                this.textContent = 'Syncing...';
+                setTimeout(() => {
+                    icon.classList.remove('animate-spin');
+                    this.innerHTML = '<span class="material-symbols-outlined text-lg">check</span> Synced';
+                    setTimeout(() => {
+                        this.innerHTML = '<span class="material-symbols-outlined text-lg">sync</span> Sync Now';
+                    }, 2000);
+                }, 1500);
+            });
+        }
+
+        // Custom selector for the sync button icon text finding
+        // In plain JS we use a slightly different approach
+        const allButtons = document.querySelectorAll('button');
+        allButtons.forEach(btn => {
+           if(btn.innerText.includes('Sync Now')) {
+               btn.onclick = () => {
+                   const icon = btn.querySelector('.material-symbols-outlined');
+                   icon.style.animation = 'spin 1s linear infinite';
+                   const originalHtml = btn.innerHTML;
+                   btn.innerHTML = `<span class="material-symbols-outlined text-lg" style="animation: spin 1s linear infinite">sync</span> Processing...`;
+                   setTimeout(() => {
+                       btn.innerHTML = `<span class="material-symbols-outlined text-lg">done</span> Database Updated`;
+                       setTimeout(() => {
+                           btn.innerHTML = originalHtml;
+                       }, 2000);
+                   }, 1200);
+               };
+           }
+        });
+    </script>
+<style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</body></html>

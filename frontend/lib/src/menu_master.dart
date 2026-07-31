@@ -7,13 +7,15 @@ class MenuMasterItem {
       required this.kannada,
       required this.category,
       required this.meals,
-      required this.veg});
+      required this.veg,
+      this.disabled = false});
   final String id;
   final String english;
   final String kannada;
   final String category;
   final String meals;
   final bool veg;
+  final bool disabled;
 
   String get title => '$kannada/$english';
 
@@ -29,6 +31,7 @@ class MenuMasterItem {
       category: json['category']?.toString() ?? '',
       meals: mealsText,
       veg: json['veg'] == true,
+      disabled: json['disabled'] == true,
     );
   }
 
@@ -43,6 +46,7 @@ class MenuMasterItem {
             .where((meal) => meal.isNotEmpty)
             .toList(),
         'veg': veg,
+        'disabled': disabled,
       };
 }
 
@@ -93,6 +97,7 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
   List<MenuMasterItem> get visibleItems {
     final normalized = query.trim().toLowerCase();
     return MenuMasterScreen.menuItems.where((item) {
+      if (item.disabled) return false;
       final text =
           '${item.id} ${item.english} ${item.kannada} ${item.category} ${item.meals}'
               .toLowerCase();
@@ -951,6 +956,7 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
   List<MenuMasterItem> get visibleItems {
     final normalized = query.trim().toLowerCase();
     return MenuMasterScreen.menuItems.where((item) {
+      if (item.disabled) return false;
       if (appPreferences.value.vegOnlyDefault && !item.veg) return false;
       final mealList = item.meals.split(',').map((meal) => meal.trim()).toSet();
       final typeMatches = widget.type == 'Other'

@@ -33,6 +33,7 @@ class MainActivity : FlutterFragmentActivity() {
                         call.argument<String>("uri"),
                         call.argument<String>("mimeType"),
                         call.argument<String>("title"),
+                        call.argument<String>("text"),
                         result
                     )
                     else -> result.notImplemented()
@@ -101,7 +102,7 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    private fun shareFile(uriText: String?, mimeType: String?, title: String?, result: MethodChannel.Result) {
+    private fun shareFile(uriText: String?, mimeType: String?, title: String?, text: String?, result: MethodChannel.Result) {
         if (uriText.isNullOrBlank()) {
             result.success(false)
             return
@@ -111,6 +112,9 @@ class MainActivity : FlutterFragmentActivity() {
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = mimeType ?: "*/*"
                 putExtra(Intent.EXTRA_STREAM, uri)
+                if (!text.isNullOrBlank()) {
+                    putExtra(Intent.EXTRA_TEXT, text)
+                }
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, title ?: "Share PDF"))

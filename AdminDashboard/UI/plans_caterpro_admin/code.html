@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Plans Management - CaterPro Admin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #bfc9bd; border-radius: 10px; }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#eaf7ed",
+                        "surface-bright": "#f0fdf3",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#9df7a5",
+                        "on-surface": "#131e18",
+                        "on-secondary-container": "#187432",
+                        "primary": "#0e6430",
+                        "on-secondary-fixed": "#002108",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#9df7a5",
+                        "tertiary": "#535851",
+                        "tertiary-fixed": "#e0e4db",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d0ddd4",
+                        "on-surface-variant": "#404940",
+                        "primary-container": "#2f7d46",
+                        "surface-container": "#e4f1e7",
+                        "surface-container-highest": "#d9e6dc",
+                        "surface-variant": "#d9e6dc",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#005224",
+                        "on-primary-fixed": "#00210b",
+                        "tertiary-container": "#6b7069",
+                        "surface-container-high": "#dfebe2",
+                        "primary-fixed-dim": "#89d897",
+                        "on-primary-container": "#cdffd2",
+                        "secondary": "#0d6d2c",
+                        "outline": "#707a6f",
+                        "on-background": "#131e18",
+                        "outline-variant": "#bfc9bd",
+                        "on-secondary-fixed-variant": "#00531e",
+                        "tertiary-fixed-dim": "#c3c8bf",
+                        "inverse-on-surface": "#e7f4ea",
+                        "on-tertiary-fixed-variant": "#434842",
+                        "surface-tint": "#1b6c37",
+                        "error": "#ba1a1a",
+                        "secondary-fixed-dim": "#82da8b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#f0f4eb",
+                        "inverse-primary": "#89d897",
+                        "primary-fixed": "#a4f5b2",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f0fdf3",
+                        "inverse-surface": "#28332d",
+                        "on-tertiary-fixed": "#181d18",
+                        "surface": "#f0fdf3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "row_height_standard": "56px",
+                        "gutter": "16px",
+                        "stack_md": "16px",
+                        "container_padding": "24px",
+                        "stack_sm": "8px",
+                        "row_height_dense": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "data-mono": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background min-h-screen flex">
+<!-- Sidebar (Shared Component) -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container border-r border-outline-variant flex flex-col justify-between py-16 z-50">
+<div class="flex flex-col gap-6">
+<div class="px-6">
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-surface">CaterPro</h1>
+<p class="text-label-sm font-label-sm text-on-surface-variant opacity-70">Admin Console</p>
+</div>
+<nav class="flex flex-col">
+<!-- Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<!-- Clients -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="group">group</span>
+<span class="font-label-md text-label-md">Clients</span>
+</a>
+<!-- Subscriptions -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Subscriptions</span>
+</a>
+<!-- Plans (Active) -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-4 border-primary bg-surface-container-high transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="layers" style="font-variation-settings: 'FILL' 1;">layers</span>
+<span class="font-label-md text-label-md">Plans</span>
+</a>
+<!-- Audit Log -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-md text-label-md">Audit Log</span>
+</a>
+<!-- Settings -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</nav>
+</div>
+<div class="px-4 flex flex-col gap-2">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-label-md text-label-md">Admin Profile</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-label-md text-label-md">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-[260px] flex flex-col min-h-screen">
+<!-- Top Bar (Shared Component) -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low border-b border-outline-variant shadow-sm flex items-center justify-between px-container_padding">
+<div class="flex items-center gap-6">
+<span class="font-title-lg text-title-lg font-bold text-on-surface">CaterPro Admin</span>
+<div class="relative w-64">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px]" data-icon="search">search</span>
+<input class="w-full bg-surface-container-lowest border-outline-variant border rounded-full py-1.5 pl-10 pr-4 text-body-sm focus:ring-2 focus:ring-primary/20 outline-none" placeholder="Search plans..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined p-2 text-on-surface-variant hover:text-primary transition-all" data-icon="notifications">notifications</button>
+<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a business administrator in a modern office, soft overhead lighting, high-definition digital portrait with a clean corporate background and subtle green accents in clothing, professional atmosphere." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCrrHg2QaDbZ7l5pjm0m29uWRC0RA5GI2TqXHPOTsTXskOH4ZxTbg-hL2t2qM4yRJMc8FQCelyZCbnJPPed8CFFoQdZwqGvk82yauUSVsBWEbE9WaW2crEkAF0spqe-FkHSrBxJqTzAIQpFgxmwNGLd1jxLbnnx0quJYcrZ5jnv3fWkQksTMzKPmhUmhKiIJwwqS_K9m_dwvvn_K197TWdaoj0RG9WCUHjjXKaKNaS-vwTvVOPZhT-1nQ"/>
+</div>
+<button class="bg-primary hover:bg-primary-container text-on-primary px-6 py-2 rounded-lg font-label-md text-label-md transition-all active:scale-[0.98]">
+                    Create Plan
+                </button>
+</div>
+</header>
+<!-- Canvas -->
+<section class="p-container_padding flex flex-col gap-10">
+<!-- Welcome / Hero Section -->
+<div class="flex justify-between items-end">
+<div>
+<h2 class="font-headline-md text-headline-md text-on-surface">Subscription Plans</h2>
+<p class="text-body-md text-on-surface-variant mt-1">Configure and manage tier offerings for your catering clients.</p>
+</div>
+<div class="flex items-center gap-2 bg-surface-container p-1 rounded-lg">
+<button class="px-4 py-1.5 rounded-md bg-white text-primary font-label-md shadow-sm">Monthly</button>
+<button class="px-4 py-1.5 rounded-md text-on-surface-variant font-label-md hover:bg-surface-container-highest transition-colors">Annual (Save 20%)</button>
+</div>
+</div>
+<!-- Plan Cards Grid -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+<!-- Trial Card -->
+<div class="bg-white border border-outline-variant p-6 rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow group">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="bg-surface-container text-on-surface-variant px-3 py-1 rounded-full text-label-sm">Free</span>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors" data-icon="experimental_research">cloud_download</span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-1">Trial</h3>
+<div class="flex items-baseline gap-1 mb-6">
+<span class="text-display-lg font-display-lg">$0</span>
+<span class="text-body-sm text-on-surface-variant">/ 14 days</span>
+</div>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Basic Invoices</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Up to 10 Menus</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-outline-variant opacity-60 line-through">
+<span class="material-symbols-outlined text-[18px]" data-icon="cancel">cancel</span>
+<span>WhatsApp Sharing</span>
+</li>
+</ul>
+</div>
+<button class="mt-8 w-full border border-outline-variant text-on-surface-variant py-2.5 rounded-lg font-label-md hover:bg-surface-container transition-colors">Manage Trial</button>
+</div>
+<!-- Basic Card -->
+<div class="bg-white border border-outline-variant p-6 rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow group">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full text-label-sm">Standard</span>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors" data-icon="coffee">coffee</span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-1">Basic</h3>
+<div class="flex items-baseline gap-1 mb-6">
+<span class="text-display-lg font-display-lg">$49</span>
+<span class="text-body-sm text-on-surface-variant">/ mo</span>
+</div>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Unlimited Invoices</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Standard Menus</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>WhatsApp Sharing</span>
+</li>
+</ul>
+</div>
+<button class="mt-8 w-full border border-outline-variant text-on-surface-variant py-2.5 rounded-lg font-label-md hover:bg-surface-container transition-colors">Edit Plan</button>
+</div>
+<!-- Pro Card -->
+<div class="bg-white border-2 border-primary p-6 rounded-xl flex flex-col justify-between shadow-lg relative overflow-hidden group">
+<div class="absolute -right-4 -top-4 opacity-10">
+<span class="material-symbols-outlined text-[120px]" data-icon="star">star</span>
+</div>
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="bg-primary text-on-primary px-3 py-1 rounded-full text-label-sm">Most Popular</span>
+<span class="material-symbols-outlined text-primary" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-1">Pro</h3>
+<div class="flex items-baseline gap-1 mb-6">
+<span class="text-display-lg font-display-lg">$129</span>
+<span class="text-body-sm text-on-surface-variant">/ mo</span>
+</div>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Custom Menus &amp; Themes</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Inventory Tracking</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Staff Management</span>
+</li>
+</ul>
+</div>
+<button class="mt-8 w-full bg-primary text-on-primary py-2.5 rounded-lg font-label-md hover:bg-primary-container transition-colors">Edit Plan</button>
+</div>
+<!-- Enterprise Card -->
+<div class="bg-white border border-outline-variant p-6 rounded-xl flex flex-col justify-between hover:shadow-md transition-shadow group">
+<div>
+<div class="flex justify-between items-start mb-4">
+<span class="bg-inverse-surface text-inverse-on-surface px-3 py-1 rounded-full text-label-sm">Scaling</span>
+<span class="material-symbols-outlined text-outline-variant group-hover:text-primary transition-colors" data-icon="business">business</span>
+</div>
+<h3 class="font-title-lg text-title-lg mb-1">Enterprise</h3>
+<div class="flex items-baseline gap-1 mb-6">
+<span class="text-display-lg font-display-lg">$399</span>
+<span class="text-body-sm text-on-surface-variant">/ mo</span>
+</div>
+<ul class="space-y-4">
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>White Label Branding</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>Advanced Analytics</span>
+</li>
+<li class="flex items-center gap-3 text-body-sm text-on-surface">
+<span class="material-symbols-outlined text-primary text-[18px]" data-icon="check_circle">check_circle</span>
+<span>API Access</span>
+</li>
+</ul>
+</div>
+<button class="mt-8 w-full border border-outline-variant text-on-surface-variant py-2.5 rounded-lg font-label-md hover:bg-surface-container transition-colors">Edit Plan</button>
+</div>
+</div>
+<!-- Plans Management Table Section -->
+<div class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+<div class="p-6 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/30">
+<h3 class="font-headline-sm text-headline-sm text-on-surface">Plan Inventory</h3>
+<div class="flex gap-2">
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-label-md text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="filter_list">filter_list</span>
+                            Filter
+                        </button>
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-label-md text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="download">download</span>
+                            Export
+                        </button>
+</div>
+</div>
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low text-on-surface-variant font-label-sm border-b border-outline-variant">
+<tr>
+<th class="px-6 py-4 font-semibold uppercase tracking-wider">Plan Code</th>
+<th class="px-6 py-4 font-semibold uppercase tracking-wider">Monthly Price</th>
+<th class="px-6 py-4 font-semibold uppercase tracking-wider">Max Users</th>
+<th class="px-6 py-4 font-semibold uppercase tracking-wider">Status</th>
+<th class="px-6 py-4 font-semibold uppercase tracking-wider text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="px-6 py-4 font-data-mono text-data-mono text-primary font-bold">CP-TRIAL-01</td>
+<td class="px-6 py-4 text-body-md">$0.00</td>
+<td class="px-6 py-4 text-body-md">2 Users</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 bg-secondary-container text-on-secondary-container px-2.5 py-1 rounded-full text-label-sm font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Active
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-3">
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Edit Plan">
+<span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Duplicate">
+<span class="material-symbols-outlined text-[20px]" data-icon="content_copy">content_copy</span>
+</button>
+<button class="p-1.5 hover:bg-error-container hover:text-error rounded-md text-on-surface-variant transition-colors" title="Archive">
+<span class="material-symbols-outlined text-[20px]" data-icon="archive">archive</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 2 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="px-6 py-4 font-data-mono text-data-mono text-primary font-bold">CP-BASIC-49</td>
+<td class="px-6 py-4 text-body-md">$49.00</td>
+<td class="px-6 py-4 text-body-md">5 Users</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 bg-secondary-container text-on-secondary-container px-2.5 py-1 rounded-full text-label-sm font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Active
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-3">
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Edit Plan">
+<span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Duplicate">
+<span class="material-symbols-outlined text-[20px]" data-icon="content_copy">content_copy</span>
+</button>
+<button class="p-1.5 hover:bg-error-container hover:text-error rounded-md text-on-surface-variant transition-colors" title="Archive">
+<span class="material-symbols-outlined text-[20px]" data-icon="archive">archive</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 3 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="px-6 py-4 font-data-mono text-data-mono text-primary font-bold">CP-PRO-129</td>
+<td class="px-6 py-4 text-body-md">$129.00</td>
+<td class="px-6 py-4 text-body-md">20 Users</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 bg-secondary-container text-on-secondary-container px-2.5 py-1 rounded-full text-label-sm font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Active
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-3">
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Edit Plan">
+<span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Duplicate">
+<span class="material-symbols-outlined text-[20px]" data-icon="content_copy">content_copy</span>
+</button>
+<button class="p-1.5 hover:bg-error-container hover:text-error rounded-md text-on-surface-variant transition-colors" title="Archive">
+<span class="material-symbols-outlined text-[20px]" data-icon="archive">archive</span>
+</button>
+</div>
+</td>
+</tr>
+<!-- Row 4 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors">
+<td class="px-6 py-4 font-data-mono text-data-mono text-primary font-bold">CP-ENT-399</td>
+<td class="px-6 py-4 text-body-md">$399.00</td>
+<td class="px-6 py-4 text-body-md">Unlimited</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center gap-1.5 bg-tertiary-fixed text-on-tertiary-fixed-variant px-2.5 py-1 rounded-full text-label-sm font-medium">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> Draft
+                                    </span>
+</td>
+<td class="px-6 py-4 text-right">
+<div class="flex justify-end gap-3">
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Edit Plan">
+<span class="material-symbols-outlined text-[20px]" data-icon="edit">edit</span>
+</button>
+<button class="p-1.5 hover:bg-surface-container rounded-md text-on-surface-variant transition-colors" title="Duplicate">
+<span class="material-symbols-outlined text-[20px]" data-icon="content_copy">content_copy</span>
+</button>
+<button class="p-1.5 hover:bg-error-container hover:text-error rounded-md text-on-surface-variant transition-colors" title="Archive">
+<span class="material-symbols-outlined text-[20px]" data-icon="archive">archive</span>
+</button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="p-4 border-t border-outline-variant bg-surface-container-low/10 flex justify-between items-center">
+<span class="text-body-sm text-on-surface-variant">Showing 4 of 4 plans</span>
+<div class="flex gap-1">
+<button class="p-2 border border-outline-variant rounded-md hover:bg-surface-container disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="p-2 border border-outline-variant rounded-md hover:bg-surface-container disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Footer spacing -->
+<footer class="mt-auto py-8 text-center text-label-sm text-on-surface-variant border-t border-outline-variant bg-surface-container-low/20">
+            © 2024 CaterPro Admin Console. All rights reserved.
+        </footer>
+</main>
+<script>
+        // Micro-interactions and simple state handling
+        document.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('mousedown', () => {
+                btn.classList.add('scale-[0.98]');
+            });
+            btn.addEventListener('mouseup', () => {
+                btn.classList.remove('scale-[0.98]');
+            });
+            btn.addEventListener('mouseleave', () => {
+                btn.classList.remove('scale-[0.98]');
+            });
+        });
+
+        // Search highlight simulation
+        const searchInput = document.querySelector('input[type="text"]');
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                if (text.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    </script>
+</body></html>

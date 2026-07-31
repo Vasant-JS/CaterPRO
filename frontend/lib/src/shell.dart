@@ -26,6 +26,20 @@ class _MasterDataDownloadStatus {
   final String? error;
 }
 
+class _ShellRoute {
+  const _ShellRoute({
+    required this.tab,
+    this.selectedEventId,
+    this.editingEvent,
+    this.createInitialStep = 0,
+  });
+
+  final int tab;
+  final String? selectedEventId;
+  final AppEvent? editingEvent;
+  final int createInitialStep;
+}
+
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
 
@@ -36,7 +50,6 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   final api = ApiService();
   int tab = 0;
-  int parentTab = 0;
   bool loading = true;
   String? loadError;
   final List<AppEvent> events = [];
@@ -45,6 +58,7 @@ class _AppShellState extends State<AppShell> {
   final List<ManualInvoice> manualInvoices = [];
   final List<AdditionalServiceItem> services = [];
   final List<CustomMenu> customMenus = [];
+  final List<AuditLogEntry> auditLogs = [];
   final List<AppNotification> systemNotifications = [];
   BusinessProfile businessProfile = const BusinessProfile();
   String? selectedEventId;
@@ -55,6 +69,7 @@ class _AppShellState extends State<AppShell> {
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
   bool syncInProgress = false;
+  final List<_ShellRoute> routeStack = [];
 
   @override
   void initState() {
@@ -101,6 +116,7 @@ class _AppShellState extends State<AppShell> {
         'menuItems':
             MenuMasterScreen.menuItems.map((item) => item.toJson()).toList(),
         'customMenus': customMenus.map((menu) => menu.toJson()).toList(),
+        'auditLogs': auditLogs.map((entry) => entry.toJson()).toList(),
         'businessProfile': businessProfile.toJson(),
       };
 
@@ -159,6 +175,51 @@ class _AppShellState extends State<AppShell> {
       settlement: invoice.settlement,
       pending: invoice.pending,
     );
+  }
+
+  void recordAudit({
+    required String action,
+    required String entityType,
+    required String entityId,
+    required String entityLabel,
+    required String summary,
+    Map<String, dynamic>? metadata,
+  }) {
+    auditLogs.insert(
+      0,
+      AuditLogEntry(
+        id: localId('audit'),
+        action: action,
+        entityType: entityType,
+        entityId: entityId,
+        entityLabel: entityLabel,
+        summary: summary,
+        createdAt: DateTime.now(),
+        metadata: metadata ?? const {},
+      ),
+    );
+    if (auditLogs.length > 1000) {
+      auditLogs.removeRange(1000, auditLogs.length);
+    }
+  }
+
+  void recordAuditAndBackup({
+    required String action,
+    required String entityType,
+    required String entityId,
+    required String entityLabel,
+    required String summary,
+    Map<String, dynamic>? metadata,
+  }) {
+    recordAudit(
+      action: action,
+      entityType: entityType,
+      entityId: entityId,
+      entityLabel: entityLabel,
+      summary: summary,
+      metadata: metadata,
+    );
+    backupCurrentSnapshotQuietly();
   }
 
   void backupCurrentSnapshotQuietly() {
@@ -323,6 +384,7 @@ class _AppShellState extends State<AppShell> {
       'additionalServices',
       'customMenus',
       'manualInvoices',
+      'auditLogs',
     ];
     merged['events'] = mergeServerEventsWithLocalDrafts(
       server['events'],
@@ -364,6 +426,10 @@ class _AppShellState extends State<AppShell> {
     normalized['rawMaterials'] = jsonMapList(userData['rawMaterials']);
     normalized['produceItems'] = jsonMapList(userData['produceItems']);
     normalized['vesselItems'] = jsonMapList(userData['vesselItems']);
+    normalized['auditLogs'] =
+        dedupeJsonList(userData['auditLogs'], key: 'auditLogs')
+          ..sort((a, b) => (b['createdAt']?.toString() ?? '')
+              .compareTo(a['createdAt']?.toString() ?? ''));
     return normalized;
   }
 
@@ -528,6 +594,15 @@ class _AppShellState extends State<AppShell> {
         item['quantity'],
       ].map((value) => value?.toString() ?? '').join('|');
     }
+    if (listKey == 'auditLogs') {
+      return [
+        item['id'],
+        item['action'],
+        item['entityType'],
+        item['entityId'],
+        item['createdAt'],
+      ].map((value) => value?.toString() ?? '').join('|');
+    }
     final mobile = item['mobile']?.toString() ?? '';
     if (mobile.isNotEmpty) return mobile;
     final name = item['name']?.toString() ?? '';
@@ -559,6 +634,8 @@ class _AppShellState extends State<AppShell> {
         normalized['additionalServices'], AdditionalServiceItem.fromJson);
     final loadedCustomMenus =
         decodeJsonList(normalized['customMenus'], CustomMenu.fromJson);
+    final loadedAuditLogs =
+        decodeJsonList(normalized['auditLogs'], AuditLogEntry.fromJson);
     final loadedBusinessProfile = BusinessProfile.fromJson(
         Map<String, dynamic>.from(
             (normalized['businessProfile'] as Map?) ?? const {}));
@@ -585,6 +662,9 @@ class _AppShellState extends State<AppShell> {
       customMenus
         ..clear()
         ..addAll(loadedCustomMenus);
+      auditLogs
+        ..clear()
+        ..addAll(loadedAuditLogs);
       businessProfile = loadedBusinessProfile;
       localSyncPending = !synced;
       loadError = error;
@@ -722,6 +802,8 @@ class _AppShellState extends State<AppShell> {
   Future<void> createEvent(EventDraft draft) async {
     showCpSnack(context,
         (draft.id ?? '').isEmpty ? 'Creating event...' : 'Updating event...');
+    final creating = (draft.id ?? '').trim().isEmpty ||
+        !events.any((item) => item.id == (draft.id ?? '').trim());
     final event = localEventFromDraft(draft);
     setState(() {
       final index = events.indexWhere((item) => item.id == event.id);
@@ -733,12 +815,28 @@ class _AppShellState extends State<AppShell> {
       selectedEventId = event.id;
       tab = 1;
       editingEvent = null;
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'event',
+        entityId: event.id,
+        entityLabel: event.name,
+        summary: creating
+            ? 'Created event ${event.name}'
+            : 'Updated event ${event.name}',
+        metadata: {
+          'client': event.primaryClient,
+          'mobile': event.mobile,
+          'venue': event.venue,
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveManualInvoice(ManualInvoice invoice) async {
     showCpSnack(context, 'Saving invoice...');
+    final creating = invoice.id.trim().isEmpty ||
+        !manualInvoices.any((item) => item.id == invoice.id.trim());
     final saved = localManualInvoice(invoice);
     setState(() {
       final index = manualInvoices.indexWhere((item) => item.id == saved.id);
@@ -748,6 +846,22 @@ class _AppShellState extends State<AppShell> {
         manualInvoices[index] = saved;
       }
       tab = 3;
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'manualInvoice',
+        entityId: saved.id,
+        entityLabel:
+            saved.invoiceNumber.isEmpty ? saved.eventName : saved.invoiceNumber,
+        summary: creating
+            ? 'Created invoice ${saved.invoiceNumber}'
+            : 'Updated invoice ${saved.invoiceNumber}',
+        metadata: {
+          'client': saved.clientName,
+          'mobile': saved.mobile,
+          'total': saved.total,
+          'pending': saved.pending,
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
@@ -764,6 +878,10 @@ class _AppShellState extends State<AppShell> {
     final previousMobile = normalizeMobileText(previousClient?.mobile ?? '');
     final previousName = previousClient?.name ?? '';
     final saved = localClient(client);
+    final creating = previousClient == null &&
+        !clients.any((item) =>
+            normalizeMobileText(item.mobile) ==
+            normalizeMobileText(saved.mobile));
     setState(() {
       final index = clients.indexWhere((item) =>
           item.id == saved.id ||
@@ -809,22 +927,48 @@ class _AppShellState extends State<AppShell> {
         json['updatedAt'] = saved.updatedAt;
         manualInvoices[index] = ManualInvoice.fromJson(json);
       }
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'client',
+        entityId: saved.id,
+        entityLabel: saved.name,
+        summary: creating
+            ? 'Created client ${saved.name}'
+            : 'Updated client ${saved.name}',
+        metadata: {
+          'mobile': saved.mobile,
+          'previousMobile': previousMobile,
+          'previousName': previousName,
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> deleteClient(AppClient client) async {
     showCpSnack(context, 'Deleting client...');
-    setState(() => clients.removeWhere((item) =>
-        item.id == client.id ||
-        normalizeMobileText(item.mobile) ==
-            normalizeMobileText(client.mobile)));
+    setState(() {
+      clients.removeWhere((item) =>
+          item.id == client.id ||
+          normalizeMobileText(item.mobile) ==
+              normalizeMobileText(client.mobile));
+      recordAudit(
+        action: 'delete',
+        entityType: 'client',
+        entityId: client.id,
+        entityLabel: client.name,
+        summary: 'Deleted client ${client.name}',
+        metadata: {'mobile': client.mobile},
+      );
+    });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveEmployee(Employee employee) async {
     showCpSnack(context,
         employee.id.isEmpty ? 'Saving employee...' : 'Updating employee...');
+    final creating = employee.id.trim().isEmpty ||
+        !employees.any((item) => item.id == employee.id.trim());
     final saved = localEmployee(employee);
     setState(() {
       final index = employees.indexWhere((item) =>
@@ -835,16 +979,42 @@ class _AppShellState extends State<AppShell> {
       } else {
         employees[index] = saved;
       }
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'employee',
+        entityId: saved.id,
+        entityLabel: saved.name,
+        summary: creating
+            ? 'Created employee ${saved.name}'
+            : 'Updated employee ${saved.name}',
+        metadata: {
+          'mobile': saved.mobile,
+          'designation': saved.designation,
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> deleteEmployee(Employee employee) async {
     showCpSnack(context, 'Deleting employee...');
-    setState(() => employees.removeWhere((item) =>
-        item.id == employee.id ||
-        normalizeMobileText(item.mobile) ==
-            normalizeMobileText(employee.mobile)));
+    setState(() {
+      employees.removeWhere((item) =>
+          item.id == employee.id ||
+          normalizeMobileText(item.mobile) ==
+              normalizeMobileText(employee.mobile));
+      recordAudit(
+        action: 'delete',
+        entityType: 'employee',
+        entityId: employee.id,
+        entityLabel: employee.name,
+        summary: 'Deleted employee ${employee.name}',
+        metadata: {
+          'mobile': employee.mobile,
+          'designation': employee.designation,
+        },
+      );
+    });
     backupCurrentSnapshotQuietly();
   }
 
@@ -856,11 +1026,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void openEventDetails(AppEvent event) {
-    setState(() {
-      parentTab = tab == 6 ? parentTab : tab;
-      selectedEventId = event.id;
-      tab = 6;
-    });
+    navigateToTab(6, selectedEventId: event.id);
   }
 
   void updateSelectedEvent(AppEvent event) {
@@ -872,81 +1038,115 @@ class _AppShellState extends State<AppShell> {
         events[index] = event;
       }
       selectedEventId = event.id;
+      recordAudit(
+        action: 'update',
+        entityType: 'event',
+        entityId: event.id,
+        entityLabel: event.name,
+        summary: 'Updated event ${event.name}',
+        metadata: {
+          'client': event.primaryClient,
+          'mobile': event.mobile,
+          'balanceDue': eventBalance(event),
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   void removeSelectedEvent(String eventId) {
     setState(() {
+      final event = events.where((item) => item.id == eventId).firstOrNull;
       events.removeWhere((event) => event.id == eventId);
       if (selectedEventId == eventId) selectedEventId = null;
+      recordAudit(
+        action: 'delete',
+        entityType: 'event',
+        entityId: eventId,
+        entityLabel: event?.name ?? eventId,
+        summary: 'Deleted event ${event?.name ?? eventId}',
+        metadata: {
+          'client': event?.primaryClient ?? '',
+          'mobile': event?.mobile ?? '',
+        },
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   void openCreateEvent() {
-    setState(() {
-      parentTab = tab == 5 ? parentTab : tab;
-      editingEvent = null;
-      selectedEventId = null;
-      createInitialStep = 0;
-      createSession++;
-      tab = 5;
-    });
+    navigateToTab(5,
+        selectedEventId: null,
+        editingEvent: null,
+        createInitialStep: 0,
+        incrementCreateSession: true);
   }
 
   void openEventsTab() {
-    setState(() {
-      parentTab = 0;
-      selectedEventId = null;
-      editingEvent = null;
-      tab = 1;
-    });
+    navigateToTab(1, selectedEventId: null, editingEvent: null);
   }
 
   void openEditEvent(AppEvent event, {int initialStep = 0}) {
-    setState(() {
-      parentTab = tab == 5 ? parentTab : tab;
-      editingEvent = event;
-      selectedEventId = event.id;
-      createInitialStep = initialStep.clamp(0, 3).toInt();
-      createSession++;
-      tab = 5;
-    });
+    navigateToTab(5,
+        selectedEventId: event.id,
+        editingEvent: event,
+        createInitialStep: initialStep.clamp(0, 3).toInt(),
+        incrementCreateSession: true);
   }
 
   void openChildTab(int nextTab) {
-    setState(() {
-      parentTab = tab;
-      tab = nextTab;
-    });
+    navigateToTab(nextTab);
   }
 
-  int parentForTab(int current) {
-    if (current == 5 && editingEvent != null) {
-      return selectedEventId == null ? 1 : 6;
-    }
-    if (current == 5 || current == 6) {
-      return parentTab == current ? 1 : parentTab;
-    }
-    if ({7, 8, 9, 10, 11, 12, 13, 15, 16, 17, 19, 21, 22}.contains(current)) {
-      return 4;
-    }
-    if (current != 0) return parentTab == current ? 0 : parentTab;
-    return 0;
+  void navigateToTab(
+    int nextTab, {
+    String? selectedEventId,
+    AppEvent? editingEvent,
+    int? createInitialStep,
+    bool incrementCreateSession = false,
+    bool clearStack = false,
+  }) {
+    setState(() {
+      if (clearStack) {
+        routeStack.clear();
+      } else if (nextTab != tab ||
+          selectedEventId != this.selectedEventId ||
+          editingEvent != this.editingEvent) {
+        routeStack.add(_ShellRoute(
+          tab: tab,
+          selectedEventId: this.selectedEventId,
+          editingEvent: this.editingEvent,
+          createInitialStep: this.createInitialStep,
+        ));
+      }
+      if (incrementCreateSession) createSession++;
+      tab = nextTab;
+      this.selectedEventId = selectedEventId;
+      this.editingEvent = editingEvent;
+      if (createInitialStep != null) this.createInitialStep = createInitialStep;
+    });
   }
 
   void closeToParent() {
     setState(() {
-      final next = parentForTab(tab);
-      tab = next;
-      if (next != 6) selectedEventId = null;
-      if (next != 5) editingEvent = null;
+      if (routeStack.isEmpty) {
+        tab = tab == 0 ? 0 : 0;
+        selectedEventId = null;
+        editingEvent = null;
+        createInitialStep = 0;
+        return;
+      }
+      final previous = routeStack.removeLast();
+      tab = previous.tab;
+      selectedEventId = previous.selectedEventId;
+      editingEvent = previous.editingEvent;
+      createInitialStep = previous.createInitialStep;
     });
   }
 
   void upsertService(AdditionalServiceItem service) {
     showCpSnack(context, 'Updating service...');
+    final creating = !services.any((item) => item.id == service.id);
     setState(() {
       final index = services.indexWhere((item) => item.id == service.id);
       if (index == -1) {
@@ -954,6 +1154,16 @@ class _AppShellState extends State<AppShell> {
       } else {
         services[index] = service;
       }
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'additionalService',
+        entityId: service.id,
+        entityLabel: service.name,
+        summary: creating
+            ? 'Created service ${service.name}'
+            : 'Updated service ${service.name}',
+        metadata: {'unit': service.unit, 'price': service.price},
+      );
     });
     unawaited(cacheCurrentUserData());
     unawaited(api.saveAdditionalService(service).then((saved) {
@@ -976,7 +1186,21 @@ class _AppShellState extends State<AppShell> {
 
   void removeService(String id) {
     showCpSnack(context, 'Deleting service...');
-    setState(() => services.removeWhere((item) => item.id == id));
+    setState(() {
+      final service = services.where((item) => item.id == id).firstOrNull;
+      services.removeWhere((item) => item.id == id);
+      recordAudit(
+        action: 'delete',
+        entityType: 'additionalService',
+        entityId: id,
+        entityLabel: service?.name ?? id,
+        summary: 'Deleted service ${service?.name ?? id}',
+        metadata: {
+          'unit': service?.unit ?? '',
+          'price': service?.price ?? 0,
+        },
+      );
+    });
     unawaited(cacheCurrentUserData());
     unawaited(api.deleteAdditionalService(id).then((_) {
       unawaited(cacheCurrentUserData(synced: true));
@@ -989,6 +1213,8 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> saveCustomMenu(CustomMenu menu) async {
     showCpSnack(context, 'Saving custom menu...');
+    final creating = menu.id.trim().isEmpty ||
+        !customMenus.any((item) => item.id == menu.id.trim());
     final saved = menu.id.trim().isEmpty
         ? CustomMenu(
             id: localId('cmenu'),
@@ -1004,25 +1230,64 @@ class _AppShellState extends State<AppShell> {
       } else {
         customMenus[index] = saved;
       }
+      recordAudit(
+        action: creating ? 'create' : 'update',
+        entityType: 'customMenu',
+        entityId: saved.id,
+        entityLabel: saved.name,
+        summary: creating
+            ? 'Created custom menu ${saved.name}'
+            : 'Updated custom menu ${saved.name}',
+        metadata: {'type': saved.type, 'itemCount': saved.itemIds.length},
+      );
     });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveBusinessProfile(BusinessProfile profile) async {
     showCpSnack(context, 'Updating business profile...');
-    setState(() => businessProfile = profile);
+    setState(() {
+      businessProfile = profile;
+      recordAudit(
+        action: 'update',
+        entityType: 'businessProfile',
+        entityId: 'businessProfile',
+        entityLabel: profile.businessName.isEmpty
+            ? 'Business profile'
+            : profile.businessName,
+        summary: 'Updated business profile',
+      );
+    });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> saveInvoiceSettings(BusinessProfile profile) async {
     showCpSnack(context, 'Updating invoice settings...');
-    setState(() => businessProfile = profile);
+    setState(() {
+      businessProfile = profile;
+      recordAudit(
+        action: 'update',
+        entityType: 'invoiceSettings',
+        entityId: 'invoiceSettings',
+        entityLabel: 'Invoice settings',
+        summary: 'Updated invoice settings',
+      );
+    });
     backupCurrentSnapshotQuietly();
   }
 
   Future<void> savePdfMenuSettings(BusinessProfile profile) async {
     showCpSnack(context, 'Updating PDF menu settings...');
-    setState(() => businessProfile = profile);
+    setState(() {
+      businessProfile = profile;
+      recordAudit(
+        action: 'update',
+        entityType: 'pdfMenuSettings',
+        entityId: 'pdfMenuSettings',
+        entityLabel: 'PDF menu settings',
+        summary: 'Updated PDF menu settings',
+      );
+    });
     backupCurrentSnapshotQuietly();
   }
 
@@ -1155,7 +1420,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<bool> handleBackPressed() async {
-    if (tab != 0) {
+    if (routeStack.isNotEmpty || tab != 0) {
       closeToParent();
       return false;
     }
@@ -1184,9 +1449,10 @@ class _AppShellState extends State<AppShell> {
             loading: loading,
             openCreate: openCreateEvent,
             openEvents: openEventsTab,
-            openClients: () => setState(() => tab = 2),
-            openBilling: () => setState(() => tab = 3),
-            openInvoice: () => setState(() => tab = 3),
+            openClients: () => navigateToTab(2),
+            openBilling: () => navigateToTab(3),
+            openEmployees: () => navigateToTab(9),
+            openInvoice: () => navigateToTab(3),
             openCustomMenus: () => openChildTab(11),
             openLists: () => openChildTab(21),
             openDetails: openEventDetails,
@@ -1214,7 +1480,8 @@ class _AppShellState extends State<AppShell> {
             onSaveManualInvoice: saveManualInvoice,
             onAddManualInvoice: openManualInvoiceForm,
             onOpenEvent: openEventDetails,
-            onEventUpdated: updateSelectedEvent),
+            onEventUpdated: updateSelectedEvent,
+            onAudit: recordAuditAndBackup),
         SettingsScreen(
             openBusiness: () => openChildTab(8),
             openInvoiceSettings: openInvoiceSettings,
@@ -1351,12 +1618,8 @@ class _AppShellState extends State<AppShell> {
         drawer: showDrawer
             ? CaterSideDrawer(
                 index: tab,
-                onChanged: (i) => setState(() {
-                      parentTab = 0;
-                      selectedEventId = null;
-                      editingEvent = null;
-                      tab = i;
-                    }))
+                onChanged: (i) =>
+                    navigateToTab(i, selectedEventId: null, editingEvent: null))
             : null,
         body: IndexedStack(index: tab, children: pages),
         floatingActionButton: showMainFab ? _fabForTab() : null,
@@ -1758,6 +2021,7 @@ void showCpSnack(BuildContext context, String message) {
     SnackBar(
       content: Text(message),
       duration: const Duration(seconds: 2),
+      dismissDirection: DismissDirection.horizontal,
       behavior: SnackBarBehavior.floating,
       backgroundColor: scheme.primaryContainer,
     ),
@@ -1775,6 +2039,7 @@ void showDownloadSnack(BuildContext context, Uri uri,
     SnackBar(
       content: Text(successMessage),
       duration: const Duration(seconds: 2),
+      dismissDirection: DismissDirection.horizontal,
       behavior: SnackBarBehavior.floating,
       backgroundColor: scheme.primaryContainer,
     ),
@@ -1785,19 +2050,15 @@ void showDownloadSnack(BuildContext context, Uri uri,
           await saveDownloadToDevice(title: title, uri: uri, kind: kind);
       if (!context.mounted) return;
       final fileName = sanitizeDownloadFileName(title, kind);
+      unawaited(openDownloadedFile(localUri, title: fileName, kind: kind));
       ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$fileName downloaded'),
+          content: Text('Opening $fileName'),
           duration: const Duration(seconds: 2),
+          dismissDirection: DismissDirection.horizontal,
           behavior: SnackBarBehavior.floating,
           backgroundColor: scheme.primaryContainer,
-          action: SnackBarAction(
-            label: 'Open',
-            textColor: scheme.onPrimaryContainer,
-            onPressed: () => unawaited(
-                openDownloadedFile(localUri, title: fileName, kind: kind)),
-          ),
         ),
       );
     } catch (e) {

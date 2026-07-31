@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CaterPro Admin - Clients List</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0fdf3;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #bfc9bd;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #707a6f;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-low": "#eaf7ed",
+                        "surface-bright": "#f0fdf3",
+                        "on-secondary": "#ffffff",
+                        "on-error-container": "#93000a",
+                        "secondary-fixed": "#9df7a5",
+                        "on-surface": "#131e18",
+                        "on-secondary-container": "#187432",
+                        "primary": "#0e6430",
+                        "on-secondary-fixed": "#002108",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#9df7a5",
+                        "tertiary": "#535851",
+                        "tertiary-fixed": "#e0e4db",
+                        "error-container": "#ffdad6",
+                        "surface-dim": "#d0ddd4",
+                        "on-surface-variant": "#404940",
+                        "primary-container": "#2f7d46",
+                        "surface-container": "#e4f1e7",
+                        "surface-container-highest": "#d9e6dc",
+                        "surface-variant": "#d9e6dc",
+                        "on-primary": "#ffffff",
+                        "on-primary-fixed-variant": "#005224",
+                        "on-primary-fixed": "#00210b",
+                        "tertiary-container": "#6b7069",
+                        "surface-container-high": "#dfebe2",
+                        "primary-fixed-dim": "#89d897",
+                        "on-primary-container": "#cdffd2",
+                        "secondary": "#0d6d2c",
+                        "outline": "#707a6f",
+                        "on-background": "#131e18",
+                        "outline-variant": "#bfc9bd",
+                        "on-secondary-fixed-variant": "#00531e",
+                        "tertiary-fixed-dim": "#c3c8bf",
+                        "inverse-on-surface": "#e7f4ea",
+                        "on-tertiary-fixed-variant": "#434842",
+                        "surface-tint": "#1b6c37",
+                        "error": "#ba1a1a",
+                        "secondary-fixed-dim": "#82da8b",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary-container": "#f0f4eb",
+                        "inverse-primary": "#89d897",
+                        "primary-fixed": "#a4f5b2",
+                        "on-tertiary": "#ffffff",
+                        "background": "#f0fdf3",
+                        "inverse-surface": "#28332d",
+                        "on-tertiary-fixed": "#181d18",
+                        "surface": "#f0fdf3"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "sidebar_width": "260px",
+                        "row_height_standard": "56px",
+                        "gutter": "16px",
+                        "stack_md": "16px",
+                        "container_padding": "24px",
+                        "stack_sm": "8px",
+                        "row_height_dense": "40px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "data-mono": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "title-lg": ["Inter"],
+                        "label-sm": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface">
+<!-- SideNavBar Anchor -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container border-r border-outline-variant flex flex-col justify-between py-4 z-50">
+<div>
+<div class="px-6 mb-8">
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-surface">CaterPro</h1>
+<p class="text-xs text-on-surface-variant">Admin Console</p>
+</div>
+<nav class="space-y-1 px-2">
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<!-- Active Item: Clients -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-4 border-primary bg-surface-container-high transition-colors rounded-r-lg" href="#">
+<span class="material-symbols-outlined" data-icon="group" style="font-variation-settings: 'FILL' 1;">group</span>
+<span class="font-label-md text-label-md">Clients</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Subscriptions</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="layers">layers</span>
+<span class="font-label-md text-label-md">Plans</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="history">history</span>
+<span class="font-label-md text-label-md">Audit Log</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</nav>
+</div>
+<div class="px-2 space-y-1">
+<div class="px-4 py-2 mb-2">
+<span class="inline-block px-3 py-1 bg-primary text-on-primary text-[10px] font-bold uppercase rounded-full tracking-wider">Production</span>
+</div>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+<span class="font-label-md text-label-md">Admin Profile</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-error hover:bg-error-container/20 transition-colors rounded-lg" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-label-md text-label-md">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-[260px] min-h-screen flex flex-col">
+<!-- TopAppBar Anchor -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low border-b border-outline-variant shadow-sm flex items-center justify-between px-6">
+<div class="flex items-center gap-6 flex-1">
+<h2 class="font-title-lg text-title-lg font-bold text-on-surface">Clients</h2>
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" placeholder="Search business, owner or mobile..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-all p-2 rounded-full hover:bg-surface-container-highest">notifications</button>
+<div class="h-8 w-[1px] bg-outline-variant"></div>
+<button class="bg-primary text-on-primary px-4 py-2 rounded-lg font-label-md text-label-md flex items-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                    Create Client
+                </button>
+<img class="w-10 h-10 rounded-full border border-outline-variant object-cover" data-alt="A professional business headshot of a middle-aged male administrator with a confident smile, wearing a sharp grey blazer and a white shirt. The background is a blurred high-end corporate office with soft ambient green lighting to match the brand. The photo is well-lit and professional, emphasizing reliability." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFrMIqe1iY5yOYPsZiAhqgzUksZJNWjtZQsgg3AuBhg1vwM5qL8pHg_oVZ-F8KZTUARRiS30iT-nbPXFTVQsOR0c3HW1aeSZH81XjB8Pc0b1Aj5KvjWQsr6HmTvqb0ygzDWLpTqCqSSDh03Q7okUxQRyChWHCMOyRSKtQuxruxB1E2JOLmAPLBxRWZoqYxBxcNHDTozQwWYKp3L0xtvcEPmhtt6R36Zyze4fp1LONGxzLW4DuPNWcm4A"/>
+</div>
+</header>
+<!-- Content Canvas -->
+<div class="p-6 space-y-6">
+<!-- Filters & Bulk Actions -->
+<div class="flex flex-wrap items-center justify-between gap-4">
+<div class="flex flex-wrap items-center gap-3">
+<div class="relative">
+<select class="appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-1.5 text-sm font-label-md focus:outline-none focus:ring-2 focus:ring-primary/20">
+<option>All Plans</option>
+<option>Trial</option>
+<option>Basic</option>
+<option>Pro</option>
+<option>Enterprise</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+</div>
+<div class="relative">
+<select class="appearance-none bg-surface-container-lowest border border-outline-variant rounded-lg pl-3 pr-10 py-1.5 text-sm font-label-md focus:outline-none focus:ring-2 focus:ring-primary/20">
+<option>All Statuses</option>
+<option>Active</option>
+<option>Inactive</option>
+</select>
+<span class="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">arrow_drop_down</span>
+</div>
+<button class="px-3 py-1.5 text-sm border border-outline-variant rounded-lg font-label-md text-on-surface-variant flex items-center gap-2 hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-sm">payments</span>
+                        Pending Payments
+                    </button>
+<button class="px-3 py-1.5 text-sm border border-outline-variant rounded-lg font-label-md text-on-surface-variant flex items-center gap-2 hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined text-sm">sync_problem</span>
+                        Sync Issues
+                    </button>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="text-xs font-label-sm">Displaying 3 of 1,240 clients</span>
+</div>
+</div>
+<!-- Bulk Action Bar (Hidden by default, shown via JS logic simulation) -->
+<div class="hidden animate-in slide-in-from-top duration-300 bg-primary-container text-on-primary-container rounded-xl p-4 flex items-center justify-between shadow-lg" id="bulk-bar">
+<div class="flex items-center gap-4">
+<span class="font-label-md"><span id="selected-count">0</span> clients selected</span>
+<div class="w-[1px] h-6 bg-on-primary-container/20 mx-2"></div>
+<div class="flex items-center gap-2">
+<button class="px-4 py-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-label-md transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">download</span>
+                            Bulk Export
+                        </button>
+<button class="px-4 py-1.5 bg-error text-white hover:bg-error/90 rounded-lg text-sm font-label-md transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">block</span>
+                            Bulk Disable
+                        </button>
+</div>
+</div>
+<button class="material-symbols-outlined text-on-primary-container/70 hover:text-on-primary-container" onclick="toggleBulk(false)">close</button>
+</div>
+<!-- Table Container -->
+<div class="bg-white rounded-xl border border-outline-variant overflow-hidden flex flex-col">
+<div class="overflow-x-auto custom-scrollbar">
+<table class="w-full text-left border-collapse min-w-[1600px]">
+<thead>
+<tr class="bg-surface-container-low/50 border-b border-outline-variant">
+<th class="px-4 py-3 w-10">
+<input class="rounded border-outline-variant text-primary focus:ring-primary" onchange="selectAll(this)" type="checkbox"/>
+</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Business Name</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Owner</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Plan</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Contact</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider text-center">Stats</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider text-right">Financials</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Last Sync</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider">Status</th>
+<th class="px-4 py-3 font-label-sm text-on-surface-variant uppercase tracking-wider text-right sticky right-0 bg-white shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)]">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1: Malnad Kitchen -->
+<tr class="hover:bg-surface-bright transition-colors group">
+<td class="px-4 py-row_height_dense">
+<input class="row-checkbox rounded border-outline-variant text-primary focus:ring-primary" onchange="updateSelected()" type="checkbox"/>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col">
+<span class="font-label-md text-on-surface font-bold">Malnad Kitchen</span>
+<span class="text-xs text-on-surface-variant">Bangalore, IN</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-secondary-container text-on-secondary-container text-[10px] font-bold flex items-center justify-center">SN</div>
+<span class="text-sm">Suresh N.</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-0.5 rounded bg-primary-container/10 text-primary-container text-[11px] font-bold border border-primary-container/20 uppercase">Pro</span>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col text-xs">
+<span class="text-on-surface">suresh@malnad.kitchen</span>
+<span class="text-on-surface-variant">+91 98860 12345</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center justify-center gap-4 text-xs font-medium">
+<div class="flex flex-col items-center">
+<span class="text-on-surface">142</span>
+<span class="text-[10px] text-on-surface-variant">Events</span>
+</div>
+<div class="flex flex-col items-center">
+<span class="text-on-surface">24</span>
+<span class="text-[10px] text-on-surface-variant">Inv.</span>
+</div>
+</div>
+</td>
+<td class="px-4 py-row_height_dense text-right">
+<div class="flex flex-col">
+<span class="font-data-mono text-sm font-bold text-on-surface">₹12,45,000</span>
+<span class="text-[10px] text-error">Pending: ₹0</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-1.5 text-xs">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<span class="text-on-surface-variant">2 mins ago</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-1 rounded-full bg-secondary-container text-on-secondary-container text-[11px] font-bold flex items-center w-fit gap-1">
+<span class="material-symbols-outlined text-xs">check_circle</span> Active
+                                    </span>
+</td>
+<td class="px-4 py-row_height_dense text-right sticky right-0 bg-white group-hover:bg-surface-bright shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)]">
+<div class="flex items-center justify-end gap-1">
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Info"><span class="material-symbols-outlined text-[18px]">info</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Edit"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Subscription"><span class="material-symbols-outlined text-[18px]">card_membership</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="More"><span class="material-symbols-outlined text-[18px]">more_vert</span></button>
+</div>
+</td>
+</tr>
+<!-- Row 2: Fresh Pure Food India -->
+<tr class="hover:bg-surface-bright transition-colors group">
+<td class="px-4 py-row_height_dense">
+<input class="row-checkbox rounded border-outline-variant text-primary focus:ring-primary" onchange="updateSelected()" type="checkbox"/>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col">
+<span class="font-label-md text-on-surface font-bold">Fresh Pure Food India</span>
+<span class="text-xs text-on-surface-variant">Mumbai, IN</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-tertiary-fixed text-on-tertiary-fixed text-[10px] font-bold flex items-center justify-center">AK</div>
+<span class="text-sm">Arjun K.</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-0.5 rounded bg-tertiary text-on-tertiary text-[11px] font-bold border border-tertiary/20 uppercase">Enterprise</span>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col text-xs">
+<span class="text-on-surface">admin@freshpure.in</span>
+<span class="text-on-surface-variant">+91 22 4055 9999</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center justify-center gap-4 text-xs font-medium">
+<div class="flex flex-col items-center">
+<span class="text-on-surface">892</span>
+<span class="text-[10px] text-on-surface-variant">Events</span>
+</div>
+<div class="flex flex-col items-center">
+<span class="text-on-surface">112</span>
+<span class="text-[10px] text-on-surface-variant">Inv.</span>
+</div>
+</div>
+</td>
+<td class="px-4 py-row_height_dense text-right">
+<div class="flex flex-col">
+<span class="font-data-mono text-sm font-bold text-on-surface">₹56,20,500</span>
+<span class="text-[10px] text-error">Pending: ₹45,000</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-1.5 text-xs">
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+<span class="text-on-surface-variant">Today, 10:45 AM</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-1 rounded-full bg-secondary-container text-on-secondary-container text-[11px] font-bold flex items-center w-fit gap-1">
+<span class="material-symbols-outlined text-xs">check_circle</span> Active
+                                    </span>
+</td>
+<td class="px-4 py-row_height_dense text-right sticky right-0 bg-white group-hover:bg-surface-bright shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)]">
+<div class="flex items-center justify-end gap-1">
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Info"><span class="material-symbols-outlined text-[18px]">info</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Edit"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Subscription"><span class="material-symbols-outlined text-[18px]">card_membership</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="More"><span class="material-symbols-outlined text-[18px]">more_vert</span></button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Mamatha -->
+<tr class="hover:bg-surface-bright transition-colors group">
+<td class="px-4 py-row_height_dense">
+<input class="row-checkbox rounded border-outline-variant text-primary focus:ring-primary" onchange="updateSelected()" type="checkbox"/>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col">
+<span class="font-label-md text-on-surface font-bold">Mamatha</span>
+<span class="text-xs text-on-surface-variant">Mysore, IN</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded-full bg-surface-container-highest text-on-surface-variant text-[10px] font-bold flex items-center justify-center">MR</div>
+<span class="text-sm">Mamatha R.</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-0.5 rounded bg-surface-container-highest text-on-surface-variant text-[11px] font-bold border border-outline-variant uppercase">Basic</span>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex flex-col text-xs">
+<span class="text-on-surface">mamatha.cater@gmail.com</span>
+<span class="text-on-surface-variant">+91 821 244 5566</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center justify-center gap-4 text-xs font-medium">
+<div class="flex flex-col items-center">
+<span class="text-on-surface">12</span>
+<span class="text-[10px] text-on-surface-variant">Events</span>
+</div>
+<div class="flex flex-col items-center">
+<span class="text-on-surface">3</span>
+<span class="text-[10px] text-on-surface-variant">Inv.</span>
+</div>
+</div>
+</td>
+<td class="px-4 py-row_height_dense text-right">
+<div class="flex flex-col">
+<span class="font-data-mono text-sm font-bold text-on-surface">₹45,000</span>
+<span class="text-[10px] text-on-surface-variant">Pending: ₹0</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<div class="flex items-center gap-1.5 text-xs text-error">
+<span class="material-symbols-outlined text-xs">warning</span>
+<span>3 days ago</span>
+</div>
+</td>
+<td class="px-4 py-row_height_dense">
+<span class="px-2 py-1 rounded-full bg-error-container text-on-error-container text-[11px] font-bold flex items-center w-fit gap-1">
+<span class="material-symbols-outlined text-xs">error</span> Expired
+                                    </span>
+</td>
+<td class="px-4 py-row_height_dense text-right sticky right-0 bg-white group-hover:bg-surface-bright shadow-[-10px_0_15px_-3px_rgba(0,0,0,0.05)]">
+<div class="flex items-center justify-end gap-1">
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Info"><span class="material-symbols-outlined text-[18px]">info</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Edit"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="Subscription"><span class="material-symbols-outlined text-[18px]">card_membership</span></button>
+<button class="p-1.5 hover:bg-surface-container-highest rounded text-on-surface-variant" title="More"><span class="material-symbols-outlined text-[18px]">more_vert</span></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination Footer -->
+<div class="px-6 py-4 border-t border-outline-variant flex items-center justify-between bg-surface-container-lowest">
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<span class="text-xs text-on-surface-variant font-label-md">Rows per page:</span>
+<select class="bg-transparent border-none text-xs font-bold focus:ring-0 cursor-pointer">
+<option>10</option>
+<option>25</option>
+<option>50</option>
+<option>100</option>
+</select>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<span class="text-xs text-on-surface-variant font-label-md">1-3 of 1,240</span>
+<div class="flex items-center gap-1">
+<button class="p-1 hover:bg-surface-container-high rounded-full disabled:opacity-30" disabled=""><span class="material-symbols-outlined">chevron_left</span></button>
+<button class="p-1 hover:bg-surface-container-high rounded-full"><span class="material-symbols-outlined">chevron_right</span></button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Background Asset -->
+<div class="mt-auto p-6 relative overflow-hidden h-32 flex items-center justify-center opacity-40 grayscale pointer-events-none">
+
+<div class="z-10 text-center">
+<p class="text-xs font-label-sm uppercase tracking-[0.2em] text-on-surface-variant">System Monitoring Active</p>
+</div>
+</div>
+</main>
+<script>
+        function updateSelected() {
+            const checkboxes = document.querySelectorAll('.row-checkbox:checked');
+            const bulkBar = document.getElementById('bulk-bar');
+            const selectedCount = document.getElementById('selected-count');
+            
+            if (checkboxes.length > 0) {
+                bulkBar.classList.remove('hidden');
+                bulkBar.classList.add('flex');
+                selectedCount.innerText = checkboxes.length;
+            } else {
+                bulkBar.classList.add('hidden');
+                bulkBar.classList.remove('flex');
+            }
+        }
+
+        function selectAll(master) {
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            checkboxes.forEach(cb => cb.checked = master.checked);
+            updateSelected();
+        }
+
+        function toggleBulk(show) {
+            const bulkBar = document.getElementById('bulk-bar');
+            const masterCheck = document.querySelector('thead input[type="checkbox"]');
+            const checkboxes = document.querySelectorAll('.row-checkbox');
+            
+            if (!show) {
+                bulkBar.classList.add('hidden');
+                bulkBar.classList.remove('flex');
+                masterCheck.checked = false;
+                checkboxes.forEach(cb => cb.checked = false);
+            }
+        }
+
+        // Add some interaction polish
+        document.querySelectorAll('tr').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if (e.target.type !== 'checkbox' && !e.target.closest('button')) {
+                    const cb = row.querySelector('.row-checkbox');
+                    if (cb) {
+                        cb.checked = !cb.checked;
+                        updateSelected();
+                    }
+                }
+            });
+        });
+    </script>
+</body></html>

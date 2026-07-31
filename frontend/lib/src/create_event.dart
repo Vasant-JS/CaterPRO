@@ -1500,6 +1500,7 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final items = MenuMasterScreen.menuItems.where((item) {
+      if (item.disabled) return false;
       if (appPreferences.value.vegOnlyDefault && !item.veg) return false;
       final matchesType = itemMatchesMenuType(item);
       final matchesSearch =

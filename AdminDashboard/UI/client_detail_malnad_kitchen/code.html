@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CaterPro Admin - Malnad Kitchen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-low": "#eaf7ed",
+                      "surface-bright": "#f0fdf3",
+                      "on-secondary": "#ffffff",
+                      "on-error-container": "#93000a",
+                      "secondary-fixed": "#9df7a5",
+                      "on-surface": "#131e18",
+                      "on-secondary-container": "#187432",
+                      "primary": "#0e6430",
+                      "on-secondary-fixed": "#002108",
+                      "on-error": "#ffffff",
+                      "secondary-container": "#9df7a5",
+                      "tertiary": "#535851",
+                      "tertiary-fixed": "#e0e4db",
+                      "error-container": "#ffdad6",
+                      "surface-dim": "#d0ddd4",
+                      "on-surface-variant": "#404940",
+                      "primary-container": "#2f7d46",
+                      "surface-container": "#e4f1e7",
+                      "surface-container-highest": "#d9e6dc",
+                      "surface-variant": "#d9e6dc",
+                      "on-primary": "#ffffff",
+                      "on-primary-fixed-variant": "#005224",
+                      "on-primary-fixed": "#00210b",
+                      "tertiary-container": "#6b7069",
+                      "surface-container-high": "#dfebe2",
+                      "primary-fixed-dim": "#89d897",
+                      "on-primary-container": "#cdffd2",
+                      "secondary": "#0d6d2c",
+                      "outline": "#707a6f",
+                      "on-background": "#131e18",
+                      "outline-variant": "#bfc9bd",
+                      "on-secondary-fixed-variant": "#00531e",
+                      "tertiary-fixed-dim": "#c3c8bf",
+                      "inverse-on-surface": "#e7f4ea",
+                      "on-tertiary-fixed-variant": "#434842",
+                      "surface-tint": "#1b6c37",
+                      "error": "#ba1a1a",
+                      "secondary-fixed-dim": "#82da8b",
+                      "surface-container-lowest": "#ffffff",
+                      "on-tertiary-container": "#f0f4eb",
+                      "inverse-primary": "#89d897",
+                      "primary-fixed": "#a4f5b2",
+                      "on-tertiary": "#ffffff",
+                      "background": "#f0fdf3",
+                      "inverse-surface": "#28332d",
+                      "on-tertiary-fixed": "#181d18",
+                      "surface": "#f0fdf3"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "sidebar_width": "260px",
+                      "row_height_standard": "56px",
+                      "gutter": "16px",
+                      "stack_md": "16px",
+                      "container_padding": "24px",
+                      "stack_sm": "8px",
+                      "row_height_dense": "40px"
+              },
+              "fontFamily": {
+                      "headline-md": ["Inter"],
+                      "headline-sm": ["Inter"],
+                      "label-md": ["Inter"],
+                      "body-md": ["Inter"],
+                      "data-mono": ["Inter"],
+                      "body-sm": ["Inter"],
+                      "display-lg": ["Inter"],
+                      "title-lg": ["Inter"],
+                      "label-sm": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                      "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                      "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        body { background-color: #f0fdf3; font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-on-surface">
+<!-- SideNavBar -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container dark:bg-inverse-surface border-r border-outline-variant dark:border-outline flex flex-col justify-between py-gutter z-50">
+<div>
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">restaurant_menu</span>
+</div>
+<div>
+<h1 class="font-headline-sm text-headline-sm font-bold text-on-surface dark:text-inverse-on-surface">CaterPro</h1>
+<p class="text-[10px] uppercase tracking-widest text-on-surface-variant opacity-70">Admin Console</p>
+</div>
+</div>
+<nav class="space-y-1">
+<!-- Dashboard -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-variant transition-colors" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+<span class="font-label-md text-label-md">Dashboard</span>
+</a>
+<!-- Clients (Active) -->
+<a class="flex items-center gap-3 px-4 py-3 text-primary dark:text-primary-fixed border-l-4 border-primary dark:border-primary-fixed bg-surface-container-high dark:bg-surface-variant transition-all active:opacity-90 active:scale-[0.98]" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">group</span>
+<span class="font-label-md text-label-md">Clients</span>
+</a>
+<!-- Subscriptions -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-variant transition-colors" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<span class="font-label-md text-label-md">Subscriptions</span>
+</a>
+<!-- Plans -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-variant transition-colors" href="#">
+<span class="material-symbols-outlined">layers</span>
+<span class="font-label-md text-label-md">Plans</span>
+</a>
+<!-- Audit Log -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-variant transition-colors" href="#">
+<span class="material-symbols-outlined">history</span>
+<span class="font-label-md text-label-md">Audit Log</span>
+</a>
+<!-- Settings -->
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest dark:hover:bg-surface-variant transition-colors" href="#">
+<span class="material-symbols-outlined">settings</span>
+<span class="font-label-md text-label-md">Settings</span>
+</a>
+</nav>
+</div>
+<div class="px-4 space-y-2">
+<div class="p-3 bg-surface-container-low rounded-xl mb-4 border border-outline-variant/30">
+<p class="text-xs text-on-surface-variant mb-1">Production Status</p>
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary animate-pulse"></span>
+<span class="text-sm font-semibold">Healthy Cluster</span>
+</div>
+</div>
+<a class="flex items-center gap-3 px-4 py-3 text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-highest transition-colors" href="#">
+<span class="material-symbols-outlined">account_circle</span>
+<span class="font-label-md text-label-md">Admin Profile</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-3 text-error dark:text-error hover:bg-error-container/20 transition-colors" href="#">
+<span class="material-symbols-outlined">logout</span>
+<span class="font-label-md text-label-md">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-[260px] min-h-screen">
+<!-- TopAppBar -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low dark:bg-surface-container-lowest border-b border-outline-variant dark:border-outline shadow-sm dark:shadow-none flex items-center justify-between px-container_padding">
+<div class="flex items-center gap-4">
+<h2 class="font-title-lg text-title-lg font-bold text-on-surface dark:text-inverse-on-surface">CaterPro Admin</h2>
+<div class="h-6 w-px bg-outline-variant mx-2"></div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm">history</span>
+<span class="text-label-sm font-label-sm">Last login: 2 hours ago</span>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<input class="bg-surface-container-highest/50 border-none rounded-full px-10 py-1.5 text-sm w-64 focus:ring-2 focus:ring-primary/20 transition-all" placeholder="Search across console..." type="text"/>
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+</div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-colors relative">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-surface-container-low"></span>
+</button>
+<div class="h-8 w-8 rounded-full overflow-hidden border border-outline-variant">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a female administrative executive in a corporate setting, with soft natural lighting and a high-key background. The executive has a warm, confident expression, reflecting a modern, efficient, and professional brand identity consistent with professional SaaS environments." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAxose9VmoVYJoYnNBtPS99Qo06hvEiTiAoIArQkop7-ZmC3QWr4hoMusAqzKxD7EVWOwToGzJc2MYhm1X5wHT3fmtLFdG9yRi-QDZwWSU6sJAPKuxfNQvW__zTMKZNL9H9cSwgmQJib-WQXaQYgrjvlElk_Yu6PKU4gWqw_63GwaivaQ5duPwpgPEluKRQ-xV9s0U4gVfmB6fHAsa6Zz3PtJxJQpcFfR98AShgV84kj4aK4gtrNvpQVQ"/>
+</div>
+</div>
+</header>
+<!-- Page Canvas -->
+<div class="p-container_padding space-y-gutter">
+<!-- Client Header Section -->
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div class="flex items-start gap-5">
+<div class="w-20 h-20 rounded-2xl bg-white border border-outline-variant shadow-sm flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover p-2" data-alt="A sophisticated minimalist logo for a high-end catering business named Malnad Kitchen. The logo features a stylized abstract representation of a traditional kitchen tool integrated with a green leaf motif, representing fresh organic food. The design is clean, using a palette of deep forest green and soft cream, set against a pristine white background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCqu2MRood-m_TRGzOWczr_BBgGLAizRb7IgRidy66IQxPVvW6sQD5unPbiy6WSUxV1Pv7O8N5ju0ejhk5yDJgnDwjc7RhOamrVxsF1hPjpVbyObGzD8nY07lBwyhRzBaYkHXoMxxw_bQd4yliFItySx_6lJhsSF8be2DORbEbT2bkXr3n5NhlGJXlToyysEC6D9iunLpxl2OZErseWYnDeGwVeUNthxgx1kGjHlnYN3VFyIU8AHFEAyg"/>
+</div>
+<div>
+<div class="flex items-center gap-3 mb-1">
+<h1 class="font-display-lg text-display-lg text-on-surface">Malnad Kitchen</h1>
+<span class="px-2.5 py-0.5 rounded-full bg-primary-container text-on-primary-container text-[11px] font-bold uppercase tracking-wider">Pro</span>
+<span class="px-2.5 py-0.5 rounded-full bg-secondary-container text-on-secondary-container text-[11px] font-bold uppercase tracking-wider">Active</span>
+</div>
+<p class="text-on-surface-variant font-body-md flex items-center gap-2">
+<span class="material-symbols-outlined text-base">mail</span>
+                            admin@malnadkitchen.com
+                        </p>
+</div>
+</div>
+<div class="flex gap-3">
+<button class="px-5 py-2.5 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-white transition-all flex items-center gap-2">
+<span class="material-symbols-outlined text-lg">edit</span> Edit Client
+                    </button>
+<button class="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md text-label-md hover:bg-primary/90 transition-all flex items-center gap-2 shadow-md shadow-primary/20">
+<span class="material-symbols-outlined text-lg">add_circle</span> New Order
+                    </button>
+</div>
+</div>
+<!-- Summary Grid (Bento Style) -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+<!-- Earning -->
+<div class="bg-white border border-outline-variant p-5 rounded-2xl flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-container/30 flex items-center justify-center text-on-secondary-container">
+<span class="material-symbols-outlined">payments</span>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant font-label-sm">Total Earning</p>
+<h3 class="text-xl font-bold">₹12,00,000</h3>
+</div>
+</div>
+<!-- Pending -->
+<div class="bg-white border border-outline-variant p-5 rounded-2xl flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-error-container/30 flex items-center justify-center text-error">
+<span class="material-symbols-outlined text-fill">pending_actions</span>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant font-label-sm">Pending Payment</p>
+<h3 class="text-xl font-bold">₹45,000</h3>
+</div>
+</div>
+<!-- Orders -->
+<div class="bg-white border border-outline-variant p-5 rounded-2xl flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary-container/30 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">receipt</span>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant font-label-sm">Total Orders</p>
+<h3 class="text-xl font-bold">154</h3>
+</div>
+</div>
+<!-- Sync -->
+<div class="bg-white border border-outline-variant p-5 rounded-2xl flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-secondary-fixed/30 flex items-center justify-center text-on-secondary-fixed-variant">
+<span class="material-symbols-outlined">sync_saved_locally</span>
+</div>
+<div>
+<p class="text-xs text-on-surface-variant font-label-sm">Sync Status</p>
+<div class="flex items-center gap-2">
+<h3 class="text-xl font-bold">Healthy</h3>
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+</div>
+</div>
+</div>
+</div>
+<!-- Tabbed Navigation -->
+<div class="border-b border-outline-variant flex gap-8 overflow-x-auto scrollbar-hide">
+<button class="pb-3 border-b-2 border-primary text-primary font-bold transition-all flex items-center gap-2 whitespace-nowrap">
+                    Client Details
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Events
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Quotations & Invoices
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Menu Items
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Employees
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Reports
+                </button>
+<button class="pb-3 border-b-2 border-transparent text-on-surface-variant hover:text-primary transition-all whitespace-nowrap">
+                    Audit Activity
+                </button>
+</div>
+<!-- Main Content Grid -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+<!-- Left Content: Forms -->
+<div class="lg:col-span-2 space-y-6">
+<!-- User Profile Card -->
+<div class="bg-white rounded-2xl border border-outline-variant overflow-hidden">
+<div class="px-6 py-4 border-b border-outline-variant bg-surface-container-low/30">
+<h4 class="font-title-lg text-title-lg">User Profile</h4>
+</div>
+<div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Full Name</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="text" value="Rajesh Hegde"/>
+</div>
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Primary Email</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="email" value="admin@malnadkitchen.com"/>
+</div>
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Phone Number</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="tel" value="+91 98765 43210"/>
+</div>
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Designation</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="text" value="Managing Director"/>
+</div>
+</div>
+</div>
+<!-- Business Profile Card -->
+<div class="bg-white rounded-2xl border border-outline-variant overflow-hidden">
+<div class="px-6 py-4 border-b border-outline-variant bg-surface-container-low/30">
+<h4 class="font-title-lg text-title-lg">Business Details</h4>
+</div>
+<div class="p-6 space-y-6">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">GSTIN Number</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="text" value="29AABCM1234F1Z5"/>
+</div>
+<div class="space-y-1.5">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Bank Account Number</label>
+<input class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" type="text" value="50200012345678"/>
+</div>
+<div class="space-y-1.5 md:col-span-2">
+<label class="text-label-sm font-label-sm text-on-surface-variant">Business Address</label>
+<textarea class="w-full border-outline-variant rounded-lg bg-surface-bright focus:ring-primary/20 focus:border-primary px-4 py-2.5" rows="3">#42, 2nd Floor, Malnad Heights, Jayanagar 4th Block, Bengaluru, Karnataka 560011</textarea>
+</div>
+</div>
+<div class="h-px bg-outline-variant"></div>
+<div class="space-y-4">
+<h5 class="text-label-md font-label-md text-on-surface uppercase tracking-wider">Invoice Configuration</h5>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<div class="border border-outline-variant p-4 rounded-xl hover:border-primary cursor-pointer transition-all bg-surface-container-low/50">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined text-primary">description</span>
+<div class="w-4 h-4 rounded-full bg-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px] text-white">check</span>
+</div>
+</div>
+<p class="font-bold text-sm">Classic Corporate</p>
+<p class="text-[10px] text-on-surface-variant">Professional, standard layout</p>
+</div>
+<div class="border border-outline-variant p-4 rounded-xl hover:border-primary cursor-pointer transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined">palette</span>
+</div>
+<p class="font-bold text-sm">Modern Organic</p>
+<p class="text-[10px] text-on-surface-variant">Stylish, visual-first layout</p>
+</div>
+<div class="border border-outline-variant p-4 rounded-xl hover:border-primary cursor-pointer transition-all">
+<div class="flex justify-between items-start mb-2">
+<span class="material-symbols-outlined">table_chart</span>
+</div>
+<p class="font-bold text-sm">Dense Tabular</p>
+<p class="text-[10px] text-on-surface-variant">Maximized for long menus</p>
+</div>
+</div>
+</div>
+</div>
+<div class="px-6 py-4 bg-surface-container-highest/20 border-t border-outline-variant flex justify-end gap-3">
+<button class="px-6 py-2 rounded-lg font-label-md text-label-md text-on-surface-variant hover:bg-surface-variant transition-all">Cancel</button>
+<button class="px-8 py-2 rounded-lg font-label-md text-label-md bg-primary text-on-primary hover:bg-primary-container shadow-sm">Save Changes</button>
+</div>
+</div>
+</div>
+<!-- Right Content: Meta Info -->
+<div class="space-y-6">
+<!-- Quick Stats -->
+<div class="bg-white p-6 rounded-2xl border border-outline-variant shadow-sm space-y-4">
+<h4 class="font-label-md font-bold uppercase tracking-wider text-on-surface-variant">Operational Snapshot</h4>
+<div class="space-y-4">
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-surface-variant">Active Subscriptions</span>
+<span class="font-bold">Pro Yearly</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-surface-variant">Billing Cycle</span>
+<span class="font-bold">Aug 2024 - Jul 2025</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-surface-variant">Next Renewal</span>
+<span class="text-secondary font-bold">342 Days left</span>
+</div>
+<div class="h-px bg-outline-variant/30"></div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-on-surface-variant">Order Volume</span>
+<div class="w-24 h-2 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[78%]"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Map/Location Context -->
+<div class="bg-white rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
+<div class="h-40 relative">
+<img class="w-full h-full object-cover" data-alt="A clean, high-contrast digital map interface showing a specific commercial district in Bengaluru, India. The map style is minimalist with a light-mode aesthetic, using shades of soft green and grey to highlight local roads and landmarks. A central pin marks a business location, fitting a professional SaaS client detail screen." data-location="Bengaluru, India" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBjjIJcvCKm1hyPBvaRbojinLRtMa0UZtTThXV2afZs0fUlpOgz0qvGCWlol6JCwc9qmWgnOEkbD4iyY8nShc4Ssmk5Bnq95ib2qT2NIBPZyu3W3NGqDgCWxAReijtD3vxd4FPSlBfky-JtF564jYYyLsOd-tvPGdq7Qo_OrZW72bpnZCVE5asfIaLtSZUASBHIn9d1QmCBbAl8KbFJ7NYW48o36i0C-zJcDhOjZs6lo6Qwwv3NRz1RTQ"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+<div class="absolute bottom-3 left-4 text-white">
+<p class="text-xs font-bold uppercase tracking-tighter opacity-80">Primary Kitchen</p>
+<p class="text-sm font-semibold">Jayanagar, Bengaluru</p>
+</div>
+</div>
+<div class="p-4 flex items-center justify-between">
+<span class="text-xs text-on-surface-variant">Verified on Google Maps</span>
+<button class="text-primary text-xs font-bold hover:underline">Update Location</button>
+</div>
+</div>
+<!-- Client Interaction History -->
+<div class="bg-white p-6 rounded-2xl border border-outline-variant shadow-sm space-y-4">
+<h4 class="font-label-md font-bold uppercase tracking-wider text-on-surface-variant">System Activity</h4>
+<div class="space-y-5">
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">login</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-semibold">Last Login</p>
+<p class="text-xs text-on-surface-variant">2 hours ago from 192.168.1.45</p>
+</div>
+</div>
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">edit_note</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-semibold">Profile Updated</p>
+<p class="text-xs text-on-surface-variant">Yesterday, 4:15 PM by Admin-KV</p>
+</div>
+</div>
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-sm">receipt_long</span>
+</div>
+<div class="flex-1">
+<p class="text-sm font-semibold">New Quotation</p>
+<p class="text-xs text-on-surface-variant">3 days ago for 'Corporate Event'</p>
+</div>
+</div>
+</div>
+<button class="w-full py-2 border border-outline-variant rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-bright transition-all">View All Logs</button>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Micro-interaction Scripts -->
+<script>
+        // Simple ripple effect or interaction logic can go here
+        document.querySelectorAll('button').forEach(button => {
+            button.addEventListener('mousedown', function() {
+                this.classList.add('scale-[0.98]');
+            });
+            button.addEventListener('mouseup', function() {
+                this.classList.remove('scale-[0.98]');
+            });
+            button.addEventListener('mouseleave', function() {
+                this.classList.remove('scale-[0.98]');
+            });
+        });
+
+        // Tab switching logic (Visual only for prototype)
+        const tabs = document.querySelectorAll('.border-b button');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => {
+                    t.classList.remove('border-primary', 'text-primary', 'font-bold');
+                    t.classList.add('border-transparent', 'text-on-surface-variant');
+                });
+                tab.classList.remove('border-transparent', 'text-on-surface-variant');
+                tab.classList.add('border-primary', 'text-primary', 'font-bold');
+            });
+        });
+    </script>
+</body></html>

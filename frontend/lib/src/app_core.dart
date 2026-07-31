@@ -323,6 +323,25 @@ String mimeTypeForDownload(String kind, String fileName) {
   return 'application/pdf';
 }
 
+String cleanDisplayText(String value) {
+  final mojibakeBullet = String.fromCharCodes([0x00e2, 0x20ac, 0x00a2]);
+  final doubleMojibakeBullet = String.fromCharCodes(
+      [0x00c3, 0x00a2, 0x00e2, 0x201a, 0x00ac, 0x00c2, 0x00a2]);
+  final mojibakeMiddleDot = String.fromCharCodes([0x00c2, 0x00b7]);
+  value = value
+      .replaceAll(doubleMojibakeBullet, '|')
+      .replaceAll(mojibakeBullet, '|')
+      .replaceAll(mojibakeMiddleDot, '|');
+  return value
+      .replaceAll('â€¢', '|')
+      .replaceAll('â€¢', '|')
+      .replaceAll('€¢', '|')
+      .replaceAll('Â·', '|')
+      .replaceAll(RegExp(r'\s+\|\s+'), ' | ')
+      .replaceAll(RegExp(r'\s{2,}'), ' ')
+      .trim();
+}
+
 Future<Uri> saveDownloadToDevice(
     {required String title,
     required Uri uri,
@@ -370,7 +389,7 @@ Future<bool> openDownloadedFile(Uri uri,
 }
 
 Future<bool> shareDownloadedFile(Uri uri,
-    {required String title, String kind = 'file'}) async {
+    {required String title, String kind = 'file', String? text}) async {
   if (!kIsWeb && (uri.scheme == 'content' || uri.scheme == 'file')) {
     final shared = await downloadChannel.invokeMethod<bool>(
           'shareFile',
@@ -378,6 +397,7 @@ Future<bool> shareDownloadedFile(Uri uri,
             'uri': uri.toString(),
             'mimeType': mimeTypeForDownload(kind, title),
             'title': title,
+            if (text != null && text.trim().isNotEmpty) 'text': text,
           },
         ) ??
         false;
@@ -391,12 +411,13 @@ Future<Uri> saveAndShareDownload(
     {required String title,
     required Uri uri,
     required String kind,
+    String? text,
     Map<String, String>? headers}) async {
   final localUri = await saveDownloadToDevice(
       title: title, uri: uri, kind: kind, headers: headers);
   final fileName = sanitizeDownloadFileName(title, kind);
-  final shared =
-      await shareDownloadedFile(localUri, title: fileName, kind: kind);
+  final shared = await shareDownloadedFile(localUri,
+      title: fileName, kind: kind, text: text);
   if (!shared) throw Exception('Unable to open share sheet');
   return localUri;
 }
@@ -1677,6 +1698,61 @@ class AppPayment {
         'reference': reference,
         'settled': settled,
         'settledDiscount': settledDiscount,
+      };
+}
+
+typedef AuditLogger = void Function({
+  required String action,
+  required String entityType,
+  required String entityId,
+  required String entityLabel,
+  required String summary,
+  Map<String, dynamic>? metadata,
+});
+
+class AuditLogEntry {
+  const AuditLogEntry({
+    required this.id,
+    required this.action,
+    required this.entityType,
+    required this.entityId,
+    required this.entityLabel,
+    required this.summary,
+    required this.createdAt,
+    this.metadata = const {},
+  });
+
+  final String id;
+  final String action;
+  final String entityType;
+  final String entityId;
+  final String entityLabel;
+  final String summary;
+  final DateTime createdAt;
+  final Map<String, dynamic> metadata;
+
+  factory AuditLogEntry.fromJson(Map<String, dynamic> json) => AuditLogEntry(
+        id: json['id']?.toString() ?? '',
+        action: json['action']?.toString() ?? '',
+        entityType: json['entityType']?.toString() ?? '',
+        entityId: json['entityId']?.toString() ?? '',
+        entityLabel: json['entityLabel']?.toString() ?? '',
+        summary: json['summary']?.toString() ?? '',
+        createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
+            DateTime.fromMillisecondsSinceEpoch(0),
+        metadata: Map<String, dynamic>.from(
+            (json['metadata'] as Map?) ?? const {}),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'action': action,
+        'entityType': entityType,
+        'entityId': entityId,
+        'entityLabel': entityLabel,
+        'summary': summary,
+        'createdAt': createdAt.toIso8601String(),
+        'metadata': metadata,
       };
 }
 

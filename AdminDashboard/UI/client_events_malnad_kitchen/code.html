@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Malnad Kitchen - Events | CaterPro Admin</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-low": "#eaf7ed",
+                    "surface-bright": "#f0fdf3",
+                    "on-secondary": "#ffffff",
+                    "on-error-container": "#93000a",
+                    "secondary-fixed": "#9df7a5",
+                    "on-surface": "#131e18",
+                    "on-secondary-container": "#187432",
+                    "primary": "#0e6430",
+                    "on-secondary-fixed": "#002108",
+                    "on-error": "#ffffff",
+                    "secondary-container": "#9df7a5",
+                    "tertiary": "#535851",
+                    "tertiary-fixed": "#e0e4db",
+                    "error-container": "#ffdad6",
+                    "surface-dim": "#d0ddd4",
+                    "on-surface-variant": "#404940",
+                    "primary-container": "#2f7d46",
+                    "surface-container": "#e4f1e7",
+                    "surface-container-highest": "#d9e6dc",
+                    "surface-variant": "#d9e6dc",
+                    "on-primary": "#ffffff",
+                    "on-primary-fixed-variant": "#005224",
+                    "on-primary-fixed": "#00210b",
+                    "tertiary-container": "#6b7069",
+                    "surface-container-high": "#dfebe2",
+                    "primary-fixed-dim": "#89d897",
+                    "on-primary-container": "#cdffd2",
+                    "secondary": "#0d6d2c",
+                    "outline": "#707a6f",
+                    "on-background": "#131e18",
+                    "outline-variant": "#bfc9bd",
+                    "on-secondary-fixed-variant": "#00531e",
+                    "tertiary-fixed-dim": "#c3c8bf",
+                    "inverse-on-surface": "#e7f4ea",
+                    "on-tertiary-fixed-variant": "#434842",
+                    "surface-tint": "#1b6c37",
+                    "error": "#ba1a1a",
+                    "secondary-fixed-dim": "#82da8b",
+                    "surface-container-lowest": "#ffffff",
+                    "on-tertiary-container": "#f0f4eb",
+                    "inverse-primary": "#89d897",
+                    "primary-fixed": "#a4f5b2",
+                    "on-tertiary": "#ffffff",
+                    "background": "#f0fdf3",
+                    "inverse-surface": "#28332d",
+                    "on-tertiary-fixed": "#181d18",
+                    "surface": "#f0fdf3"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "sidebar_width": "260px",
+                    "row_height_standard": "56px",
+                    "gutter": "16px",
+                    "stack_md": "16px",
+                    "container_padding": "24px",
+                    "stack_sm": "8px",
+                    "row_height_dense": "40px"
+            },
+            "fontFamily": {
+                    "headline-md": ["Inter"],
+                    "headline-sm": ["Inter"],
+                    "label-md": ["Inter"],
+                    "body-md": ["Inter"],
+                    "data-mono": ["Inter"],
+                    "body-sm": ["Inter"],
+                    "display-lg": ["Inter"],
+                    "title-lg": ["Inter"],
+                    "label-sm": ["Inter"]
+            },
+            "fontSize": {
+                    "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "headline-sm": ["20px", {"lineHeight": "28px", "fontWeight": "600"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "data-mono": ["13px", {"lineHeight": "18px", "fontWeight": "400"}],
+                    "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                    "display-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "title-lg": ["18px", {"lineHeight": "26px", "fontWeight": "600"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0fdf3; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .active-tab-indicator { position: relative; }
+        .active-tab-indicator::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: #0e6430;
+            border-radius: 3px 3px 0 0;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface">
+<!-- SideNavBar -->
+<aside class="w-[260px] h-full fixed left-0 top-0 bg-surface-container border-r border-outline-variant flex flex-col justify-between py-gutter z-50">
+<div class="flex flex-col gap-1">
+<div class="px-6 mb-8 flex items-center gap-3">
+<div class="w-10 h-10 bg-primary-container rounded-lg flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined">restaurant_menu</span>
+</div>
+<div class="flex flex-col">
+<span class="font-headline-sm text-headline-sm font-bold text-on-surface leading-tight">CaterPro</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant opacity-70">Admin Console</span>
+</div>
+</div>
+<nav class="flex flex-col">
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">dashboard</span> Dashboard
+                </a>
+<a class="flex items-center gap-3 px-4 py-3 text-primary border-l-4 border-primary bg-surface-container-high transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">group</span> Clients
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">receipt_long</span> Subscriptions
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">layers</span> Plans
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">history</span> Audit Log
+                </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span> Settings
+                </a>
+</nav>
+</div>
+<div class="flex flex-col border-t border-outline-variant pt-4">
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">account_circle</span> Admin Profile
+            </a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-highest transition-colors font-label-md text-label-md text-error" href="#">
+<span class="material-symbols-outlined">logout</span> Logout
+            </a>
+</div>
+</aside>
+<!-- TopAppBar -->
+<header class="h-row_height_standard sticky top-0 z-40 bg-surface-container-low border-b border-outline-variant shadow-sm flex items-center justify-between px-container_padding ml-[260px] w-[calc(100%-260px)]">
+<div class="flex items-center gap-4 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant rounded-full py-2 pl-10 pr-4 text-body-sm font-body-sm focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Search orders, clients, or menus..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-3">
+<button class="relative p-2 text-on-surface-variant hover:bg-surface-variant rounded-full transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full border-2 border-surface-container-low"></span>
+</button>
+</div>
+<div class="h-8 w-px bg-outline-variant"></div>
+<div class="flex items-center gap-3">
+<div class="text-right">
+<p class="font-label-md text-label-md text-on-surface">Client: Malnad Kitchen</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Active Account</p>
+</div>
+<div class="w-10 h-10 rounded-full border border-primary overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A professional high-resolution corporate headshot of a business administrator in a modern minimalist office setting. The lighting is soft and natural, emphasizing a calm and professional atmosphere. The color palette is clean with neutral greens and white tones, matching the enterprise catering software aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCTvZDra-0IXaJvNIwIxPVIQ6afu005dZvEFhdVUtp-VBL2NF6ltTwVDn7JBOKwQ7HP7oa7nj7jN1-d8gpGiD9YtMjCXeYuNllnZea0BLym13caF8IZGkMuSbtvPXTKTVBBcVi79DN9ad-Q1aHTm-3Ais7yQseSyd0vSuqgTsv-dDYIMmddZ4EHm7TsPdKq9UVA9_sVzo8eeyfV5q67tYppCo5qcFOJJ4u7qBpfruVDDp1u93bfve9UQg"/>
+</div>
+</div>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-lg font-label-md text-label-md hover:bg-primary-container transition-all active:scale-95">
+                Create Event
+            </button>
+</div>
+</header>
+<!-- Main Content Area -->
+<main class="ml-[260px] p-container_padding min-h-[calc(100vh-row_height_standard)]">
+<!-- Breadcrumbs & Header -->
+<div class="mb-8">
+<nav class="flex items-center gap-2 text-label-sm font-label-sm text-on-surface-variant mb-2">
+<a class="hover:text-primary transition-colors" href="#">Clients</a>
+<span class="material-symbols-outlined text-[14px]">chevron_right</span>
+<span class="text-on-surface font-semibold">Malnad Kitchen</span>
+</nav>
+<div class="flex justify-between items-end">
+<div>
+<h1 class="font-display-lg text-display-lg text-on-surface mb-1">Malnad Kitchen</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">Premium Catering &amp; Event Services | Bengaluru, KA</p>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 border border-outline-variant px-4 py-2 rounded-lg font-label-md text-label-md hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">edit</span> Edit Client
+                    </button>
+<button class="flex items-center gap-2 bg-secondary-container text-on-secondary-container px-4 py-2 rounded-lg font-label-md text-label-md hover:bg-secondary-fixed transition-colors">
+<span class="material-symbols-outlined">mail</span> Contact
+                    </button>
+</div>
+</div>
+</div>
+<!-- Detail Tabs -->
+<div class="border-b border-outline-variant mb-8 flex gap-8">
+<a class="py-4 font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Overview</a>
+<a class="py-4 font-label-md text-label-md text-primary active-tab-indicator" href="#">Events &amp; Orders</a>
+<a class="py-4 font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Payments</a>
+<a class="py-4 font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Menus &amp; Catalog</a>
+<a class="py-4 font-label-md text-label-md text-on-surface-variant hover:text-primary transition-colors" href="#">Documents</a>
+</div>
+<!-- Filters Section -->
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 bg-surface-container-low p-4 rounded-xl border border-outline-variant">
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-on-surface-variant">Search Events</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">search</span>
+<input class="w-full bg-white border border-outline-variant rounded-lg py-2 pl-9 pr-4 text-body-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none" placeholder="Event name..." type="text"/>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-on-surface-variant">Date Range</label>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]">calendar_today</span>
+<input class="w-full bg-white border border-outline-variant rounded-lg py-2 pl-9 pr-4 text-body-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none" placeholder="Select dates" type="text"/>
+</div>
+</div>
+<div class="flex flex-col gap-1">
+<label class="font-label-sm text-label-sm text-on-surface-variant">Status</label>
+<select class="w-full bg-white border border-outline-variant rounded-lg py-2 px-3 text-body-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none appearance-none">
+<option>All Statuses</option>
+<option>Confirmed</option>
+<option>Completed</option>
+<option>Pending</option>
+</select>
+</div>
+<div class="flex items-end gap-2">
+<button class="flex-1 bg-surface-container-highest text-on-surface border border-outline-variant py-2 rounded-lg font-label-md hover:bg-surface-variant transition-colors">Reset</button>
+<button class="flex-1 bg-primary text-on-primary py-2 rounded-lg font-label-md hover:bg-primary-container transition-colors">Apply</button>
+</div>
+</div>
+<!-- Events Table -->
+<div class="bg-white rounded-xl border border-outline-variant overflow-hidden shadow-sm">
+<div class="overflow-x-auto">
+<table class="w-full border-collapse text-left">
+<thead>
+<tr class="bg-surface-container-low border-b border-outline-variant">
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Event &amp; Venue</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Contact</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Date</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">Status</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-right">Total</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-right">Paid</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-right">Balance</th>
+<th class="px-6 py-4 font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider text-center">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Row 1: Send Off -->
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="px-6 py-4">
+<p class="font-title-lg text-label-md text-on-surface">Send Off - Mr. Ramesh</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Grand Palace Hall
+                                </p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Prakash Hegde</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">+91 98450 12345</p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Oct 24, 2023</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">12:30 PM</p>
+</td>
+<td class="px-6 py-4">
+<span class="bg-surface-container-high text-primary px-3 py-1 rounded-full font-label-sm text-label-sm border border-primary/20 flex items-center w-fit gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Confirmed
+                                </span>
+</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface">₹45,000</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-secondary">₹20,000</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-error">₹25,000</td>
+<td class="px-6 py-4">
+<div class="flex items-center justify-center gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="View/Edit"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="p-2 text-secondary hover:bg-secondary-container rounded-lg transition-colors" title="Record Payment"><span class="material-symbols-outlined text-[20px]">payments</span></button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="Download Menu PDF"><span class="material-symbols-outlined text-[20px]">picture_as_pdf</span></button>
+</div>
+</td>
+</tr>
+<!-- Row 2: Satyanarayana Pooje -->
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="px-6 py-4">
+<p class="font-title-lg text-label-md text-on-surface">Satyanarayana Pooje</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Private Residence, Malleshwaram
+                                </p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Anita K.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">+91 91234 56789</p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Oct 15, 2023</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">08:00 AM</p>
+</td>
+<td class="px-6 py-4">
+<span class="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full font-label-sm text-label-sm border border-secondary/20 flex items-center w-fit gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> Completed
+                                </span>
+</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface">₹12,500</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-secondary">₹12,500</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface-variant">₹0</td>
+<td class="px-6 py-4">
+<div class="flex items-center justify-center gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="View/Edit"><span class="material-symbols-outlined text-[20px]">visibility</span></button>
+<button class="p-2 text-on-surface-variant/40 cursor-not-allowed" title="Payment Settled"><span class="material-symbols-outlined text-[20px]">check_circle</span></button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="Download Menu PDF"><span class="material-symbols-outlined text-[20px]">picture_as_pdf</span></button>
+</div>
+</td>
+</tr>
+<!-- Row 3: Corporate Lunch -->
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="px-6 py-4">
+<p class="font-title-lg text-label-md text-on-surface">Corporate Lunch - Quarterly Meet</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Malnad Kitchen HUB
+                                </p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Suresh V.</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">+91 99001 22334</p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Nov 02, 2023</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">01:00 PM</p>
+</td>
+<td class="px-6 py-4">
+<span class="bg-error-container text-on-error-container px-3 py-1 rounded-full font-label-sm text-label-sm border border-error/20 flex items-center w-fit gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-error animate-pulse"></span> Pending
+                                </span>
+</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface">₹62,000</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface-variant">₹0</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-error font-bold">₹62,000</td>
+<td class="px-6 py-4">
+<div class="flex items-center justify-center gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="View/Edit"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="p-2 text-secondary hover:bg-secondary-container rounded-lg transition-colors" title="Record Payment"><span class="material-symbols-outlined text-[20px]">payments</span></button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="Download Menu PDF"><span class="material-symbols-outlined text-[20px]">picture_as_pdf</span></button>
+</div>
+</td>
+</tr>
+<!-- Row 4: Wedding Reception -->
+<tr class="hover:bg-surface-bright transition-colors">
+<td class="px-6 py-4">
+<p class="font-title-lg text-label-md text-on-surface">Wedding Reception - Shruti &amp; Amar</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">location_on</span> Sheraton Grand, Rajajinagar
+                                </p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Ganesh Prasad</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">+91 88776 65544</p>
+</td>
+<td class="px-6 py-4">
+<p class="font-label-md text-label-md text-on-surface">Dec 12, 2023</p>
+<p class="font-body-sm text-body-sm text-on-surface-variant">07:00 PM</p>
+</td>
+<td class="px-6 py-4">
+<span class="bg-surface-container-high text-primary px-3 py-1 rounded-full font-label-sm text-label-sm border border-primary/20 flex items-center w-fit gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span> Confirmed
+                                </span>
+</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-on-surface">₹2,45,000</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-secondary">₹1,00,000</td>
+<td class="px-6 py-4 text-right font-data-mono text-data-mono text-error">₹1,45,000</td>
+<td class="px-6 py-4">
+<div class="flex items-center justify-center gap-2">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="View/Edit"><span class="material-symbols-outlined text-[20px]">edit</span></button>
+<button class="p-2 text-secondary hover:bg-secondary-container rounded-lg transition-colors" title="Record Payment"><span class="material-symbols-outlined text-[20px]">payments</span></button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors" title="Download Menu PDF"><span class="material-symbols-outlined text-[20px]">picture_as_pdf</span></button>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="px-6 py-4 bg-surface-container-lowest border-t border-outline-variant flex items-center justify-between">
+<p class="font-body-sm text-body-sm text-on-surface-variant">Showing 1 to 4 of 24 events</p>
+<div class="flex gap-2">
+<button class="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined">chevron_left</span>
+</button>
+<button class="w-10 h-10 bg-primary text-on-primary rounded-lg font-label-md">1</button>
+<button class="w-10 h-10 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors font-label-md">2</button>
+<button class="w-10 h-10 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors font-label-md">3</button>
+<button class="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Sticky Footer Summary Card -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="bg-white p-6 rounded-xl border border-outline-variant shadow-sm flex items-center gap-4">
+<div class="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">calendar_month</span>
+</div>
+<div>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Total Upcoming</p>
+<p class="font-display-lg text-headline-md text-on-surface">12 Events</p>
+</div>
+</div>
+<div class="bg-white p-6 rounded-xl border border-outline-variant shadow-sm flex items-center gap-4">
+<div class="w-12 h-12 bg-secondary/10 rounded-full flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined">payments</span>
+</div>
+<div>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Lifetime Revenue</p>
+<p class="font-display-lg text-headline-md text-on-surface">₹8,42,000</p>
+</div>
+</div>
+<div class="bg-white p-6 rounded-xl border border-outline-variant shadow-sm flex items-center gap-4">
+<div class="w-12 h-12 bg-error/10 rounded-full flex items-center justify-center text-error">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+</div>
+<div>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">Total Outstanding</p>
+<p class="font-display-lg text-headline-md text-error">₹2,32,000</p>
+</div>
+</div>
+</div>
+</main>
+<script>
+        // Micro-interaction for table rows
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('click', () => {
+                row.classList.add('scale-[0.995]');
+                setTimeout(() => row.classList.remove('scale-[0.995]'), 150);
+            });
+        });
+
+        // Search highlight logic
+        const searchInput = document.querySelector('input[placeholder="Event name..."]');
+        searchInput.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            document.querySelectorAll('tbody tr').forEach(row => {
+                const text = row.innerText.toLowerCase();
+                row.style.display = text.includes(term) ? 'table-row' : 'none';
+            });
+        });
+    </script>
+</body></html>

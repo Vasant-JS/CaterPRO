@@ -17,7 +17,7 @@ class LocalCaterProDb {
     final dbPath = path_package.join(basePath, 'caterpro_local.db');
     return _db = await openDatabase(
       dbPath,
-      version: 5,
+      version: 6,
       onCreate: (db, version) async => createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) async {
         await createSchema(db);
@@ -31,6 +31,9 @@ class LocalCaterProDb {
               db, 'cp_business_profiles', 'branch_name', 'text');
         }
         if (oldVersion < 5) {
+          await createSchema(db);
+        }
+        if (oldVersion < 6) {
           await createSchema(db);
         }
       },
@@ -282,6 +285,23 @@ class LocalCaterProDb {
           synced integer not null default 1,
           updated_at text not null,
           primary key (state_id, user_id, invoice_id, id)
+        )
+        ''',
+        '''
+        create table if not exists cp_audit_logs (
+          state_id text not null,
+          user_id text not null,
+          id text not null,
+          action text,
+          entity_type text,
+          entity_id text,
+          entity_label text,
+          summary text,
+          created_at text not null,
+          raw text not null,
+          synced integer not null default 1,
+          updated_at text not null,
+          primary key (state_id, user_id, id)
         )
         ''',
         '''
@@ -539,6 +559,7 @@ class LocalCaterProDb {
   }
 
   List<String> get userTables => const [
+        'cp_audit_logs',
         'cp_manual_invoice_items',
         'cp_manual_invoices',
         'cp_event_assignments',
@@ -556,6 +577,7 @@ class LocalCaterProDb {
       ];
 
   List<String> get localTables => const [
+        'cp_audit_logs',
         'cp_manual_invoice_items',
         'cp_manual_invoices',
         'cp_event_assignments',
@@ -812,6 +834,22 @@ class LocalCaterProDb {
         });
       }
     }
+    for (final entry in mapList(userData['auditLogs'])) {
+      insert(batch, 'cp_audit_logs', {
+        'state_id': stateId,
+        'user_id': userId,
+        'id': entry['id']?.toString() ?? '',
+        'action': entry['action']?.toString() ?? '',
+        'entity_type': entry['entityType']?.toString() ?? '',
+        'entity_id': entry['entityId']?.toString() ?? '',
+        'entity_label': entry['entityLabel']?.toString() ?? '',
+        'summary': entry['summary']?.toString() ?? '',
+        'created_at': entry['createdAt']?.toString() ?? updatedAt,
+        'raw': encode(entry),
+        'synced': synced,
+        'updated_at': updatedAt,
+      });
+    }
   }
 
   void upsertUserCatalogRows(Batch batch, String userId,
@@ -955,6 +993,8 @@ class LocalCaterProDb {
             await rawRows(db, 'cp_custom_menus', 'user_id = ?', [userId]),
         'manualInvoices':
             await rawRows(db, 'cp_manual_invoices', 'user_id = ?', [userId]),
+        'auditLogs':
+            await rawRows(db, 'cp_audit_logs', 'user_id = ?', [userId]),
         'businessProfile': await firstRaw(
               db,
               'cp_business_profiles',
