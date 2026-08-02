@@ -94,11 +94,9 @@ async function saveSupabaseDb(db) {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' }),
   );
-  try {
-    await syncSupabaseTables(db);
-  } catch (error) {
+  syncSupabaseTables(db).catch((error) => {
     console.warn('Supabase reporting-table sync skipped:', error.message);
-  }
+  });
 }
 
 const supabaseTables = [
@@ -1236,6 +1234,7 @@ function employeeFromBody(body, existing = {}) {
     designation: body.designation || existing.designation || '',
     payPerDay,
     payPerHour: Number(body.payPerHour ?? existing.payPerHour ?? (payPerDay ? Math.round(payPerDay / 8) : 0)),
+    disabled: Boolean(body.disabled ?? existing.disabled ?? false),
     createdAt: existing.createdAt || new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -2344,7 +2343,7 @@ function eventMemberTotal(event) {
   return asArray(event.dates).reduce((dateSum, date) => dateSum + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + Number(slot.pax || 0), 0), 0);
 }
 
-function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, businessProfile = emptyBusinessProfile() }) {
+function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, businessProfile = emptyBusinessProfile(), disposition = 'attachment' }) {
   const [yearText, monthText] = String(monthKey || '').split('-');
   const monthDate = new Date(Number(yearText || new Date().getFullYear()), Number(monthText || new Date().getMonth() + 1) - 1, 1);
   const normalizedMonth = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
@@ -2379,7 +2378,7 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
   let pageNo = 0;
   let y = 0;
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="monthly-report-${normalizedMonth}.pdf"`);
+  res.setHeader('Content-Disposition', `${disposition}; filename="monthly-report-${normalizedMonth}.pdf"`);
   doc.pipe(res);
 
   function addPage() {
@@ -3424,6 +3423,8 @@ function adminUserMetrics(db, user) {
     status: user.status || 'Active',
     subscriptionStatus: user.subscriptionStatus || 'Active',
     billingCycle: user.billingCycle || '',
+    subscriptionStartDate: user.subscriptionStartDate || '',
+    subscriptionEndDate: user.subscriptionEndDate || '',
     nextRenewal: user.nextRenewal || '',
     clientCount: asArray(userData.clients).length,
     eventCount: asArray(userData.events).length,
@@ -3465,6 +3466,7 @@ function adminEventDto(event) {
     paid: totals.paid,
     balance: totals.balance,
     dates: asArray(normalized.dates),
+    materialDocuments: asArray(normalized.materialDocuments),
     menuTypes: asArray(normalized.dates).flatMap((date) => asArray(date.menuSlots).map((slot) => slot.type).filter(Boolean)),
   };
 }
@@ -3482,6 +3484,8 @@ function adminInvoiceDtos(userData) {
         clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
         mobile: normalized.mobile || '',
         eventName: normalized.name || '',
+        venue: normalized.venue || '',
+        notes: normalized.notes || '',
         date: adminEventDateValue(normalized),
         total: totals.total,
         paid: 0,
@@ -3499,6 +3503,8 @@ function adminInvoiceDtos(userData) {
         clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
         mobile: normalized.mobile || '',
         eventName: normalized.name || '',
+        venue: normalized.venue || '',
+        notes: normalized.notes || '',
         date: adminEventDateValue(normalized),
         total: totals.balance,
         paid: totals.paid,
@@ -3515,6 +3521,8 @@ function adminInvoiceDtos(userData) {
       clientName: normalized.primaryClient || normalized.clientName || adminClientName({}, userData, normalized.mobile),
       mobile: normalized.mobile || '',
       eventName: normalized.name || '',
+      venue: normalized.venue || '',
+      notes: normalized.notes || '',
       date: payment.date || adminEventDateValue(normalized),
       total: Number(payment.amount || 0),
       paid: totals.paid,
@@ -3532,6 +3540,8 @@ function adminInvoiceDtos(userData) {
     clientName: invoice.clientName || 'Client',
     mobile: invoice.mobile || '',
     eventName: invoice.eventName || '',
+    venue: invoice.venue || '',
+    notes: invoice.notes || '',
     date: invoice.invoiceDate || invoice.eventDate || '',
     total: adminManualInvoiceTotal(invoice),
     paid: adminManualInvoicePaid(invoice),
@@ -3736,6 +3746,8 @@ app.put('/api/admin/users/:userId', async (req, res) => {
   if (req.body.status !== undefined) user.status = String(req.body.status || '').trim() || 'Active';
   if (req.body.subscriptionStatus !== undefined) user.subscriptionStatus = String(req.body.subscriptionStatus || '').trim();
   if (req.body.billingCycle !== undefined) user.billingCycle = String(req.body.billingCycle || '').trim();
+  if (req.body.subscriptionStartDate !== undefined) user.subscriptionStartDate = String(req.body.subscriptionStartDate || '').trim();
+  if (req.body.subscriptionEndDate !== undefined) user.subscriptionEndDate = String(req.body.subscriptionEndDate || '').trim();
   if (req.body.nextRenewal !== undefined) user.nextRenewal = String(req.body.nextRenewal || '').trim();
   if (req.body.businessName !== undefined) profile.businessName = String(req.body.businessName || '').trim();
   if (req.body.phone !== undefined) profile.phone = String(req.body.phone || '').trim();
@@ -3770,11 +3782,29 @@ app.get('/api/admin/users/:userId/events/:eventId/documents/:type', (req, res) =
   const db = readDb();
   const targetUser = requireAdminTargetUser(req, res, db);
   if (!targetUser) return;
-  if (!['quotation', 'invoice'].includes(req.params.type)) {
-    return res.status(400).json({ message: 'Document type must be quotation or invoice' });
+  if (!['quotation', 'invoice', 'menu', 'all-menus'].includes(req.params.type)) {
+    return res.status(400).json({ message: 'Document type must be quotation, invoice, menu, or all-menus' });
   }
   const event = findUserEvent(db, targetUser.id, req.params.eventId);
   if (!event) return res.status(404).json({ message: 'Event not found' });
+  if (req.params.type === 'menu') {
+    return generateMenuPdf({
+      res,
+      db,
+      event,
+      dateId: req.query.dateId || event.dates?.[0]?.id || event.dates?.[0]?.date,
+      businessProfile: db.userData[targetUser.id].businessProfile,
+    });
+  }
+  if (req.params.type === 'all-menus') {
+    return generateMenuPdf({
+      res,
+      db,
+      event,
+      allDates: true,
+      businessProfile: db.userData[targetUser.id].businessProfile,
+    });
+  }
   return generateEventPdf({
     res,
     db,
@@ -3784,6 +3814,67 @@ app.get('/api/admin/users/:userId/events/:eventId/documents/:type', (req, res) =
     clients: db.userData[targetUser.id].clients || [],
     disposition: 'inline',
   });
+});
+
+app.get('/api/admin/users/:userId/events/:eventId/material-documents/:documentId/pdf', (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const event = findUserEvent(db, targetUser.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  const materialDocument = asArray(event.materialDocuments)
+    .find((item) => item.id === req.params.documentId);
+  if (!materialDocument) return res.status(404).json({ message: 'Material document not found' });
+  return generateMaterialDocumentPdf({
+    res,
+    event,
+    materialDocument,
+    businessProfile: db.userData[targetUser.id].businessProfile,
+  });
+});
+
+app.get('/api/admin/users/:userId/reports/monthly.pdf', (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const userData = db.userData[targetUser.id];
+  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  return generateMonthlyReportPdf({
+    res,
+    events: userData.events,
+    manualInvoices: userData.manualInvoices,
+    monthKey: month,
+    businessProfile: userData.businessProfile,
+    disposition: 'inline',
+  });
+});
+
+app.put('/api/admin/users/:userId/events/:eventId/documents/:type', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  if (!['quotation', 'invoice'].includes(req.params.type)) {
+    return res.status(400).json({ message: 'Document type must be quotation or invoice' });
+  }
+  const userData = db.userData[targetUser.id];
+  const index = asArray(userData.events).findIndex((event) => event.id === req.params.eventId);
+  if (index === -1) return res.status(404).json({ message: 'Event not found' });
+  const existing = userData.events[index];
+  const next = eventFromBody({
+    ...existing,
+    name: req.body.eventName ?? existing.name,
+    primaryClient: req.body.clientName ?? existing.primaryClient,
+    mobile: req.body.mobile ?? existing.mobile,
+    venue: req.body.venue ?? existing.venue,
+    notes: req.body.notes ?? existing.notes,
+    status: req.body.status ?? existing.status,
+    dates: req.body.date
+      ? asArray(existing.dates).map((date, dateIndex) => dateIndex === 0 ? { ...date, date: req.body.date } : date)
+      : existing.dates,
+  }, existing);
+  userData.events[index] = next;
+  await writeDbAndFlush(db);
+  res.json(adminInvoiceDtos(userData).find((invoice) => invoice.source === 'event' && invoice.eventId === next.id && invoice.pdfType === req.params.type) || adminEventDto(next));
 });
 
 app.get('/api/admin/users/:userId/manual-invoices/:invoiceId/pdf', (req, res) => {
@@ -3799,6 +3890,20 @@ app.get('/api/admin/users/:userId/manual-invoices/:invoiceId/pdf', (req, res) =>
     businessProfile: db.userData[targetUser.id].businessProfile,
     disposition: 'inline',
   });
+});
+
+app.put('/api/admin/users/:userId/manual-invoices/:invoiceId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const userData = db.userData[targetUser.id];
+  const index = asArray(userData.manualInvoices)
+    .findIndex((item) => item.id === req.params.invoiceId || item.invoiceNumber === req.params.invoiceId);
+  if (index === -1) return res.status(404).json({ message: 'Manual invoice not found' });
+  const invoice = manualInvoiceFromBody(req.body, userData.manualInvoices[index]);
+  userData.manualInvoices[index] = invoice;
+  await writeDbAndFlush(db);
+  res.json(adminInvoiceDtos(userData).find((item) => item.source === 'manual' && item.invoiceId === invoice.id) || invoice);
 });
 
 app.put('/api/admin/users/:userId/menu-items/:itemId', async (req, res) => {
@@ -3825,6 +3930,46 @@ app.delete('/api/admin/users/:userId/menu-items/:itemId', async (req, res) => {
     .filter((entry) => entry.id !== req.params.itemId);
   if (db.userData[targetUser.id].menuItems.length === before) {
     return res.status(404).json({ message: 'Menu item not found' });
+  }
+  await writeDbAndFlush(db);
+  res.status(204).end();
+});
+
+app.post('/api/admin/users/:userId/employees', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].employees;
+  const employee = employeeFromBody(req.body);
+  upsertById(list, employee);
+  await writeDbAndFlush(db);
+  res.status(201).json(employee);
+});
+
+app.put('/api/admin/users/:userId/employees/:employeeId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const list = db.userData[targetUser.id].employees;
+  const existing = list.find((employee) => employee.id === req.params.employeeId);
+  const employee = employeeFromBody({ ...req.body, id: req.body.id || req.params.employeeId }, existing || {});
+  if (employee.id !== req.params.employeeId) {
+    db.userData[targetUser.id].employees = list.filter((entry) => entry.id !== req.params.employeeId);
+  }
+  upsertById(db.userData[targetUser.id].employees, employee);
+  await writeDbAndFlush(db);
+  res.status(existing ? 200 : 201).json(employee);
+});
+
+app.delete('/api/admin/users/:userId/employees/:employeeId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const before = db.userData[targetUser.id].employees.length;
+  db.userData[targetUser.id].employees = db.userData[targetUser.id].employees
+    .filter((entry) => entry.id !== req.params.employeeId);
+  if (db.userData[targetUser.id].employees.length === before) {
+    return res.status(404).json({ message: 'Employee not found' });
   }
   await writeDbAndFlush(db);
   res.status(204).end();
