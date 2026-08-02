@@ -555,8 +555,24 @@
 
   function compareClientValues(left, right, direction) {
     const multiplier = direction === "desc" ? -1 : 1;
-    const leftNumber = Number(left);
-    const rightNumber = Number(right);
+    const clean = (value) => String(value ?? "")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/[₹,\s]/g, "")
+      .trim();
+    const dateValue = (value) => {
+      const text = String(value ?? "").replace(/<[^>]*>/g, " ").trim();
+      const looksLikeDate =
+        /^\d{4}-\d{1,2}-\d{1,2}$/.test(text) ||
+        /^\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4}$/.test(text);
+      if (!looksLikeDate) return null;
+      const date = new Date(text);
+      return Number.isNaN(date.getTime()) ? null : date.getTime();
+    };
+    const leftDate = dateValue(left);
+    const rightDate = dateValue(right);
+    if (leftDate !== null && rightDate !== null) return (leftDate - rightDate) * multiplier;
+    const leftNumber = Number(clean(left));
+    const rightNumber = Number(clean(right));
     if (!Number.isNaN(leftNumber) && !Number.isNaN(rightNumber)) return (leftNumber - rightNumber) * multiplier;
     return String(left || "").localeCompare(String(right || ""), undefined, { numeric: true, sensitivity: "base" }) * multiplier;
   }
@@ -726,8 +742,8 @@
     return `data-search="${escapeHtml(String(search || "").toLowerCase())}" ${Object.entries(filters).map(([key, value]) => `data-filter-${key}="${escapeHtml(value || "")}"`).join(" ")}`;
   }
 
-  function cell(value, key, align = "") {
-    return `<td class="px-6 py-4 align-middle ${align}" data-sort-${key}="${escapeHtml(value ?? "")}">${value}</td>`;
+  function cell(value, key, align = "", sortValue = value) {
+    return `<td class="px-6 py-4 align-middle ${align}" data-sort-${key}="${escapeHtml(sortValue ?? "")}">${value}</td>`;
   }
 
   function iconButton(icon, title, extra = "") {
@@ -838,12 +854,12 @@
       columns: [{ label: "Event", key: "event", width: "20%" }, { label: "Client", key: "client", width: "20%" }, { label: "Date", key: "date", width: "12%" }, { label: "Venue", key: "venue", width: "22%" }, { label: "Status", key: "status", width: "10%" }, { label: "Total", key: "total", align: "text-right", width: "10%" }, { label: "Balance", key: "balance", align: "text-right", width: "10%" }],
       rows: events.map((event) => `<tr ${rowAttrs([event.name, event.primaryClient, event.mobile, event.venue, event.status].join(" "), { status: event.status || "" })}>
         ${cell(`<div class="font-semibold">${escapeHtml(event.name || "Untitled Event")}</div>`, "event")}
-        ${cell(appClientLink(data, event), "client")}
-        ${cell(formatDate(event.date), "date")}
+        ${cell(appClientLink(data, event), "client", "", event.primaryClient || event.mobile || "")}
+        ${cell(formatDate(event.date), "date", "", event.date || "")}
         ${cell(escapeHtml(event.venue || "-"), "venue")}
         ${cell(escapeHtml(event.status || "-"), "status")}
-        ${cell(formatMoney(event.total), "total", "text-right font-bold")}
-        ${cell(formatMoney(event.balance), "balance", "text-right text-error")}
+        ${cell(formatMoney(event.total), "total", "text-right font-bold", Number(event.total || 0))}
+        ${cell(formatMoney(event.balance), "balance", "text-right text-error", Number(event.balance || 0))}
         <td class="px-4 py-4 text-right whitespace-nowrap">${iconButton("info", "Event info")}${iconButton("edit", "Edit event")}<button class="event-download p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${escapeHtml(event.id || "")}" title="Download PDFs"><span class="material-symbols-outlined text-[18px]">download</span></button>${iconButton("delete", "Delete event", "text-error hover:bg-error-container")}</td>
       </tr>`),
       empty: "No events found for this user.",
@@ -967,9 +983,9 @@
       ${cell(escapeHtml(invoice.type || "-"), "type")}
       ${cell(`<span class="font-data-mono text-data-mono">${escapeHtml(invoice.documentNumber || "-")}</span>`, "document")}
       ${cell(escapeHtml(invoice.clientName || "-"), "client")}
-      ${cell(formatDate(invoice.date), "date")}
-      ${cell(formatMoney(invoice.total), "total", `text-right font-bold ${totalTone}`)}
-      ${cell(formatMoney(invoice.pending), "pending", "text-right text-error")}
+      ${cell(formatDate(invoice.date), "date", "", invoice.date || "")}
+      ${cell(formatMoney(invoice.total), "total", `text-right font-bold ${totalTone}`, Number(invoice.total || 0))}
+      ${cell(formatMoney(invoice.pending), "pending", "text-right text-error", Number(invoice.pending || 0))}
       <td class="px-4 py-4 text-right whitespace-nowrap">
         <button class="billing-info p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${escapeHtml(billingRowId(invoice))}" title="Document info"><span class="material-symbols-outlined text-[18px]">info</span></button>
         <button class="billing-edit p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${escapeHtml(billingRowId(invoice))}" title="Edit document"><span class="material-symbols-outlined text-[18px]">edit</span></button>
@@ -1463,7 +1479,7 @@
     return `<tr ${rowAttrs([menu.id, menu.name, menu.type, selectedNames.join(" ")].join(" "), { type: menu.type || "" })}>
       ${cell(`<div class="font-semibold">${escapeHtml(menu.name || "Untitled Custom Menu")}</div><p class="text-xs text-on-surface-variant">${escapeHtml(menu.id || "")}</p>`, "name")}
       ${cell(escapeHtml(menu.type || "-"), "type")}
-      ${cell(String(asArray(menu.itemIds).length), "items", "font-bold")}
+      ${cell(String(asArray(menu.itemIds).length), "items", "font-bold", asArray(menu.itemIds).length)}
       ${cell(`<div class="max-w-full whitespace-normal break-words leading-6">${escapeHtml(selectedNames.slice(0, 8).join(", ") || "-")}${selectedNames.length > 8 ? `<span class="text-on-surface-variant"> +${selectedNames.length - 8} more</span>` : ""}</div>`, "selected")}
       <td class="px-4 py-4 text-right whitespace-nowrap">
         <button class="custom-menu-view p-2 hover:bg-surface-container-highest rounded" data-id="${encoded}" title="View"><span class="material-symbols-outlined text-[18px]">visibility</span></button>
@@ -1702,8 +1718,8 @@
         ${cell(`<div class="font-semibold">${escapeHtml(emp.name || "-")}</div>${emp.disabled ? `<p class="text-xs text-error">Disabled</p>` : ""}`, "employee")}
         ${cell(escapeHtml(emp.designation || "-"), "designation")}
         ${cell(escapeHtml(emp.mobile || "-"), "mobile")}
-        ${cell(formatMoney(emp.payPerDay), "payDay", "text-right")}
-        ${cell(formatMoney(emp.payPerHour), "payHour", "text-right")}
+        ${cell(formatMoney(emp.payPerDay), "payDay", "text-right", Number(emp.payPerDay || 0))}
+        ${cell(formatMoney(emp.payPerHour), "payHour", "text-right", Number(emp.payPerHour || 0))}
         <td class="px-4 py-4 text-right whitespace-nowrap">
           <button class="employee-info p-1.5 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${encodeURIComponent(emp.id || "")}" title="Employee info"><span class="material-symbols-outlined text-[18px]">info</span></button>
           <button class="employee-edit p-1.5 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${encodeURIComponent(emp.id || "")}" title="Edit employee"><span class="material-symbols-outlined text-[18px]">edit</span></button>
@@ -1821,7 +1837,7 @@
       rows: rows.map((row) => `<tr ${rowAttrs([row.metric, row.group, row.formatted].join(" "), { group: row.group })}>
         ${cell(`<div class="font-semibold">${escapeHtml(row.metric)}</div>`, "metric")}
         ${cell(escapeHtml(row.group), "group")}
-        ${cell(escapeHtml(row.formatted), "value", "text-right font-bold")}
+        ${cell(escapeHtml(row.formatted), "value", "text-right font-bold", Number(row.value || 0))}
         <td class="px-6 py-4 text-right whitespace-nowrap">
           <button class="report-info p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-metric="${escapeHtml(row.metric)}" title="Report info"><span class="material-symbols-outlined text-[18px]">info</span></button>
           <button class="report-download p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-metric="${escapeHtml(row.metric)}" title="Download report"><span class="material-symbols-outlined text-[18px]">download</span></button>
@@ -1909,7 +1925,7 @@
         const entity = log.entityType || log.entity || "-";
         const details = log.message || log.details || log.entityId || "-";
         return `<tr ${rowAttrs([log.createdAt, log.updatedAt, log.action, entity, details].join(" "), { action: log.action || "", entity })}>
-          ${cell(formatDate(log.createdAt || log.updatedAt), "time")}
+          ${cell(formatDate(log.createdAt || log.updatedAt), "time", "", log.createdAt || log.updatedAt || "")}
           ${cell(escapeHtml(log.action || "-"), "action")}
           ${cell(escapeHtml(entity), "entity")}
           ${cell(escapeHtml(details), "details")}
