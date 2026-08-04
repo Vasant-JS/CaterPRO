@@ -64,6 +64,7 @@ class _AppShellState extends State<AppShell> {
   String? selectedEventId;
   AppEvent? editingEvent;
   int createSession = 0;
+  int eventsSession = 0;
   int createInitialStep = 0;
   Timer? autoSyncTimer;
   DateTime? lastSyncedAt;
@@ -1083,7 +1084,10 @@ class _AppShellState extends State<AppShell> {
   }
 
   void openEventsTab() {
-    navigateToTab(1, selectedEventId: null, editingEvent: null);
+    navigateToTab(1,
+        selectedEventId: null,
+        editingEvent: null,
+        incrementEventsSession: true);
   }
 
   void openEditEvent(AppEvent event, {int initialStep = 0}) {
@@ -1098,16 +1102,34 @@ class _AppShellState extends State<AppShell> {
     navigateToTab(nextTab);
   }
 
+  void openRootTab(int nextTab) {
+    if (nextTab == 1) {
+      eventsSession++;
+    }
+    setState(() {
+      routeStack.clear();
+      if (nextTab != 0) {
+        routeStack.add(const _ShellRoute(tab: 0));
+      }
+      tab = nextTab;
+      selectedEventId = null;
+      editingEvent = null;
+      createInitialStep = 0;
+    });
+  }
+
   void navigateToTab(
     int nextTab, {
     String? selectedEventId,
     AppEvent? editingEvent,
     int? createInitialStep,
     bool incrementCreateSession = false,
+    bool incrementEventsSession = false,
     bool clearStack = false,
   }) {
     setState(() {
-      if (clearStack) {
+      final resetToDashboard = nextTab == 0 || clearStack;
+      if (resetToDashboard) {
         routeStack.clear();
       } else if (nextTab != tab ||
           selectedEventId != this.selectedEventId ||
@@ -1120,10 +1142,12 @@ class _AppShellState extends State<AppShell> {
         ));
       }
       if (incrementCreateSession) createSession++;
+      if (incrementEventsSession) eventsSession++;
       tab = nextTab;
-      this.selectedEventId = selectedEventId;
-      this.editingEvent = editingEvent;
-      if (createInitialStep != null) this.createInitialStep = createInitialStep;
+      this.selectedEventId = resetToDashboard ? null : selectedEventId;
+      this.editingEvent = resetToDashboard ? null : editingEvent;
+      this.createInitialStep =
+          resetToDashboard ? 0 : (createInitialStep ?? this.createInitialStep);
     });
   }
 
@@ -1458,6 +1482,7 @@ class _AppShellState extends State<AppShell> {
             openDetails: openEventDetails,
             refresh: refreshEvents),
         EventsScreen(
+            resetToken: eventsSession,
             api: api,
             events: events,
             loading: loading,
@@ -1616,10 +1641,7 @@ class _AppShellState extends State<AppShell> {
       },
       child: Scaffold(
         drawer: showDrawer
-            ? CaterSideDrawer(
-                index: tab,
-                onChanged: (i) =>
-                    navigateToTab(i, selectedEventId: null, editingEvent: null))
+            ? CaterSideDrawer(index: tab, onChanged: openRootTab)
             : null,
         body: IndexedStack(index: tab, children: pages),
         floatingActionButton: showMainFab ? _fabForTab() : null,

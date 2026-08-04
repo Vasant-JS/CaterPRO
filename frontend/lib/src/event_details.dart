@@ -230,107 +230,14 @@ class EventDetailsScreen extends StatelessWidget {
 
   Future<void> showMenuShareSheet(BuildContext context, AppEvent event) async {
     try {
-      final uri = await api.documentUri(event.id, 'all-menus');
-      if (!context.mounted) return;
-      final link = uri.toString();
+      showCpSnack(context, 'Opening share options...');
       final message = buildMenuWhatsAppMessage(event);
-      showModalBottomSheet<void>(
-        context: context,
-        backgroundColor: Colors.transparent,
-        builder: (sheetContext) => SafeArea(
-          top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-            decoration: BoxDecoration(
-                color: cpSurface(context),
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(28))),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                      child: Container(
-                          width: 48,
-                          height: 6,
-                          margin: const EdgeInsets.only(bottom: 18),
-                          decoration: BoxDecoration(
-                              color: cpOutlineVariant(context),
-                              borderRadius: BorderRadius.circular(99)))),
-                  Text('Share Menu',
-                      style: TextStyle(
-                          color: cpPrimary(context),
-                          fontSize: 24,
-                          fontWeight: FontWeight.w900)),
-                  Text(
-                      whatsappClientEventPhrase(whatsappEventClientName(event)),
-                      style: TextStyle(
-                          color: cpOnVariant(context),
-                          fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 14),
-                  ShareMenuTile(
-                    icon: const WhatsAppIcon(size: 22),
-                    label: 'WhatsApp',
-                    onTap: () async {
-                      Navigator.pop(sheetContext);
-                      await shareMenuOnWhatsApp(context, event, message);
-                    },
-                  ),
-                  ShareMenuTile(
-                    icon: const Icon(Icons.email, color: Cp.primary),
-                    label: 'Email',
-                    onTap: () async {
-                      Navigator.pop(sheetContext);
-                      await launchUrl(
-                          Uri(scheme: 'mailto', queryParameters: {
-                            'subject':
-                                'Menu - ${whatsappClientEventPhrase(whatsappEventClientName(event))}',
-                            'body': message
-                          }),
-                          mode: LaunchMode.externalApplication);
-                    },
-                  ),
-                  ShareMenuTile(
-                    icon: const Icon(Icons.sms, color: Cp.primary),
-                    label: 'SMS',
-                    onTap: () async {
-                      Navigator.pop(sheetContext);
-                      await launchUrl(
-                          Uri(
-                              scheme: 'sms',
-                              queryParameters: {'body': message}),
-                          mode: LaunchMode.externalApplication);
-                    },
-                  ),
-                  ShareMenuTile(
-                    icon: const Icon(Icons.link, color: Cp.primary),
-                    label: 'Copy Link',
-                    onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: link));
-                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                      if (context.mounted) {
-                        showCpSnack(context, 'Menu link copied');
-                      }
-                    },
-                  ),
-                  ShareMenuTile(
-                    icon: const Icon(Icons.picture_as_pdf, color: Cp.primary),
-                    label: 'Download PDF',
-                    onTap: () async {
-                      Navigator.pop(sheetContext);
-                      if (context.mounted) {
-                        showDownloadSnack(context, uri,
-                            title: downloadTitleForEvent(event, 'all-menus'),
-                            kind: 'menu',
-                            successMessage: 'Menu download started',
-                            failureMessage: 'Unable to start download');
-                      }
-                    },
-                  ),
-                ]),
-          ),
-        ),
+      final shared = await shareText(
+        title: 'Menu - ${event.name.isEmpty ? 'CaterPro event' : event.name}',
+        text: message,
       );
+      if (!context.mounted) return;
+      if (!shared) showCpSnack(context, 'Unable to open share options');
     } catch (e) {
       if (!context.mounted) return;
       showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -351,21 +258,6 @@ class EventDetailsScreen extends StatelessWidget {
     if (!context.mounted) return;
     showCpSnack(context,
         launched ? 'Event info ready to share' : 'Unable to open WhatsApp');
-  }
-
-  Future<void> shareMenuOnWhatsApp(
-      BuildContext context, AppEvent event, String message) async {
-    final mobile = normalizeMobileText(event.mobile);
-    final target = mobile.length == 10 ? '91$mobile' : mobile;
-    final uri = Uri.parse(target.isEmpty
-        ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
-        : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
-    showCpSnack(context, 'Opening WhatsApp...');
-    final launched = await launchUrl(uri,
-        mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-    if (!context.mounted) return;
-    showCpSnack(
-        context, launched ? 'Menu ready to share' : 'Unable to open WhatsApp');
   }
 
   String buildMenuWhatsAppMessage(AppEvent event) {
@@ -417,6 +309,9 @@ class EventDetailsScreen extends StatelessWidget {
       ..add('')
       ..add(
           '🙏 Thank you for choosing *${businessDisplayName(businessProfile)}*');
+    lines
+      ..add('')
+      ..add(caterProTextFooter);
 
     return lines.join('\n');
   }
@@ -641,6 +536,11 @@ List<String> buildFormattedMenuShareLines(AppEvent event,
       ..add('----------------------------')
       ..add('🙏 Thank you for choosing *$businessName*');
   }
+  if (includeFooter) {
+    lines
+      ..add('')
+      ..add(caterProTextFooter);
+  }
   return lines;
 }
 
@@ -746,7 +646,7 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
       CpCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Expanded(
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -786,21 +686,36 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
                   ]
                 ])
               ])),
-          if (eventIsIncomplete(event))
-            const Pill('DRAFT',
-                color: Cp.secondaryFixed, textColor: Color(0xff663e00))
+          const SizedBox(width: 12),
+          ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 150),
+              child:
+                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                if (eventIsIncomplete(event))
+                  const Padding(
+                      padding: EdgeInsets.only(bottom: 10),
+                      child: Pill('DRAFT',
+                          color: Cp.secondaryFixed,
+                          textColor: Color(0xff663e00))),
+                InfoTile(Icons.pending_actions, 'Balance Due', money(balance),
+                    color: Cp.error, width: 150)
+              ]))
         ]),
         const SizedBox(height: 16),
-        Wrap(spacing: 18, runSpacing: 16, children: [
-          InfoTile(Icons.calendar_today, 'Dates',
-              event.dates.map((date) => date.date).join(', ')),
-          InfoTile(Icons.location_on, 'Venue',
-              event.venue.isEmpty ? 'Not set' : event.venue),
-          InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise',
-              color: primary),
-          InfoTile(Icons.pending_actions, 'Balance Due', money(balance),
-              color: Cp.error)
-        ]),
+        LayoutBuilder(builder: (context, constraints) {
+          final tileWidth =
+              ((constraints.maxWidth - 12) / 2).clamp(132.0, 240.0);
+          return Wrap(spacing: 12, runSpacing: 16, children: [
+            InfoTile(Icons.calendar_today, 'Dates',
+                event.dates.map((date) => date.date).join(', '),
+                width: tileWidth),
+            InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise',
+                color: primary, width: tileWidth),
+            InfoTile(Icons.location_on, 'Venue',
+                event.venue.isEmpty ? 'Not set' : event.venue,
+                width: constraints.maxWidth)
+          ]);
+        }),
         const SizedBox(height: 18),
         Text('Payment Progress',
             style: TextStyle(color: onVariant, fontWeight: FontWeight.w700)),
@@ -888,10 +803,13 @@ class EventDetailsTabContent extends StatelessWidget {
   Future<void> shareMenuDateOnWhatsApp(
       BuildContext context, AppEvent event, String message) async {
     final mobile = normalizeMobileText(event.mobile);
+    if (mobile.isEmpty) {
+      showCpSnack(context, 'Customer mobile number is missing');
+      return;
+    }
     final target = mobile.length == 10 ? '91$mobile' : mobile;
-    final uri = Uri.parse(target.isEmpty
-        ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
-        : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
+    final uri =
+        Uri.parse('https://wa.me/$target?text=${Uri.encodeComponent(message)}');
     showCpSnack(context, 'Opening WhatsApp...');
     final launched = await launchUrl(uri,
         mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
@@ -2000,17 +1918,18 @@ class DocumentRow extends StatelessWidget {
 
 class InfoTile extends StatelessWidget {
   const InfoTile(this.icon, this.label, this.value,
-      {super.key, this.color = Cp.primary});
+      {super.key, this.color = Cp.primary, this.width = 150});
   final IconData icon;
   final String label, value;
   final Color color;
+  final double width;
   @override
   Widget build(BuildContext context) {
     final actualColor = color == Cp.error
         ? Theme.of(context).colorScheme.error
         : cpAdaptTextColor(context, color);
     return SizedBox(
-        width: 150,
+        width: width,
         child: Row(children: [
           Icon(icon, color: actualColor, size: 20),
           const SizedBox(width: 8),

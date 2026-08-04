@@ -4,12 +4,14 @@ class EventsScreen extends StatefulWidget {
   const EventsScreen(
       {super.key,
       required this.api,
+      required this.resetToken,
       required this.events,
       required this.loading,
       required this.openDetails,
       required this.openCreate,
       required this.refresh});
   final ApiService api;
+  final int resetToken;
   final List<AppEvent> events;
   final bool loading;
   final ValueChanged<AppEvent> openDetails;
@@ -53,6 +55,15 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   @override
+  void didUpdateWidget(covariant EventsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.resetToken != oldWidget.resetToken) {
+      resetFilters();
+      scrollChipsToToday();
+    }
+  }
+
+  @override
   void dispose() {
     searchController.dispose();
     dateChipScrollController.dispose();
@@ -62,7 +73,7 @@ class _EventsScreenState extends State<EventsScreen> {
   void scrollChipsToToday() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final context = dateChipKeys[7].currentContext;
+      final context = dateChipKeys[0].currentContext;
       if (context != null) {
         Scrollable.ensureVisible(
           context,
@@ -73,8 +84,7 @@ class _EventsScreenState extends State<EventsScreen> {
         return;
       }
       if (!dateChipScrollController.hasClients) return;
-      final maxScroll = dateChipScrollController.position.maxScrollExtent;
-      dateChipScrollController.jumpTo((7 * 112).clamp(0, maxScroll).toDouble());
+      dateChipScrollController.jumpTo(0);
     });
   }
 
@@ -159,7 +169,7 @@ class _EventsScreenState extends State<EventsScreen> {
   List<DateTime> get dateChipDates {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    return List.generate(15, (index) => today.add(Duration(days: index - 7)));
+    return List.generate(15, (index) => today.add(Duration(days: index)));
   }
 
   void toggleDateFilter(DateTime date) {
@@ -262,15 +272,19 @@ class _EventsScreenState extends State<EventsScreen> {
 
   void clearFilters() {
     setState(() {
-      clientFilter = null;
-      dateFilter = null;
-      dateRangeFilter = null;
-      showPastEvents = false;
-      showOverduePayments = false;
-      paymentFilter = 'All';
-      query = '';
-      searchController.clear();
+      resetFilters();
     });
+  }
+
+  void resetFilters() {
+    clientFilter = null;
+    dateFilter = null;
+    dateRangeFilter = null;
+    showPastEvents = false;
+    showOverduePayments = false;
+    paymentFilter = 'All';
+    query = '';
+    searchController.clear();
   }
 
   PopupMenuItem<String> filterMenuItem(
