@@ -1,5 +1,21 @@
 part of '../main.dart';
 
+class SyncProgress {
+  const SyncProgress({
+    required this.percent,
+    required this.label,
+    this.detail = '',
+    this.active = true,
+    this.warning = false,
+  });
+
+  final int percent;
+  final String label;
+  final String detail;
+  final bool active;
+  final bool warning;
+}
+
 class _MasterDataDownloadStatus {
   const _MasterDataDownloadStatus({
     required this.message,
@@ -70,6 +86,7 @@ class _AppShellState extends State<AppShell> {
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
   bool syncInProgress = false;
+  SyncProgress? syncProgress;
   final List<_ShellRoute> routeStack = [];
 
   @override
@@ -125,6 +142,63 @@ class _AppShellState extends State<AppShell> {
 
   String localId(String prefix) =>
       '${prefix}_${DateTime.now().microsecondsSinceEpoch}';
+
+  void updateSyncProgress(
+    int percent,
+    String label, {
+    String detail = '',
+    bool active = true,
+    bool warning = false,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      syncProgress = SyncProgress(
+        percent: percent.clamp(0, 100).toInt(),
+        label: label,
+        detail: detail,
+        active: active,
+        warning: warning,
+      );
+    });
+  }
+
+  String mirrorSyncDetail(Map<String, dynamic> response) {
+    final mirror = response['mirrorSync'];
+    if (mirror is! Map) return '';
+    final status = mirror['status']?.toString() ?? '';
+    final failed = ((mirror['failedTables'] as List?) ?? const [])
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toList();
+    if (failed.isNotEmpty) {
+      return 'Mirror table issue: ${failed.take(3).join(', ')}';
+    }
+    if (status == 'synced') return 'Supabase mirror tables updated.';
+    return status.isEmpty ? '' : 'Mirror status: $status';
+  }
+
+  int userDataRecordCount(Map<String, dynamic> userData) {
+    var total = 0;
+    for (final key in [
+      'events',
+      'clients',
+      'employees',
+      'attendance',
+      'additionalServices',
+      'menuItems',
+      'rawMaterials',
+      'produceItems',
+      'vesselItems',
+      'customMenus',
+      'requirementLists',
+      'payments',
+      'manualInvoices',
+      'auditLogs',
+    ]) {
+      total += ((userData[key] as List?) ?? const []).length;
+    }
+    return total;
+  }
 
   AppEvent localEventFromDraft(EventDraft draft) {
     final eventId =
@@ -683,11 +757,15 @@ class _AppShellState extends State<AppShell> {
   Future<void> pushCurrentSnapshot() async {
     if (syncInProgress) return;
     syncInProgress = true;
+    updateSyncProgress(10, 'Preparing sync');
     try {
+      updateSyncProgress(35, 'Uploading local changes');
       final response = await api.pushSyncSnapshot(
         userData: currentUserDataJson(),
         universal: currentUniversalJson(),
+        includeMirrorSync: true,
       );
+      updateSyncProgress(80, 'Refreshing app data');
       final universal = Map<String, dynamic>.from(
           (response['universal'] as Map?) ?? const {});
       final userData =
@@ -698,6 +776,11 @@ class _AppShellState extends State<AppShell> {
         synced: true,
         updateLastSynced: true,
       );
+      final detail = mirrorSyncDetail(response);
+      updateSyncProgress(100, 'Sync complete',
+          detail: detail,
+          active: false,
+          warning: detail.startsWith('Mirror table issue'));
     } finally {
       syncInProgress = false;
     }
@@ -725,11 +808,13 @@ class _AppShellState extends State<AppShell> {
         loading = true;
         loadError = null;
       });
+      updateSyncProgress(5, 'Starting sync');
     }
     Map<String, dynamic>? localUserData;
     Map<String, dynamic>? localUniversal;
     var localDirty = false;
     final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
+    if (!silent) updateSyncProgress(20, 'Reading local cache');
     if (localSnapshot != null) {
       localUserData =
           Map<String, dynamic>.from(localSnapshot['userData'] as Map);
@@ -745,30 +830,45 @@ class _AppShellState extends State<AppShell> {
       );
     }
     try {
+      if (!silent) updateSyncProgress(40, 'Downloading server snapshot');
       final snapshot = await api.getSyncSnapshot();
       final serverUniversal = Map<String, dynamic>.from(
           (snapshot['universal'] as Map?) ?? const {});
       final serverUserData = normalizeUserData(Map<String, dynamic>.from(
           (snapshot['userData'] as Map?) ?? const {}));
+      final localHasData =
+          localUserData != null && userDataRecordCount(localUserData) > 0;
+      final serverHasNoUserData = userDataRecordCount(serverUserData) == 0;
+      final shouldUploadLocal =
+          localDirty || (localHasData && serverHasNoUserData);
       if (localUserData == null || localUniversal == null) {
+        if (!silent) updateSyncProgress(75, 'Saving local copy');
         await applySnapshot(
           userData: serverUserData,
           universal: serverUniversal,
           synced: true,
           updateLastSynced: true,
         );
+        if (!silent) {
+          updateSyncProgress(100, 'Sync complete', active: false);
+        }
         return;
       }
-      if (!localDirty) {
+      if (!shouldUploadLocal) {
+        if (!silent) updateSyncProgress(75, 'Applying server changes');
         await applySnapshot(
           userData: serverUserData,
           universal: serverUniversal,
           synced: true,
           updateLastSynced: true,
         );
+        if (!silent) {
+          updateSyncProgress(100, 'Sync complete', active: false);
+        }
         return;
       }
-      final mergedUserData = normalizeUserData(localDirty
+      if (!silent) updateSyncProgress(60, 'Merging local changes');
+      final mergedUserData = normalizeUserData(shouldUploadLocal
           ? mergeUserData(localUserData, serverUserData)
           : mergeUserData(serverUserData, localUserData));
       final mergedUniversal = mergeUniversalData(
@@ -776,9 +876,11 @@ class _AppShellState extends State<AppShell> {
         localUniversal,
         preferLocal: localDirty,
       );
+      if (!silent) updateSyncProgress(80, 'Uploading merged data');
       final pushed = await api.pushSyncSnapshot(
         userData: mergedUserData,
         universal: mergedUniversal,
+        includeMirrorSync: !silent,
       );
       await applySnapshot(
         userData:
@@ -788,12 +890,25 @@ class _AppShellState extends State<AppShell> {
         synced: true,
         updateLastSynced: true,
       );
+      if (!silent) {
+        final detail = mirrorSyncDetail(pushed);
+        updateSyncProgress(100, 'Sync complete',
+            detail: detail,
+            active: false,
+            warning: detail.startsWith('Mirror table issue'));
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
         if (localSnapshot != null) localSyncPending = true;
         loadError = null;
       });
+      if (!silent) {
+        updateSyncProgress(100, 'Sync incomplete',
+            detail: e.toString().replaceFirst('Exception: ', ''),
+            active: false,
+            warning: true);
+      }
     } finally {
       syncInProgress = false;
       if (mounted) setState(() => loading = false);
@@ -861,6 +976,60 @@ class _AppShellState extends State<AppShell> {
           'mobile': saved.mobile,
           'total': saved.total,
           'pending': saved.pending,
+        },
+      );
+    });
+    backupCurrentSnapshotQuietly();
+  }
+
+  Future<void> deleteManualInvoice(ManualInvoice invoice) async {
+    showCpSnack(context, 'Deleting invoice...');
+    setState(() {
+      manualInvoices.removeWhere((item) => item.id == invoice.id);
+      recordAudit(
+        action: 'delete',
+        entityType: 'manualInvoice',
+        entityId: invoice.id,
+        entityLabel: invoice.invoiceNumber.isEmpty
+            ? invoice.eventName
+            : invoice.invoiceNumber,
+        summary:
+            'Deleted invoice ${invoice.invoiceNumber.isEmpty ? invoice.eventName : invoice.invoiceNumber}',
+        metadata: {
+          'client': invoice.clientName,
+          'mobile': invoice.mobile,
+          'total': invoice.total,
+          'pending': invoice.pending,
+        },
+      );
+    });
+    backupCurrentSnapshotQuietly();
+  }
+
+  Future<void> deleteEventPaymentInvoice(
+      AppEvent event, AppPayment payment) async {
+    showCpSnack(context, 'Deleting invoice payment...');
+    setState(() {
+      final index = events.indexWhere((item) => item.id == event.id);
+      if (index == -1) return;
+      final json = events[index].toJson();
+      json['payments'] = events[index]
+          .payments
+          .where((item) => item.id != payment.id)
+          .map((item) => item.toJson())
+          .toList();
+      events[index] = AppEvent.fromJson(json);
+      recordAudit(
+        action: 'delete',
+        entityType: 'eventInvoice',
+        entityId: payment.id,
+        entityLabel: event.name,
+        summary: 'Deleted invoice payment for ${event.name}',
+        metadata: {
+          'eventId': event.id,
+          'amount': payment.amount,
+          'date': payment.date,
+          'mode': payment.mode,
         },
       );
     });
@@ -1024,6 +1193,169 @@ class _AppShellState extends State<AppShell> {
         builder: (_) => ManualInvoiceFormScreen(
             clients: clients, onSave: saveManualInvoice)));
     if (mounted) setState(() => tab = 3);
+  }
+
+  AppClient billingClientFor(String name, String mobile,
+      {String address = '', String gst = ''}) {
+    final normalizedMobile = normalizeMobileText(mobile);
+    final normalizedName = name.trim().toLowerCase();
+    for (final client in clients) {
+      final clientMobile = normalizeMobileText(client.mobile);
+      final matches =
+          (normalizedMobile.isNotEmpty && clientMobile == normalizedMobile) ||
+              (normalizedName.isNotEmpty &&
+                  client.name.trim().toLowerCase() == normalizedName);
+      if (matches) return client;
+    }
+    return AppClient(
+        id: '',
+        name: name,
+        mobile: normalizedMobile.isNotEmpty ? normalizedMobile : mobile,
+        address: address,
+        gst: gst);
+  }
+
+  List<AppEvent> billingLinkedEventsForClient(AppClient client) {
+    final mobile = normalizeMobileText(client.mobile);
+    final name = client.name.trim().toLowerCase();
+    return events.where((event) {
+      final eventMobile = normalizeMobileText(event.mobile);
+      final eventClient = event.primaryClient.trim().toLowerCase();
+      return (mobile.isNotEmpty && eventMobile == mobile) ||
+          (name.isNotEmpty && eventClient == name);
+    }).toList();
+  }
+
+  List<ManualInvoice> billingLinkedInvoicesForClient(AppClient client) {
+    final mobile = normalizeMobileText(client.mobile);
+    final name = client.name.trim().toLowerCase();
+    return manualInvoices.where((invoice) {
+      final invoiceMobile = normalizeMobileText(invoice.mobile);
+      final invoiceClient = invoice.clientName.trim().toLowerCase();
+      return (mobile.isNotEmpty && invoiceMobile == mobile) ||
+          (name.isNotEmpty && invoiceClient == name);
+    }).toList();
+  }
+
+  AppEvent? billingEventForManualInvoice(ManualInvoice invoice) {
+    final mobile = normalizeMobileText(invoice.mobile);
+    final eventName = invoice.eventName.trim().toLowerCase();
+    for (final event in events) {
+      final sameMobile =
+          mobile.isNotEmpty && normalizeMobileText(event.mobile) == mobile;
+      final sameName =
+          eventName.isNotEmpty && event.name.trim().toLowerCase() == eventName;
+      final sameDate = invoice.eventDate.trim().isEmpty ||
+          event.dates.any((date) => date.date == invoice.eventDate.trim());
+      if (sameMobile && sameName && sameDate) return event;
+    }
+    return null;
+  }
+
+  Future<bool> confirmBillingDelete(
+      String title, String message, String actionLabel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(actionLabel)),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> openManualInvoiceDetails(ManualInvoice invoice) async {
+    final client = billingClientFor(invoice.clientName, invoice.mobile,
+        address: invoice.clientAddress, gst: invoice.clientGst);
+    final linkedEvent = billingEventForManualInvoice(invoice);
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ManualInvoiceDetailsScreen(
+            invoice: invoice,
+            client: client,
+            linkedEvent: linkedEvent,
+            linkedEvents: billingLinkedEventsForClient(client),
+            linkedInvoices: billingLinkedInvoicesForClient(client),
+            api: api,
+            onSave: saveManualInvoice,
+            onEdit: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => ManualInvoiceFormScreen(
+                      clients: clients,
+                      initialInvoice: invoice,
+                      onSave: saveManualInvoice)));
+            },
+            onDelete: () async {
+              final label = invoice.invoiceNumber.isEmpty
+                  ? invoice.eventName
+                  : invoice.invoiceNumber;
+              final confirmed = await confirmBillingDelete(
+                  'Delete Invoice?',
+                  'This will remove invoice $label from this device.',
+                  'Delete');
+              if (!confirmed) return;
+              await deleteManualInvoice(invoice);
+            },
+            onOpenEvent: openEventDetails,
+            onEventUpdated: updateSelectedEvent,
+            onAudit: recordAuditAndBackup)));
+  }
+
+  Future<void> openEventPaymentInvoiceDetails(
+      AppEvent event, AppPayment payment) async {
+    final client = billingClientFor(
+        event.primaryClient.isEmpty ? event.name : event.primaryClient,
+        event.mobile);
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BillingDocumentDetailsScreen(
+            event: event,
+            client: client,
+            linkedInvoices: billingLinkedInvoicesForClient(client),
+            payment: payment,
+            type: 'invoice',
+            api: api,
+            onOpenEvent: openEventDetails,
+            onEventUpdated: updateSelectedEvent,
+            onDeleteInvoice: () async {
+              final confirmed = await confirmBillingDelete(
+                  'Delete Invoice Payment?',
+                  'This invoice is created from a payment record. Deleting it will remove the payment of ${money(payment.amount)} from ${event.name}.',
+                  'Delete Payment');
+              if (!confirmed) return;
+              await deleteEventPaymentInvoice(event, payment);
+            },
+            onAudit: recordAuditAndBackup)));
+  }
+
+  Future<void> openEventInvoiceDetails(AppEvent event) async {
+    final client = billingClientFor(
+        event.primaryClient.isEmpty ? event.name : event.primaryClient,
+        event.mobile);
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BillingDocumentDetailsScreen(
+            event: event,
+            client: client,
+            linkedInvoices: billingLinkedInvoicesForClient(client),
+            type: 'invoice',
+            api: api,
+            onOpenEvent: openEventDetails,
+            onEventUpdated: updateSelectedEvent,
+            onDeleteInvoice: () async {
+              final confirmed = await confirmBillingDelete(
+                  'Delete Event Invoice?',
+                  'This invoice is generated from the event itself. Deleting it will delete the event ${event.name} and its linked details.',
+                  'Delete Event');
+              if (!confirmed) return;
+              removeSelectedEvent(event.id);
+            },
+            onAudit: recordAuditAndBackup)));
   }
 
   void openEventDetails(AppEvent event) {
@@ -1422,9 +1754,14 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> syncNow() async {
-    showCpSnack(context, 'Syncing...');
-    await refreshEvents(silent: true);
-    if (mounted) showCpSnack(context, 'Synced with server');
+    showCpSnack(context, 'Uploading app data...');
+    await cacheCurrentUserData();
+    await pushCurrentSnapshot();
+    if (mounted && syncProgress?.warning == true) {
+      showCpSnack(context, syncProgress?.detail ?? 'Sync needs attention');
+    } else if (mounted) {
+      showCpSnack(context, 'Synced with server');
+    }
   }
 
   void openNotifications() {
@@ -1496,6 +1833,9 @@ class _AppShellState extends State<AppShell> {
             onSaveClient: saveClient,
             onDeleteClient: deleteClient,
             openEvent: openEventDetails,
+            openEventInvoice: openEventInvoiceDetails,
+            openManualInvoice: openManualInvoiceDetails,
+            openEventPaymentInvoice: openEventPaymentInvoiceDetails,
             openNotifications: openNotifications),
         BillingScreen(
             events: events,
@@ -1503,6 +1843,9 @@ class _AppShellState extends State<AppShell> {
             manualInvoices: manualInvoices,
             api: api,
             onSaveManualInvoice: saveManualInvoice,
+            onDeleteManualInvoice: deleteManualInvoice,
+            onDeleteEventPaymentInvoice: deleteEventPaymentInvoice,
+            onDeleteEventInvoice: removeSelectedEvent,
             onAddManualInvoice: openManualInvoiceForm,
             onOpenEvent: openEventDetails,
             onEventUpdated: updateSelectedEvent,
@@ -1528,6 +1871,7 @@ class _AppShellState extends State<AppShell> {
             onBackupToGoogleDrive: backupToGoogleDrive,
             onSyncNow: syncNow,
             lastSyncedAt: lastSyncedAt,
+            syncProgress: syncProgress,
             businessProfile: businessProfile,
             services: services,
             onSaveService: upsertService,

@@ -21,6 +21,9 @@ class ClientsScreen extends StatefulWidget {
       required this.onSaveClient,
       required this.onDeleteClient,
       required this.openEvent,
+      required this.openEventInvoice,
+      required this.openManualInvoice,
+      required this.openEventPaymentInvoice,
       required this.openNotifications});
   final List<AppClient> clients;
   final List<AppEvent> events;
@@ -28,6 +31,10 @@ class ClientsScreen extends StatefulWidget {
   final Future<void> Function(AppClient client) onSaveClient;
   final Future<void> Function(AppClient client) onDeleteClient;
   final ValueChanged<AppEvent> openEvent;
+  final ValueChanged<AppEvent> openEventInvoice;
+  final ValueChanged<ManualInvoice> openManualInvoice;
+  final void Function(AppEvent event, AppPayment payment)
+      openEventPaymentInvoice;
   final VoidCallback openNotifications;
 
   @override
@@ -154,6 +161,15 @@ class _ClientsScreenState extends State<ClientsScreen> {
     if (mounted) showCpSnack(context, 'Client deleted');
   }
 
+  bool eventDateSurpassed(AppEvent event) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return event.dates.any((date) {
+      final parsed = parseIsoDate(date.date);
+      return parsed != null && parsed.isBefore(today);
+    });
+  }
+
   void showEvents(ClientSummary summary) {
     showModalBottomSheet<void>(
       context: context,
@@ -187,6 +203,11 @@ class _ClientsScreenState extends State<ClientsScreen> {
   }
 
   void showBills(ClientSummary summary) {
+    final eventInvoices = summary.events
+        .where((event) => event.payments.isEmpty && eventDateSurpassed(event))
+        .toList();
+    final eventPayments =
+        summary.events.where((event) => event.payments.isNotEmpty).toList();
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
@@ -199,25 +220,57 @@ class _ClientsScreenState extends State<ClientsScreen> {
                   fontSize: 20,
                   fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
-          if (summary.events
-                  .where((event) => event.payments.isNotEmpty)
-                  .isEmpty &&
+          if (eventInvoices.isEmpty &&
+              eventPayments.isEmpty &&
               summary.invoices.isEmpty)
             const EmptyStateCard(
                 title: 'No bills',
                 message: 'No invoices or payments found for this client.'),
+          ...eventInvoices.map((event) => ListTile(
+              leading: const Icon(Icons.receipt_long, color: Cp.primary),
+              title: Text(event.name.isEmpty ? 'Invoice' : event.name),
+              subtitle: Text('INV-${event.id.toUpperCase()}'),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(money(eventBalance(event))),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right),
+              ]),
+              onTap: () {
+                Navigator.pop(context);
+                widget.openEventInvoice(event);
+              })),
           ...summary.invoices.map((invoice) => ListTile(
               leading: const Icon(Icons.receipt_long, color: Cp.primary),
               title: Text(invoice.eventName),
               subtitle: Text(invoice.invoiceNumber),
-              trailing: Text(money(invoice.total)))),
-          ...summary.events.expand((event) => event.payments.map((payment) =>
-              ListTile(
-                  leading:
-                      const Icon(Icons.payments, color: Cp.tertiaryContainer),
-                  title: Text(event.name),
-                  subtitle: Text(payment.date),
-                  trailing: Text(money(payment.amount))))),
+              trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(money(invoice.total)),
+                const SizedBox(width: 8),
+                const Icon(Icons.chevron_right),
+              ]),
+              onTap: () {
+                Navigator.pop(context);
+                widget.openManualInvoice(invoice);
+              })),
+          ...eventPayments.expand(
+            (event) => event.payments.map(
+              (payment) => ListTile(
+                leading:
+                    const Icon(Icons.payments, color: Cp.tertiaryContainer),
+                title: Text(event.name),
+                subtitle: Text(payment.date),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(money(payment.amount)),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right),
+                ]),
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.openEventPaymentInvoice(event, payment);
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );

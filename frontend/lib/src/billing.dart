@@ -22,6 +22,10 @@ String whatsappEventClientName(AppEvent event) {
   return 'Customer';
 }
 
+const caterProBrandUrl = 'https://caterpro.in';
+const caterProTextFooter =
+    'Powered by CaterPro\n$caterProBrandUrl\nSmart catering management for events, menus, invoices & payments.';
+
 String requestPaymentMessage({
   required String documentType,
   required String clientName,
@@ -36,6 +40,8 @@ String requestPaymentMessage({
         ? 'Kindly make the payment to confirm the order. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.'
         : 'Kindly make the payment. Please pay to the bank details or QR code as mentioned in the attached invoice and share the Payment details.',
     if (!isQuotation) 'Thank you for the business.',
+    '',
+    caterProTextFooter,
   ].join('\n');
 }
 
@@ -47,6 +53,9 @@ class BillingScreen extends StatefulWidget {
       required this.manualInvoices,
       required this.api,
       required this.onSaveManualInvoice,
+      required this.onDeleteManualInvoice,
+      required this.onDeleteEventPaymentInvoice,
+      required this.onDeleteEventInvoice,
       required this.onAddManualInvoice,
       required this.onOpenEvent,
       required this.onEventUpdated,
@@ -56,6 +65,10 @@ class BillingScreen extends StatefulWidget {
   final List<ManualInvoice> manualInvoices;
   final ApiService api;
   final Future<void> Function(ManualInvoice invoice) onSaveManualInvoice;
+  final Future<void> Function(ManualInvoice invoice) onDeleteManualInvoice;
+  final Future<void> Function(AppEvent event, AppPayment payment)
+      onDeleteEventPaymentInvoice;
+  final ValueChanged<String> onDeleteEventInvoice;
   final VoidCallback onAddManualInvoice;
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
@@ -66,7 +79,49 @@ class BillingScreen extends StatefulWidget {
 }
 
 class _BillingScreenState extends State<BillingScreen> {
+  final invoiceSearchController = TextEditingController();
+  final quotationSearchController = TextEditingController();
   int selectedTab = 0;
+  String quotationQuery = '';
+  String quotationSort = 'quotation-date';
+  String? quotationClientFilter;
+  String? quotationEventFilter;
+  String? quotationDateFilter;
+  DateTimeRange? quotationDateRangeFilter;
+  String invoiceQuery = '';
+  String invoiceSort = 'invoice-date';
+  String? invoiceClientFilter;
+  String? invoiceEventFilter;
+  String? invoiceDateFilter;
+  DateTimeRange? invoiceDateRangeFilter;
+
+  DateTime? _parseDate(String value) {
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _dateKey(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+  String _rangeLabel(DateTimeRange range) =>
+      '${_dateKey(range.start)} to ${_dateKey(range.end)}';
+
+  DateTime? eventSortDate(AppEvent event) {
+    final dates = event.dates
+        .map((date) => _parseDate(date.date))
+        .whereType<DateTime>()
+        .toList()
+      ..sort();
+    return dates.isEmpty ? null : dates.first;
+  }
+
+  String eventSortDateText(AppEvent event) {
+    final date = eventSortDate(event);
+    return date == null ? '' : _dateKey(date);
+  }
 
   bool eventDateSurpassed(AppEvent event) {
     final now = DateTime.now();
@@ -85,11 +140,360 @@ class _BillingScreenState extends State<BillingScreen> {
       .where((event) => event.payments.isEmpty && eventDateSurpassed(event))
       .toList();
 
+  List<_BillingDocumentListItem> get quotationListItems => [
+        ...quotationEvents.map((event) => _BillingDocumentListItem(
+              clientName: event.primaryClient.isEmpty
+                  ? event.mobile
+                  : event.primaryClient,
+              mobile: event.mobile,
+              eventName: event.name,
+              documentNumber: 'QUOTE-${event.id.toUpperCase()}',
+              documentDate: eventSortDateText(event),
+              eventDate: eventSortDateText(event),
+              amount: eventTotal(event),
+              searchableText: [
+                event.primaryClient,
+                event.mobile,
+                event.name,
+                event.venue,
+                eventSortDateText(event),
+                'QUOTE-${event.id.toUpperCase()}',
+                event.id,
+                money(eventTotal(event)),
+              ].join(' '),
+              card: BillingDocumentCard(
+                title: event.name,
+                subtitle:
+                    '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
+                code: 'QUOTE-${event.id.toUpperCase()}',
+                amountLabel: 'Event Total',
+                amount: money(eventTotal(event)),
+                dateLabel: event.dates.isEmpty
+                    ? 'No dates'
+                    : event.dates.map((date) => date.date).join(', '),
+                status: 'Quotation',
+                statusColor: Cp.primary,
+                icon: Icons.request_quote,
+                onDownload: () => downloadDocument(context, event, 'quotation'),
+                onTap: () => openDocumentDetails(event, 'quotation'),
+              ),
+            )),
+      ];
+
   List<({AppEvent event, AppPayment payment})> get invoicePayments => [
         for (final event in widget.events)
           for (final payment in event.payments)
             (event: event, payment: payment),
       ];
+
+  List<_BillingDocumentListItem> get invoiceListItems => [
+        ...autoInvoiceEvents.map((event) => _BillingDocumentListItem(
+              clientName: event.primaryClient.isEmpty
+                  ? event.mobile
+                  : event.primaryClient,
+              mobile: event.mobile,
+              eventName: event.name,
+              documentNumber: 'INV-${event.id.toUpperCase()}',
+              documentDate: eventSortDateText(event),
+              eventDate: eventSortDateText(event),
+              amount: eventBalance(event),
+              searchableText: [
+                event.primaryClient,
+                event.mobile,
+                event.name,
+                event.venue,
+                eventSortDateText(event),
+                'INV-${event.id.toUpperCase()}',
+                event.id,
+                money(eventBalance(event)),
+              ].join(' '),
+              card: BillingDocumentCard(
+                title: event.name.isEmpty ? 'Invoice' : event.name,
+                subtitle:
+                    '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
+                code: 'INV-${event.id.toUpperCase()}',
+                amountLabel: 'Balance Due',
+                amount: money(eventBalance(event)),
+                dateLabel: event.dates.isEmpty
+                    ? 'No dates'
+                    : event.dates.map((date) => date.date).join(', '),
+                status: eventBalance(event) == 0 ? 'Settled' : 'Invoice',
+                statusColor: eventBalance(event) == 0
+                    ? Cp.tertiaryContainer
+                    : Cp.primary,
+                icon: Icons.receipt_long,
+                onDownload: () => downloadDocument(context, event, 'invoice'),
+                onDelete: () => deleteEventGeneratedInvoice(event),
+                onTap: () => openDocumentDetails(event, 'invoice'),
+              ),
+            )),
+        ...widget.manualInvoices.map((invoice) => _BillingDocumentListItem(
+              clientName: invoice.clientName,
+              mobile: invoice.mobile,
+              eventName: invoice.eventName,
+              documentNumber: invoice.invoiceNumber.isEmpty
+                  ? 'INV-${invoice.id.toUpperCase()}'
+                  : invoice.invoiceNumber,
+              documentDate: invoice.invoiceDate,
+              eventDate: invoice.eventDate,
+              amount: invoice.pending == 0 ? invoice.total : invoice.pending,
+              searchableText: [
+                invoice.clientName,
+                invoice.mobile,
+                invoice.clientAddress,
+                invoice.clientGst,
+                invoice.eventName,
+                invoice.venue,
+                invoice.eventDate,
+                invoice.invoiceDate,
+                invoice.invoiceNumber,
+                invoice.id,
+                invoice.notes,
+                money(invoice.total),
+                money(invoice.pending),
+              ].join(' '),
+              card: BillingDocumentCard(
+                title: invoice.eventName,
+                subtitle: '${invoice.clientName} | ${invoice.mobile}',
+                code: invoice.invoiceNumber.isEmpty
+                    ? 'INV-${invoice.id.toUpperCase()}'
+                    : invoice.invoiceNumber,
+                amountLabel: invoice.pending == 0 ? 'Total' : 'Pending',
+                amount: money(
+                    invoice.pending == 0 ? invoice.total : invoice.pending),
+                dateLabel: invoice.invoiceDate,
+                status: invoice.pending == 0 ? 'Settled' : 'Manual',
+                statusColor:
+                    invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary,
+                icon: Icons.receipt,
+                onDownload: () => downloadManualInvoice(context, invoice),
+                onEdit: () => openEditInvoice(invoice),
+                onDelete: () => deleteManualInvoice(invoice),
+                onTap: () => openManualInvoiceDetails(invoice),
+              ),
+            )),
+        ...invoicePayments.map((item) => _BillingDocumentListItem(
+              clientName: item.event.primaryClient.isEmpty
+                  ? item.event.mobile
+                  : item.event.primaryClient,
+              mobile: item.event.mobile,
+              eventName: item.event.name,
+              documentNumber: 'INV-${item.payment.id.toUpperCase()}',
+              documentDate: item.payment.date,
+              eventDate: eventSortDateText(item.event),
+              amount: item.payment.amount,
+              searchableText: [
+                item.event.primaryClient,
+                item.event.mobile,
+                item.event.name,
+                item.event.venue,
+                item.payment.date,
+                item.payment.mode,
+                item.payment.reference,
+                item.payment.id,
+                'INV-${item.payment.id.toUpperCase()}',
+                eventSortDateText(item.event),
+                money(item.payment.amount),
+              ].join(' '),
+              card: BillingDocumentCard(
+                title: item.event.name,
+                subtitle:
+                    '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} | ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' | ${item.payment.reference}'}',
+                code: 'INV-${item.payment.id.toUpperCase()}',
+                amountLabel: 'Payment Amount',
+                amount: money(item.payment.amount),
+                dateLabel: item.payment.date,
+                status: item.payment.settled ? 'Settled' : 'Paid',
+                statusColor:
+                    item.payment.settled ? Cp.tertiaryContainer : Cp.tertiary,
+                icon: Icons.receipt_long,
+                onDownload: () =>
+                    downloadDocument(context, item.event, 'invoice'),
+                onDelete: () =>
+                    deleteEventPaymentInvoice(item.event, item.payment),
+                onTap: () => openDocumentDetails(item.event, 'invoice',
+                    payment: item.payment),
+              ),
+            )),
+      ];
+
+  List<String> get invoiceClientOptions {
+    final clients = invoiceListItems
+        .map((item) => item.clientName.trim())
+        .where((client) => client.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return clients;
+  }
+
+  List<String> get invoiceEventOptions {
+    final events = invoiceListItems
+        .map((item) => item.eventName.trim())
+        .where((event) => event.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return events;
+  }
+
+  List<String> get quotationClientOptions {
+    final clients = quotationListItems
+        .map((item) => item.clientName.trim())
+        .where((client) => client.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return clients;
+  }
+
+  List<String> get quotationEventOptions {
+    final events = quotationListItems
+        .map((item) => item.eventName.trim())
+        .where((event) => event.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return events;
+  }
+
+  List<_BillingDocumentListItem> get visibleQuotationListItems {
+    final visible = quotationListItems.where((item) {
+      final query = quotationQuery.toLowerCase();
+      if (query.isNotEmpty &&
+          !item.searchableText.toLowerCase().contains(query)) {
+        return false;
+      }
+      if (quotationClientFilter != null &&
+          item.clientName != quotationClientFilter) {
+        return false;
+      }
+      if (quotationEventFilter != null &&
+          item.eventName != quotationEventFilter) {
+        return false;
+      }
+      if (quotationDateFilter != null &&
+          item.documentDate != quotationDateFilter) {
+        return false;
+      }
+      if (quotationDateRangeFilter != null) {
+        final parsed = _parseDate(item.documentDate);
+        if (parsed == null) return false;
+        final start = DateTime(
+            quotationDateRangeFilter!.start.year,
+            quotationDateRangeFilter!.start.month,
+            quotationDateRangeFilter!.start.day);
+        final end = DateTime(
+            quotationDateRangeFilter!.end.year,
+            quotationDateRangeFilter!.end.month,
+            quotationDateRangeFilter!.end.day);
+        if (parsed.isBefore(start) || parsed.isAfter(end)) return false;
+      }
+      return true;
+    }).toList();
+    visible.sort(compareQuotationItems);
+    return visible;
+  }
+
+  List<_BillingDocumentListItem> get visibleInvoiceListItems {
+    final visible = invoiceListItems.where((item) {
+      final query = invoiceQuery.toLowerCase();
+      if (query.isNotEmpty &&
+          !item.searchableText.toLowerCase().contains(query)) {
+        return false;
+      }
+      if (invoiceClientFilter != null &&
+          item.clientName != invoiceClientFilter) {
+        return false;
+      }
+      if (invoiceEventFilter != null && item.eventName != invoiceEventFilter) {
+        return false;
+      }
+      if (invoiceDateFilter != null && item.documentDate != invoiceDateFilter) {
+        return false;
+      }
+      if (invoiceDateRangeFilter != null) {
+        final parsed = _parseDate(item.documentDate);
+        if (parsed == null) return false;
+        final start = DateTime(
+            invoiceDateRangeFilter!.start.year,
+            invoiceDateRangeFilter!.start.month,
+            invoiceDateRangeFilter!.start.day);
+        final end = DateTime(invoiceDateRangeFilter!.end.year,
+            invoiceDateRangeFilter!.end.month, invoiceDateRangeFilter!.end.day);
+        if (parsed.isBefore(start) || parsed.isAfter(end)) return false;
+      }
+      return true;
+    }).toList();
+    visible.sort(compareInvoiceItems);
+    return visible;
+  }
+
+  List<_InvoiceSearchSuggestion> get invoiceSearchSuggestions {
+    return searchSuggestionsFor(invoiceListItems, invoiceQuery);
+  }
+
+  List<_InvoiceSearchSuggestion> get quotationSearchSuggestions {
+    return searchSuggestionsFor(quotationListItems, quotationQuery);
+  }
+
+  List<_InvoiceSearchSuggestion> searchSuggestionsFor(
+      List<_BillingDocumentListItem> items, String value) {
+    final query = value.trim().toLowerCase();
+    if (query.isEmpty) return const [];
+    final seen = <String>{};
+    final suggestions = <_InvoiceSearchSuggestion>[];
+    for (final item in items) {
+      final name = item.clientName.trim();
+      if (name.isNotEmpty && name.toLowerCase().contains(query)) {
+        final key = 'name:$name';
+        if (seen.add(key)) {
+          suggestions.add(_InvoiceSearchSuggestion(
+              label: name, subtitle: 'Client name', icon: Icons.person));
+        }
+      }
+      final mobile = item.mobile.trim();
+      if (mobile.isNotEmpty && mobile.toLowerCase().contains(query)) {
+        final key = 'mobile:$mobile';
+        if (seen.add(key)) {
+          suggestions.add(_InvoiceSearchSuggestion(
+              label: mobile, subtitle: 'Mobile number', icon: Icons.call));
+        }
+      }
+      if (suggestions.length >= 6) break;
+    }
+    return suggestions;
+  }
+
+  int compareInvoiceItems(
+      _BillingDocumentListItem a, _BillingDocumentListItem b) {
+    switch (invoiceSort) {
+      case 'event-name':
+        return a.eventName.toLowerCase().compareTo(b.eventName.toLowerCase());
+      case 'event-date':
+        return b.eventDate.compareTo(a.eventDate);
+      case 'amount':
+        return b.amount.compareTo(a.amount);
+      case 'invoice-date':
+      default:
+        return b.documentDate.compareTo(a.documentDate);
+    }
+  }
+
+  int compareQuotationItems(
+      _BillingDocumentListItem a, _BillingDocumentListItem b) {
+    switch (quotationSort) {
+      case 'event-name':
+        return a.eventName.toLowerCase().compareTo(b.eventName.toLowerCase());
+      case 'event-date':
+        return b.eventDate.compareTo(a.eventDate);
+      case 'amount':
+        return b.amount.compareTo(a.amount);
+      case 'quotation-date':
+      default:
+        return b.documentDate.compareTo(a.documentDate);
+    }
+  }
 
   AppClient clientFor(String name, String mobile,
       {String address = '', String gst = ''}) {
@@ -175,12 +579,85 @@ class _BillingScreenState extends State<BillingScreen> {
           api: widget.api,
           onOpenEvent: widget.onOpenEvent,
           onEventUpdated: widget.onEventUpdated,
+          onDeleteInvoice: type == 'invoice'
+              ? () async {
+                  if (payment == null) {
+                    await deleteEventGeneratedInvoice(event);
+                  } else {
+                    await deleteEventPaymentInvoice(event, payment);
+                  }
+                }
+              : null,
           onAudit: widget.onAudit),
     ));
   }
 
   Future<void> openAddInvoice() async {
     widget.onAddManualInvoice();
+  }
+
+  Future<void> openEditInvoice(ManualInvoice invoice) async {
+    await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ManualInvoiceFormScreen(
+            clients: widget.clients,
+            initialInvoice: invoice,
+            onSave: widget.onSaveManualInvoice)));
+    if (mounted) setState(() => selectedTab = 1);
+  }
+
+  Future<bool> confirmInvoiceDelete(
+      String title, String message, String actionLabel) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(actionLabel)),
+        ],
+      ),
+    );
+    return confirmed ?? false;
+  }
+
+  Future<void> deleteManualInvoice(ManualInvoice invoice) async {
+    final label = invoice.invoiceNumber.isEmpty
+        ? invoice.eventName
+        : invoice.invoiceNumber;
+    final confirmed = await confirmInvoiceDelete('Delete Invoice?',
+        'This will remove invoice $label from this device.', 'Delete');
+    if (!confirmed) return;
+    await widget.onDeleteManualInvoice(invoice);
+    if (!mounted) return;
+    showCpSnack(context, 'Invoice deleted');
+  }
+
+  Future<void> deleteEventPaymentInvoice(
+      AppEvent event, AppPayment payment) async {
+    final confirmed = await confirmInvoiceDelete(
+        'Delete Invoice Payment?',
+        'This invoice is created from a payment record. Deleting it will remove the payment of ${money(payment.amount)} from ${event.name}.',
+        'Delete Payment');
+    if (!confirmed) return;
+    await widget.onDeleteEventPaymentInvoice(event, payment);
+    if (!mounted) return;
+    showCpSnack(context, 'Invoice payment deleted');
+  }
+
+  Future<void> deleteEventGeneratedInvoice(AppEvent event) async {
+    final confirmed = await confirmInvoiceDelete(
+        'Delete Event Invoice?',
+        'This invoice is generated from the event itself. Deleting it will delete the event ${event.name} and its linked details.',
+        'Delete Event');
+    if (!confirmed) return;
+    widget.onDeleteEventInvoice(event.id);
+    if (!mounted) return;
+    showCpSnack(context, 'Event invoice deleted');
   }
 
   Future<void> downloadManualInvoice(
@@ -207,6 +684,9 @@ class _BillingScreenState extends State<BillingScreen> {
             linkedEvents: linkedEventsForClient(client),
             linkedInvoices: linkedInvoicesForClient(client),
             api: widget.api,
+            onSave: widget.onSaveManualInvoice,
+            onEdit: () => openEditInvoice(invoice),
+            onDelete: () => deleteManualInvoice(invoice),
             onOpenEvent: widget.onOpenEvent,
             onEventUpdated: widget.onEventUpdated,
             onAudit: widget.onAudit)));
@@ -231,6 +711,252 @@ class _BillingScreenState extends State<BillingScreen> {
     );
   }
 
+  Future<void> chooseInvoiceClient() async {
+    final selected = await chooseInvoiceOption(
+      title: 'Filter Client',
+      allLabel: 'All Clients',
+      options: invoiceClientOptions,
+      selected: invoiceClientFilter,
+      icon: Icons.person,
+    );
+    if (mounted) setState(() => invoiceClientFilter = selected);
+  }
+
+  Future<void> chooseInvoiceEvent() async {
+    final selected = await chooseInvoiceOption(
+      title: 'Filter Event',
+      allLabel: 'All Events',
+      options: invoiceEventOptions,
+      selected: invoiceEventFilter,
+      icon: Icons.event_note,
+    );
+    if (mounted) setState(() => invoiceEventFilter = selected);
+  }
+
+  Future<void> chooseQuotationClient() async {
+    final selected = await chooseInvoiceOption(
+      title: 'Filter Client',
+      allLabel: 'All Clients',
+      options: quotationClientOptions,
+      selected: quotationClientFilter,
+      icon: Icons.person,
+    );
+    if (mounted) setState(() => quotationClientFilter = selected);
+  }
+
+  Future<void> chooseQuotationEvent() async {
+    final selected = await chooseInvoiceOption(
+      title: 'Filter Event',
+      allLabel: 'All Events',
+      options: quotationEventOptions,
+      selected: quotationEventFilter,
+      icon: Icons.event_note,
+    );
+    if (mounted) setState(() => quotationEventFilter = selected);
+  }
+
+  Future<String?> chooseInvoiceOption({
+    required String title,
+    required String allLabel,
+    required List<String> options,
+    required String? selected,
+    required IconData icon,
+  }) {
+    return showModalBottomSheet<String?>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => SafeArea(
+        top: false,
+        child: Container(
+          constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * .72),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          decoration: BoxDecoration(
+              color: cpSurface(context),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(28))),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                    child: Container(
+                        width: 48,
+                        height: 6,
+                        margin: const EdgeInsets.only(bottom: 18),
+                        decoration: BoxDecoration(
+                            color: cpOutlineVariant(context),
+                            borderRadius: BorderRadius.circular(99)))),
+                Text(title,
+                    style: TextStyle(
+                        color: cpPrimary(context),
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 12),
+                ListTile(
+                    leading: const Icon(Icons.all_inclusive, color: Cp.primary),
+                    title: Text(allLabel),
+                    onTap: () => Navigator.pop(context, null)),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: options
+                        .map((option) => ListTile(
+                            leading: Icon(
+                                option == selected ? Icons.check_circle : icon,
+                                color: Cp.primary),
+                            title: Text(option),
+                            onTap: () => Navigator.pop(context, option)))
+                        .toList(),
+                  ),
+                ),
+              ]),
+        ),
+      ),
+    );
+  }
+
+  Future<void> chooseInvoiceDate() async {
+    final picked = await showDatePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2035),
+        initialDate: DateTime.now());
+    if (picked == null) return;
+    setState(() {
+      invoiceDateFilter = _dateKey(picked);
+      invoiceDateRangeFilter = null;
+    });
+  }
+
+  Future<void> chooseQuotationDate() async {
+    final picked = await showDatePicker(
+        context: context,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2035),
+        initialDate: DateTime.now());
+    if (picked == null) return;
+    setState(() {
+      quotationDateFilter = _dateKey(picked);
+      quotationDateRangeFilter = null;
+    });
+  }
+
+  Future<void> chooseInvoiceDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: invoiceDateRangeFilter ??
+          DateTimeRange(
+            start: DateTime(now.year, now.month, now.day),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+    );
+    if (picked == null) return;
+    setState(() {
+      invoiceDateRangeFilter = picked;
+      invoiceDateFilter = null;
+    });
+  }
+
+  Future<void> chooseQuotationDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2035),
+      initialDateRange: quotationDateRangeFilter ??
+          DateTimeRange(
+            start: DateTime(now.year, now.month, now.day),
+            end: DateTime(now.year, now.month, now.day),
+          ),
+    );
+    if (picked == null) return;
+    setState(() {
+      quotationDateRangeFilter = picked;
+      quotationDateFilter = null;
+    });
+  }
+
+  void clearInvoiceFilters() {
+    setState(() {
+      invoiceQuery = '';
+      invoiceSearchController.clear();
+      invoiceClientFilter = null;
+      invoiceEventFilter = null;
+      invoiceDateFilter = null;
+      invoiceDateRangeFilter = null;
+    });
+  }
+
+  void clearQuotationFilters() {
+    setState(() {
+      quotationQuery = '';
+      quotationSearchController.clear();
+      quotationClientFilter = null;
+      quotationEventFilter = null;
+      quotationDateFilter = null;
+      quotationDateRangeFilter = null;
+    });
+  }
+
+  PopupMenuItem<String> invoiceMenuItem(
+      String value, IconData icon, String label,
+      {bool selected = false}) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(children: [
+        Icon(selected ? Icons.check_circle : icon,
+            color: selected ? Cp.toolbarIcon : cpOnSurface(context)),
+        const SizedBox(width: 12),
+        Expanded(
+            child: Text(label,
+                style: const TextStyle(fontWeight: FontWeight.w800))),
+      ]),
+    );
+  }
+
+  bool get hasInvoiceFilters =>
+      invoiceQuery.isNotEmpty ||
+      invoiceClientFilter != null ||
+      invoiceEventFilter != null ||
+      invoiceDateFilter != null ||
+      invoiceDateRangeFilter != null;
+
+  bool get hasQuotationFilters =>
+      quotationQuery.isNotEmpty ||
+      quotationClientFilter != null ||
+      quotationEventFilter != null ||
+      quotationDateFilter != null ||
+      quotationDateRangeFilter != null;
+
+  void applyQuotationSearchSuggestion(_InvoiceSearchSuggestion suggestion) {
+    setState(() {
+      quotationQuery = suggestion.label;
+      quotationSearchController.text = suggestion.label;
+      quotationSearchController.selection = TextSelection.fromPosition(
+          TextPosition(offset: quotationSearchController.text.length));
+    });
+  }
+
+  void applyInvoiceSearchSuggestion(_InvoiceSearchSuggestion suggestion) {
+    setState(() {
+      invoiceQuery = suggestion.label;
+      invoiceSearchController.text = suggestion.label;
+      invoiceSearchController.selection = TextSelection.fromPosition(
+          TextPosition(offset: invoiceSearchController.text.length));
+    });
+  }
+
+  @override
+  void dispose() {
+    invoiceSearchController.dispose();
+    quotationSearchController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalQuotationValue =
@@ -244,15 +970,138 @@ class _BillingScreenState extends State<BillingScreen> {
     final invoiceCount = invoicePayments.length +
         autoInvoiceEvents.length +
         widget.manualInvoices.length;
+    final visibleQuotations = visibleQuotationListItems;
+    final visibleInvoices = visibleInvoiceListItems;
+    final quotationSuggestions = quotationSearchSuggestions;
+    final invoiceSuggestions = invoiceSearchSuggestions;
+    final fieldBorder = OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: cpOutlineVariant(context)));
     return ScreenFrame(
       topBar: TopBar(
           title: 'Billing',
           subtitle: 'Quotations and invoices',
           actions: [
-            IconButton(
-                onPressed: openAddInvoice,
-                icon: const Icon(Icons.add, color: Cp.toolbarIcon),
-                tooltip: 'Add invoice')
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.filter_list, color: Cp.toolbarIcon),
+              tooltip:
+                  selectedTab == 0 ? 'Filter quotations' : 'Filter invoices',
+              onSelected: (value) {
+                switch (value) {
+                  case 'client':
+                    selectedTab == 0
+                        ? chooseQuotationClient()
+                        : chooseInvoiceClient();
+                    break;
+                  case 'event':
+                    selectedTab == 0
+                        ? chooseQuotationEvent()
+                        : chooseInvoiceEvent();
+                    break;
+                  case 'date':
+                    selectedTab == 0
+                        ? chooseQuotationDate()
+                        : chooseInvoiceDate();
+                    break;
+                  case 'date-range':
+                    selectedTab == 0
+                        ? chooseQuotationDateRange()
+                        : chooseInvoiceDateRange();
+                    break;
+                  case 'clear':
+                    selectedTab == 0
+                        ? clearQuotationFilters()
+                        : clearInvoiceFilters();
+                    break;
+                }
+              },
+              itemBuilder: (context) {
+                final clientFilter = selectedTab == 0
+                    ? quotationClientFilter
+                    : invoiceClientFilter;
+                final eventFilter = selectedTab == 0
+                    ? quotationEventFilter
+                    : invoiceEventFilter;
+                final dateFilter =
+                    selectedTab == 0 ? quotationDateFilter : invoiceDateFilter;
+                final rangeFilter = selectedTab == 0
+                    ? quotationDateRangeFilter
+                    : invoiceDateRangeFilter;
+                return [
+                  invoiceMenuItem(
+                      'client',
+                      Icons.person_search,
+                      clientFilter == null
+                          ? 'Filter by Client'
+                          : 'Client: $clientFilter',
+                      selected: clientFilter != null),
+                  invoiceMenuItem(
+                      'event',
+                      Icons.event_note,
+                      eventFilter == null
+                          ? 'Filter by Event'
+                          : 'Event: $eventFilter',
+                      selected: eventFilter != null),
+                  invoiceMenuItem(
+                      'date',
+                      Icons.event,
+                      dateFilter == null
+                          ? 'Filter by Date'
+                          : 'Date: $dateFilter',
+                      selected: dateFilter != null),
+                  invoiceMenuItem(
+                      'date-range',
+                      Icons.date_range,
+                      rangeFilter == null
+                          ? 'Filter by Date Range'
+                          : 'Range: ${_rangeLabel(rangeFilter)}',
+                      selected: rangeFilter != null),
+                  const PopupMenuDivider(),
+                  invoiceMenuItem(
+                      'clear', Icons.filter_alt_off, 'Clear Filters'),
+                ];
+              },
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.sort, color: Cp.toolbarIcon),
+              tooltip: selectedTab == 0 ? 'Sort quotations' : 'Sort invoices',
+              onSelected: (value) => setState(() {
+                if (selectedTab == 0) {
+                  quotationSort = value;
+                } else {
+                  invoiceSort = value;
+                }
+              }),
+              itemBuilder: (context) => selectedTab == 0
+                  ? [
+                      invoiceMenuItem('quotation-date', Icons.request_quote,
+                          'Sort by Quotation Date',
+                          selected: quotationSort == 'quotation-date'),
+                      invoiceMenuItem('event-name', Icons.sort_by_alpha,
+                          'Sort by Event Name',
+                          selected: quotationSort == 'event-name'),
+                      invoiceMenuItem(
+                          'event-date', Icons.event, 'Sort by Event Date',
+                          selected: quotationSort == 'event-date'),
+                      invoiceMenuItem(
+                          'amount', Icons.payments, 'Sort by Amount',
+                          selected: quotationSort == 'amount'),
+                    ]
+                  : [
+                      invoiceMenuItem('invoice-date', Icons.receipt_long,
+                          'Sort by Invoice Date',
+                          selected: invoiceSort == 'invoice-date'),
+                      invoiceMenuItem('event-name', Icons.sort_by_alpha,
+                          'Sort by Event Name',
+                          selected: invoiceSort == 'event-name'),
+                      invoiceMenuItem(
+                          'event-date', Icons.event, 'Sort by Event Date',
+                          selected: invoiceSort == 'event-date'),
+                      invoiceMenuItem(
+                          'amount', Icons.payments, 'Sort by Amount',
+                          selected: invoiceSort == 'amount'),
+                    ],
+            ),
           ]),
       children: [
         Row(children: [
@@ -280,93 +1129,344 @@ class _BillingScreenState extends State<BillingScreen> {
             ])),
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
+          TextField(
+            controller: quotationSearchController,
+            onChanged: (value) => setState(() => quotationQuery = value.trim()),
+            decoration: InputDecoration(
+              hintText:
+                  'Search quotations by client, mobile, quote no, date...',
+              prefixIcon: Icon(Icons.search, color: cpOutline(context)),
+              suffixIcon: quotationQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () => setState(() {
+                            quotationQuery = '';
+                            quotationSearchController.clear();
+                          }),
+                      icon: const Icon(Icons.close)),
+              filled: true,
+              fillColor: cpCard(context),
+              border: fieldBorder,
+              enabledBorder: fieldBorder,
+            ),
+          ),
+          if (quotationSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            CpCard(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                children: quotationSuggestions
+                    .map((suggestion) => ListTile(
+                          dense: true,
+                          leading: Icon(suggestion.icon, color: Cp.primary),
+                          title: Text(suggestion.label,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: Text(suggestion.subtitle),
+                          onTap: () =>
+                              applyQuotationSearchSuggestion(suggestion),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
           if (quotationEvents.isEmpty)
             const EmptyStateCard(
                 title: 'No quotations pending',
                 message:
                     'Events move here only until the first payment is recorded.')
-          else
-            ...quotationEvents.map((event) => BillingDocumentCard(
-                  title: event.name,
-                  subtitle:
-                      '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
-                  code: 'QUOTE-${event.id.toUpperCase()}',
-                  amountLabel: 'Event Total',
-                  amount: money(eventTotal(event)),
-                  dateLabel: event.dates.isEmpty
-                      ? 'No dates'
-                      : event.dates.map((date) => date.date).join(', '),
-                  status: 'Quotation',
-                  statusColor: Cp.primary,
-                  icon: Icons.request_quote,
-                  onDownload: () =>
-                      downloadDocument(context, event, 'quotation'),
-                  onTap: () => openDocumentDetails(event, 'quotation'),
-                )),
+          else if (visibleQuotations.isEmpty)
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (quotationClientFilter != null)
+                  Pill(quotationClientFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.person),
+                if (quotationEventFilter != null)
+                  Pill(quotationEventFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.event_note),
+                if (quotationDateFilter != null)
+                  Pill(quotationDateFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.event),
+                if (quotationDateRangeFilter != null)
+                  Pill(_rangeLabel(quotationDateRangeFilter!),
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.date_range),
+                if (quotationQuery.isNotEmpty)
+                  Pill(quotationQuery,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.search),
+                InkWell(
+                    onTap: clearQuotationFilters,
+                    child: const Pill('Clear',
+                        color: Cp.errorContainer,
+                        textColor: Cp.error,
+                        icon: Icons.close)),
+              ]),
+              const SizedBox(height: 16),
+              const EmptyStateCard(
+                  title: 'No quotations match',
+                  message:
+                      'Clear filters or choose a different quotation filter.')
+            ])
+          else ...[
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              Pill('${visibleQuotations.length} shown',
+                  color: Cp.primary.withValues(alpha: .1),
+                  textColor: Cp.primary),
+              if (quotationSort == 'quotation-date')
+                const Pill('Quotation date',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.request_quote),
+              if (quotationSort == 'event-name')
+                const Pill('Event name',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.sort_by_alpha),
+              if (quotationSort == 'event-date')
+                const Pill('Event date',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event),
+              if (quotationSort == 'amount')
+                const Pill('Amount',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.payments),
+              if (quotationClientFilter != null)
+                Pill(quotationClientFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.person),
+              if (quotationEventFilter != null)
+                Pill(quotationEventFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event_note),
+              if (quotationDateFilter != null)
+                Pill(quotationDateFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event),
+              if (quotationDateRangeFilter != null)
+                Pill(_rangeLabel(quotationDateRangeFilter!),
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.date_range),
+              if (quotationQuery.isNotEmpty)
+                Pill(quotationQuery,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.search),
+              if (hasQuotationFilters)
+                InkWell(
+                    onTap: clearQuotationFilters,
+                    child: const Pill('Clear',
+                        color: Cp.errorContainer,
+                        textColor: Cp.error,
+                        icon: Icons.close)),
+            ]),
+            const SizedBox(height: 16),
+            ...visibleQuotations.map((item) => item.card),
+          ],
         ] else ...[
+          TextField(
+            controller: invoiceSearchController,
+            onChanged: (value) => setState(() => invoiceQuery = value.trim()),
+            decoration: InputDecoration(
+              hintText:
+                  'Search invoices by client, mobile, invoice no, date...',
+              prefixIcon: Icon(Icons.search, color: cpOutline(context)),
+              suffixIcon: invoiceQuery.isEmpty
+                  ? null
+                  : IconButton(
+                      onPressed: () => setState(() {
+                            invoiceQuery = '';
+                            invoiceSearchController.clear();
+                          }),
+                      icon: const Icon(Icons.close)),
+              filled: true,
+              fillColor: cpCard(context),
+              border: fieldBorder,
+              enabledBorder: fieldBorder,
+            ),
+          ),
+          if (invoiceSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            CpCard(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Column(
+                children: invoiceSuggestions
+                    .map((suggestion) => ListTile(
+                          dense: true,
+                          leading: Icon(suggestion.icon, color: Cp.primary),
+                          title: Text(suggestion.label,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w800)),
+                          subtitle: Text(suggestion.subtitle),
+                          onTap: () => applyInvoiceSearchSuggestion(suggestion),
+                        ))
+                    .toList(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
           if (invoiceCount == 0)
             const EmptyStateCard(
                 title: 'No invoices yet',
                 message:
                     'Invoices appear here after an event date is passed or any payment is recorded.')
+          else if (visibleInvoices.isEmpty)
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Wrap(spacing: 8, runSpacing: 8, children: [
+                if (invoiceClientFilter != null)
+                  Pill(invoiceClientFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.person),
+                if (invoiceEventFilter != null)
+                  Pill(invoiceEventFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.event_note),
+                if (invoiceDateFilter != null)
+                  Pill(invoiceDateFilter!,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.event),
+                if (invoiceDateRangeFilter != null)
+                  Pill(_rangeLabel(invoiceDateRangeFilter!),
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.date_range),
+                if (invoiceQuery.isNotEmpty)
+                  Pill(invoiceQuery,
+                      color: Cp.surfaceHigh,
+                      textColor: Cp.onVariant,
+                      icon: Icons.search),
+                InkWell(
+                    onTap: clearInvoiceFilters,
+                    child: const Pill('Clear',
+                        color: Cp.errorContainer,
+                        textColor: Cp.error,
+                        icon: Icons.close)),
+              ]),
+              const SizedBox(height: 16),
+              const EmptyStateCard(
+                  title: 'No invoices match',
+                  message:
+                      'Clear filters or choose a different invoice filter.')
+            ])
           else ...[
-            ...autoInvoiceEvents.map((event) => BillingDocumentCard(
-                  title: event.name.isEmpty ? 'Invoice' : event.name,
-                  subtitle:
-                      '${event.primaryClient.isEmpty ? event.mobile : event.primaryClient} | ${event.mobile}',
-                  code: 'INV-${event.id.toUpperCase()}',
-                  amountLabel: 'Balance Due',
-                  amount: money(eventBalance(event)),
-                  dateLabel: event.dates.isEmpty
-                      ? 'No dates'
-                      : event.dates.map((date) => date.date).join(', '),
-                  status: eventBalance(event) == 0 ? 'Settled' : 'Invoice',
-                  statusColor: eventBalance(event) == 0
-                      ? Cp.tertiaryContainer
-                      : Cp.primary,
-                  icon: Icons.receipt_long,
-                  onDownload: () => downloadDocument(context, event, 'invoice'),
-                  onTap: () => openDocumentDetails(event, 'invoice'),
-                )),
-            ...widget.manualInvoices.map((invoice) => BillingDocumentCard(
-                  title: invoice.eventName,
-                  subtitle: '${invoice.clientName} | ${invoice.mobile}',
-                  code: invoice.invoiceNumber.isEmpty
-                      ? 'INV-${invoice.id.toUpperCase()}'
-                      : invoice.invoiceNumber,
-                  amountLabel: invoice.pending == 0 ? 'Total' : 'Pending',
-                  amount: money(
-                      invoice.pending == 0 ? invoice.total : invoice.pending),
-                  dateLabel: invoice.invoiceDate,
-                  status: invoice.pending == 0 ? 'Settled' : 'Manual',
-                  statusColor:
-                      invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary,
-                  icon: Icons.receipt,
-                  onDownload: () => downloadManualInvoice(context, invoice),
-                  onTap: () => openManualInvoiceDetails(invoice),
-                )),
-            ...invoicePayments.map((item) => BillingDocumentCard(
-                  title: item.event.name,
-                  subtitle:
-                      '${item.event.primaryClient.isEmpty ? item.event.mobile : item.event.primaryClient} | ${item.payment.mode}${item.payment.reference.isEmpty ? '' : ' | ${item.payment.reference}'}',
-                  code: 'INV-${item.payment.id.toUpperCase()}',
-                  amountLabel: 'Payment Amount',
-                  amount: money(item.payment.amount),
-                  dateLabel: item.payment.date,
-                  status: item.payment.settled ? 'Settled' : 'Paid',
-                  statusColor:
-                      item.payment.settled ? Cp.tertiaryContainer : Cp.tertiary,
-                  icon: Icons.receipt_long,
-                  onDownload: () =>
-                      downloadDocument(context, item.event, 'invoice'),
-                  onTap: () => openDocumentDetails(item.event, 'invoice',
-                      payment: item.payment),
-                )),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              Pill('${visibleInvoices.length} shown',
+                  color: Cp.primary.withValues(alpha: .1),
+                  textColor: Cp.primary),
+              if (invoiceSort == 'invoice-date')
+                const Pill('Invoice date',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.receipt_long),
+              if (invoiceSort == 'event-name')
+                const Pill('Event name',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.sort_by_alpha),
+              if (invoiceSort == 'event-date')
+                const Pill('Event date',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event),
+              if (invoiceSort == 'amount')
+                const Pill('Amount',
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.payments),
+              if (invoiceClientFilter != null)
+                Pill(invoiceClientFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.person),
+              if (invoiceEventFilter != null)
+                Pill(invoiceEventFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event_note),
+              if (invoiceDateFilter != null)
+                Pill(invoiceDateFilter!,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.event),
+              if (invoiceDateRangeFilter != null)
+                Pill(_rangeLabel(invoiceDateRangeFilter!),
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.date_range),
+              if (invoiceQuery.isNotEmpty)
+                Pill(invoiceQuery,
+                    color: Cp.surfaceHigh,
+                    textColor: Cp.onVariant,
+                    icon: Icons.search),
+              if (hasInvoiceFilters)
+                InkWell(
+                    onTap: clearInvoiceFilters,
+                    child: const Pill('Clear',
+                        color: Cp.errorContainer,
+                        textColor: Cp.error,
+                        icon: Icons.close)),
+            ]),
+            const SizedBox(height: 16),
+            ...visibleInvoices.map((item) => item.card),
           ],
         ],
       ],
     );
   }
+}
+
+class _BillingDocumentListItem {
+  const _BillingDocumentListItem({
+    required this.clientName,
+    required this.mobile,
+    required this.eventName,
+    required this.documentNumber,
+    required this.documentDate,
+    required this.eventDate,
+    required this.amount,
+    required this.searchableText,
+    required this.card,
+  });
+
+  final String clientName;
+  final String mobile;
+  final String eventName;
+  final String documentNumber;
+  final String documentDate;
+  final String eventDate;
+  final int amount;
+  final String searchableText;
+  final Widget card;
+}
+
+class _InvoiceSearchSuggestion {
+  const _InvoiceSearchSuggestion({
+    required this.label,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String label;
+  final String subtitle;
+  final IconData icon;
 }
 
 class ManualInvoiceLineController {
@@ -495,9 +1595,13 @@ class _ClientLookupFieldState extends State<ClientLookupField> {
 
 class ManualInvoiceFormScreen extends StatefulWidget {
   const ManualInvoiceFormScreen(
-      {super.key, required this.clients, required this.onSave});
+      {super.key,
+      required this.clients,
+      required this.onSave,
+      this.initialInvoice});
   final List<AppClient> clients;
   final Future<void> Function(ManualInvoice invoice) onSave;
+  final ManualInvoice? initialInvoice;
 
   @override
   State<ManualInvoiceFormScreen> createState() =>
@@ -523,6 +1627,35 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
     ManualInvoiceLineController(title: 'Catering service')
   ];
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final invoice = widget.initialInvoice;
+    if (invoice == null) return;
+    clientName.text = invoice.clientName;
+    mobile.text = invoice.mobile;
+    clientAddress.text = invoice.clientAddress;
+    clientGst.text = invoice.clientGst;
+    eventName.text = invoice.eventName;
+    venue.text = invoice.venue;
+    eventDate.text = invoice.eventDate;
+    invoiceDate.text = invoice.invoiceDate;
+    advance.text = invoice.advance.toString();
+    settlement.text = invoice.settlement.toString();
+    notes.text = invoice.notes;
+    for (final item in items) {
+      item.dispose();
+    }
+    items
+      ..clear()
+      ..addAll(invoice.items.isEmpty
+          ? [ManualInvoiceLineController(title: 'Catering service')]
+          : invoice.items.map((item) => ManualInvoiceLineController(
+              title: item.title,
+              quantity: item.quantity.toString(),
+              rate: item.rate.toString())));
+  }
 
   @override
   void dispose() {
@@ -613,7 +1746,7 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
     setState(() => saving = true);
     try {
       await widget.onSave(ManualInvoice(
-        id: '',
+        id: widget.initialInvoice?.id ?? '',
         clientName: clientName.text.trim(),
         mobile: cleanMobile(),
         clientAddress: clientAddress.text.trim(),
@@ -622,7 +1755,7 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
         venue: venue.text.trim(),
         eventDate: eventDate.text.trim(),
         invoiceDate: invoiceDate.text.trim(),
-        invoiceNumber: '',
+        invoiceNumber: widget.initialInvoice?.invoiceNumber ?? '',
         notes: notes.text.trim(),
         items: lines,
         subtotal: subtotal,
@@ -633,7 +1766,8 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
       ));
       if (!mounted) return;
       Navigator.pop(context);
-      showCpSnack(context, 'Invoice saved');
+      showCpSnack(context,
+          widget.initialInvoice == null ? 'Invoice saved' : 'Invoice updated');
     } catch (e) {
       if (mounted) {
         showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
@@ -658,7 +1792,9 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
         key: formKey,
         child: ScreenFrame(
           topBar: TopBar(
-              title: 'Add Invoice',
+              title: widget.initialInvoice == null
+                  ? 'Add Invoice'
+                  : 'Edit Invoice',
               avatar: false,
               leading: IconButton(
                   onPressed: () => Navigator.pop(context),
@@ -900,7 +2036,12 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save),
-                label: Text(saving ? 'Saving...' : 'Save Invoice',
+                label: Text(
+                    saving
+                        ? 'Saving...'
+                        : widget.initialInvoice == null
+                            ? 'Save Invoice'
+                            : 'Update Invoice',
                     style: const TextStyle(fontWeight: FontWeight.w900))),
           ),
         ),
@@ -917,6 +2058,9 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
       required this.linkedEvents,
       required this.linkedInvoices,
       required this.api,
+      required this.onSave,
+      required this.onEdit,
+      required this.onDelete,
       required this.onOpenEvent,
       required this.onEventUpdated,
       required this.onAudit,
@@ -927,6 +2071,9 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   final List<AppEvent> linkedEvents;
   final List<ManualInvoice> linkedInvoices;
   final ApiService api;
+  final Future<void> Function(ManualInvoice invoice) onSave;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
   final AuditLogger onAudit;
@@ -1124,6 +2271,20 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
               icon: Icons.message,
               onPressed: invoice.pending == 0 ? null : requestPayment),
           DocumentActionSpec(
+              label: 'Edit Invoice',
+              icon: Icons.edit,
+              onPressed: () async {
+                await onEdit();
+                if (context.mounted) Navigator.pop(context);
+              }),
+          DocumentActionSpec(
+              label: 'Delete Invoice',
+              icon: Icons.delete,
+              onPressed: () async {
+                await onDelete();
+                if (context.mounted) Navigator.pop(context);
+              }),
+          DocumentActionSpec(
               label: 'Record Payment',
               icon: Icons.payments,
               onPressed: linkedEvent == null || invoice.pending == 0
@@ -1301,11 +2462,15 @@ class BillingDocumentCard extends StatelessWidget {
       required this.statusColor,
       required this.icon,
       required this.onDownload,
+      this.onEdit,
+      this.onDelete,
       this.onTap});
   final String title, subtitle, code, amountLabel, amount, dateLabel, status;
   final Color statusColor;
   final IconData icon;
   final VoidCallback onDownload;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
   final VoidCallback? onTap;
 
   @override
@@ -1323,36 +2488,65 @@ class BillingDocumentCard extends StatelessWidget {
         onTap: onTap,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Icon(icon, color: accent),
+            Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(icon, color: accent)),
             const SizedBox(width: 12),
             Expanded(
                 child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text(cleanTitle,
-                      style: TextStyle(
-                          color: accent,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900)),
+                  Row(children: [
+                    Expanded(
+                        child: Text(cleanTitle,
+                            softWrap: true,
+                            style: TextStyle(
+                                color: accent,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900))),
+                    const SizedBox(width: 8),
+                    Pill(status,
+                        color: statusAccent.withValues(alpha: .14),
+                        textColor: statusAccent),
+                  ]),
+                  const SizedBox(height: 4),
                   Text(cleanSubtitle,
+                      softWrap: true,
                       style:
                           TextStyle(color: muted, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
                   Text(cleanCode,
+                      softWrap: true,
                       style: TextStyle(
                           color: outline,
                           fontSize: 11,
                           fontWeight: FontWeight.w800))
                 ])),
-            Row(mainAxisSize: MainAxisSize.min, children: [
-              Pill(status,
-                  color: statusAccent.withValues(alpha: .14),
-                  textColor: statusAccent),
+          ]),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(spacing: 4, runSpacing: 4, children: [
               IconButton(
+                  visualDensity: VisualDensity.compact,
                   onPressed: onDownload,
                   icon: Icon(Icons.download, color: accent),
                   tooltip: 'Download'),
+              if (onEdit != null)
+                IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onEdit,
+                    icon: Icon(Icons.edit, color: accent),
+                    tooltip: 'Edit'),
+              if (onDelete != null)
+                IconButton(
+                    visualDensity: VisualDensity.compact,
+                    onPressed: onDelete,
+                    icon: Icon(Icons.delete,
+                        color: Theme.of(context).colorScheme.error),
+                    tooltip: 'Delete'),
             ]),
-          ]),
+          ),
           const Divider(height: 22),
           Row(children: [
             Expanded(
@@ -1401,6 +2595,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
       required this.onOpenEvent,
       required this.onEventUpdated,
       required this.onAudit,
+      this.onDeleteInvoice,
       this.payment});
   final AppEvent event;
   final AppClient client;
@@ -1410,6 +2605,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
   final ValueChanged<AppEvent> onOpenEvent;
   final ValueChanged<AppEvent> onEventUpdated;
   final AuditLogger onAudit;
+  final Future<void> Function()? onDeleteInvoice;
   final AppPayment? payment;
 
   bool get isInvoice => type == 'invoice';
@@ -1634,6 +2830,16 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
               onPressed:
                   pending == 0 ? null : () async => recordPayment(context),
               primary: true),
+          if (isInvoice)
+            DocumentActionSpec(
+                label: 'Delete Invoice',
+                icon: Icons.delete,
+                onPressed: onDeleteInvoice == null
+                    ? null
+                    : () async {
+                        await onDeleteInvoice!();
+                        if (context.mounted) Navigator.pop(context);
+                      }),
           DocumentActionSpec(
               label: 'Download PDF',
               icon: Icons.picture_as_pdf,

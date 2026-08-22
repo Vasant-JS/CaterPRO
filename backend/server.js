@@ -1827,7 +1827,35 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   const boxX = metrics.left;
   const boxW = metrics.width;
   const boxY = theme.name === 'classic' ? 116 : theme.name === 'elegant' ? 122 : 118;
-  const boxH = 96;
+  const leftX = boxX + 14;
+  const leftW = 220;
+  const detailX = boxX + boxW - 238;
+  const detailW = 220;
+  const clientName = event.primaryClient || 'Customer';
+  const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
+  const eventLine = `Event: ${event.name || 'Untitled Event'}`;
+  const clientGstLine = hasBusinessGst && event.clientGst ? `Client GSTIN: ${event.clientGst}` : '';
+  const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
+  const detailLines = [
+    `${title} No: ${number}`,
+    `${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`,
+    `Event Date: ${eventDates}`,
+    ...(!isInvoice ? ['Valid Till: 15 days from quotation date'] : []),
+  ];
+  const leftContentH =
+    18 +
+    textRunHeight(doc, clientName, leftW, fonts, { fontSize: 10.5, bold: true }) +
+    6 +
+    textRunHeight(doc, event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', leftW, fonts, { fontSize: PDF_BODY_FONT_SIZE }) +
+    6 +
+    textRunHeight(doc, addressLine, leftW, fonts, { fontSize: PDF_BODY_FONT_SIZE }) +
+    6 +
+    textRunHeight(doc, eventLine, leftW, fonts, { fontSize: PDF_BODY_FONT_SIZE }) +
+    (clientGstLine ? 6 + textRunHeight(doc, clientGstLine, leftW, fonts, { fontSize: PDF_BODY_FONT_SIZE }) : 0);
+  const rightContentH =
+    18 +
+    detailLines.reduce((sum, line) => sum + textRunHeight(doc, line, detailW, fonts, { fontSize: PDF_BODY_FONT_SIZE, align: 'right' }) + 6, 0);
+  const boxH = Math.max(96, Math.ceil(Math.max(leftContentH, rightContentH)) + 26);
   if (theme.name === 'classic') {
     doc.rect(boxX, boxY, boxW, boxH).strokeColor(theme.ink).lineWidth(0.7).stroke();
     doc.moveTo(296, boxY).lineTo(296, boxY + boxH).strokeColor('#c8ced4').lineWidth(0.6).stroke();
@@ -1839,34 +1867,46 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
     doc.roundedRect(boxX, boxY, boxW, 8, 4).fill(theme.secondary);
   }
   doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text('Bill To', boxX + 14, boxY + 15);
-  drawTextRun(doc, event.primaryClient || 'Customer', boxX + 14, boxY + 33, 220, fonts, {
+  let leftY = boxY + 33;
+  const clientH = drawTextRun(doc, clientName, leftX, leftY, leftW, fonts, {
     fontSize: 10.5,
     color: theme.ink,
     bold: true,
   });
-  const addressLine = event.clientAddress ? `Address: ${event.clientAddress}` : event.venue ? `Venue: ${event.venue}` : 'Venue: -';
-  drawTextRun(doc, event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', boxX + 14, boxY + 51, 220, fonts, {
+  leftY += clientH + 6;
+  const mobileH = drawTextRun(doc, event.mobile ? `Mobile: ${event.mobile}` : 'Mobile: -', leftX, leftY, leftW, fonts, {
     fontSize: PDF_BODY_FONT_SIZE,
     color: theme.muted,
   });
-  drawTextRun(doc, addressLine, boxX + 14, boxY + 66, 220, fonts, {
+  leftY += mobileH + 6;
+  const addressH = drawTextRun(doc, addressLine, leftX, leftY, leftW, fonts, {
     fontSize: PDF_BODY_FONT_SIZE,
     color: theme.muted,
   });
-  drawTextRun(doc, `Event: ${event.name || 'Untitled Event'}`, boxX + 14, boxY + 81, 220, fonts, {
+  leftY += addressH + 6;
+  const eventH = drawTextRun(doc, eventLine, leftX, leftY, leftW, fonts, {
     fontSize: PDF_BODY_FONT_SIZE,
     color: theme.muted,
   });
-  if (hasBusinessGst && event.clientGst) doc.text(`Client GSTIN: ${event.clientGst}`, boxX + 14, boxY + 92, { width: 220 });
+  leftY += eventH + 6;
+  if (clientGstLine) {
+    drawTextRun(doc, clientGstLine, leftX, leftY, leftW, fonts, {
+      fontSize: PDF_BODY_FONT_SIZE,
+      color: theme.muted,
+    });
+  }
 
-  const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
-  const detailX = boxX + boxW - 238;
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(`${title} Details`, detailX, boxY + 15, { width: 220, align: 'right' });
-  doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
-    .text(`${title} No: ${number}`, detailX, boxY + 35, { width: 220, align: 'right' })
-    .text(`${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`, detailX, boxY + 51, { width: 220, align: 'right' })
-    .text(`Event Date: ${eventDates}`, detailX, boxY + 67, { width: 220, align: 'right' });
-  if (!isInvoice) doc.text('Valid Till: 15 days from quotation date', detailX, boxY + 83, { width: 220, align: 'right' });
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(10).text(`${title} Details`, detailX, boxY + 15, { width: detailW, align: 'right' });
+  let detailY = boxY + 35;
+  for (const line of detailLines) {
+    const used = drawTextRun(doc, line, detailX, detailY, detailW, fonts, {
+      fontSize: PDF_BODY_FONT_SIZE,
+      color: theme.ink,
+      align: 'right',
+    });
+    detailY += used + 6;
+  }
+  return boxY + boxH + 16;
 }
 
 function invoiceTableLayout(theme = documentTheme()) {
@@ -2082,9 +2122,9 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   doc.pipe(res);
 
   writeDocumentHeader(doc, title, documentEvent, number, fonts, businessProfile);
-  documentInfoSection(doc, title, documentEvent, number, fonts, businessProfile, isInvoice);
+  const infoBottom = documentInfoSection(doc, title, documentEvent, number, fonts, businessProfile, isInvoice);
   const metrics = documentMetrics(theme);
-  let y = metrics.tableY;
+  let y = Math.max(metrics.tableY, infoBottom);
   tableHeader(doc, y, fonts, theme);
   y += theme.name === 'modern' ? 32 : 26;
 
@@ -2174,9 +2214,9 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   doc.pipe(res);
 
   writeDocumentHeader(doc, 'INVOICE', event, number, fonts, businessProfile);
-  documentInfoSection(doc, 'Invoice', event, number, fonts, businessProfile, true);
+  const infoBottom = documentInfoSection(doc, 'Invoice', event, number, fonts, businessProfile, true);
   const metrics = documentMetrics(theme);
-  let y = metrics.tableY;
+  let y = Math.max(metrics.tableY, infoBottom);
   tableHeader(doc, y, fonts, theme);
   y += theme.name === 'modern' ? 32 : 26;
   let shaded = false;
