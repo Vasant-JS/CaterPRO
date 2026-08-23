@@ -380,6 +380,13 @@ function emptyBusinessProfile() {
   return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'boxed', invoiceTextScale: 1, pdfMenuFontSize: 12 };
 }
 
+const invoiceDocumentTemplates = [
+  { id: 'boxed', label: 'Boxed Blue', default: true },
+  { id: 'classic', label: 'Classic' },
+  { id: 'elegant', label: 'Elegant' },
+  { id: 'modern', label: 'Modern' },
+];
+
 function defaultEmployees() {
   return [
     { id: 'emp_default_001', name: 'Ramesh K', age: 32, mobile: '9000000001', designation: 'Chef', payPerDay: 1200, payPerHour: 150 },
@@ -4561,6 +4568,16 @@ app.get('/api/business-profile', (req, res) => {
   const user = requireUser(req, res, db);
   if (!user) return;
   res.json(db.userData[user.id].businessProfile);
+});
+
+app.get('/api/document-templates/invoices', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  res.json({
+    defaultTemplate: 'boxed',
+    templates: invoiceDocumentTemplates,
+  });
 });
 
 app.put('/api/business-profile', (req, res) => {

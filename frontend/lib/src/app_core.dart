@@ -1070,6 +1070,37 @@ class BusinessProfile {
       };
 }
 
+class InvoiceDocumentTemplate {
+  const InvoiceDocumentTemplate({required this.id, required this.label});
+
+  final String id;
+  final String label;
+
+  factory InvoiceDocumentTemplate.fromJson(Map<String, dynamic> json) =>
+      InvoiceDocumentTemplate(
+        id: json['id']?.toString() ?? '',
+        label: json['label']?.toString() ?? json['id']?.toString() ?? '',
+      );
+}
+
+class InvoiceDocumentTemplateCatalog {
+  const InvoiceDocumentTemplateCatalog(
+      {required this.defaultTemplate, required this.templates});
+
+  final String defaultTemplate;
+  final List<InvoiceDocumentTemplate> templates;
+
+  factory InvoiceDocumentTemplateCatalog.fromJson(Map<String, dynamic> json) =>
+      InvoiceDocumentTemplateCatalog(
+        defaultTemplate: json['defaultTemplate']?.toString() ?? 'boxed',
+        templates: ((json['templates'] as List?) ?? [])
+            .whereType<Map<String, dynamic>>()
+            .map(InvoiceDocumentTemplate.fromJson)
+            .where((template) => template.id.isNotEmpty)
+            .toList(),
+      );
+}
+
 class ApiConfig {
   static const _definedBaseUrl = String.fromEnvironment('CATERPRO_API_URL');
   static const liveBaseUrl = 'https://caterpro-api.onrender.com/api';
@@ -2369,6 +2400,18 @@ class ApiService {
       throw Exception('Unable to save business profile');
     }
     return BusinessProfile.fromJson(
+        jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  Future<InvoiceDocumentTemplateCatalog> getInvoiceDocumentTemplates() async {
+    final response = await getWithRetry(
+      Uri.parse('${ApiConfig.baseUrl}/document-templates/invoices'),
+      headers: await authHeaders(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to load invoice designs');
+    }
+    return InvoiceDocumentTemplateCatalog.fromJson(
         jsonDecode(response.body) as Map<String, dynamic>);
   }
 

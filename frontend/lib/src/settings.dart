@@ -1822,10 +1822,12 @@ class _AppAppearanceScreenState extends State<AppAppearanceScreen> {
 class InvoiceSettingsScreen extends StatefulWidget {
   const InvoiceSettingsScreen(
       {super.key,
+      required this.api,
       required this.profile,
       required this.onSave,
       required this.onClose});
 
+  final ApiService api;
   final BusinessProfile profile;
   final Future<void> Function(BusinessProfile profile) onSave;
   final VoidCallback onClose;
@@ -1835,19 +1837,65 @@ class InvoiceSettingsScreen extends StatefulWidget {
 }
 
 class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
+  static const fallbackTemplates = [
+    InvoiceDocumentTemplate(id: 'boxed', label: 'Boxed Blue'),
+    InvoiceDocumentTemplate(id: 'classic', label: 'Classic'),
+    InvoiceDocumentTemplate(id: 'elegant', label: 'Elegant'),
+    InvoiceDocumentTemplate(id: 'modern', label: 'Modern'),
+  ];
+
   late String documentTemplate = switch (widget.profile.documentTemplate) {
     'premium' => 'elegant',
     'minimal' => 'classic',
-    'classic' ||
-    'elegant' ||
-    'modern' ||
-    'boxed' =>
-      widget.profile.documentTemplate,
-    _ => 'boxed',
+    _ => widget.profile.documentTemplate.trim().isEmpty
+        ? 'boxed'
+        : widget.profile.documentTemplate,
   };
+  List<InvoiceDocumentTemplate> templates = fallbackTemplates;
+  String defaultTemplate = 'boxed';
+  bool loadingTemplates = true;
+  String? templateError;
   late double invoiceTextScale = widget.profile.invoiceTextScale;
   late double pdfMenuFontSize = widget.profile.pdfMenuFontSize;
   bool saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadTemplates();
+  }
+
+  Future<void> loadTemplates() async {
+    try {
+      final catalog = await widget.api.getInvoiceDocumentTemplates();
+      if (!mounted) return;
+      setState(() {
+        templates =
+            catalog.templates.isEmpty ? fallbackTemplates : catalog.templates;
+        defaultTemplate = catalog.defaultTemplate.trim().isEmpty
+            ? templates.first.id
+            : catalog.defaultTemplate;
+        if (!templates.any((template) => template.id == documentTemplate)) {
+          documentTemplate =
+              templates.any((template) => template.id == defaultTemplate)
+                  ? defaultTemplate
+                  : templates.first.id;
+        }
+        templateError = null;
+        loadingTemplates = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        templates = fallbackTemplates;
+        if (!templates.any((template) => template.id == documentTemplate)) {
+          documentTemplate = defaultTemplate;
+        }
+        templateError = 'Using saved invoice designs';
+        loadingTemplates = false;
+      });
+    }
+  }
 
   BusinessProfile currentProfile() => BusinessProfile(
         businessName: widget.profile.businessName,
@@ -1914,19 +1962,31 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                         color: Cp.primary, fontWeight: FontWeight.w900)),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  initialValue: documentTemplate,
+                  initialValue:
+                      templates.any((item) => item.id == documentTemplate)
+                          ? documentTemplate
+                          : templates.first.id,
                   decoration: InputDecoration(
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12))),
-                  items: const [
-                    DropdownMenuItem(value: 'boxed', child: Text('Boxed Blue')),
-                    DropdownMenuItem(value: 'classic', child: Text('Classic')),
-                    DropdownMenuItem(value: 'elegant', child: Text('Elegant')),
-                    DropdownMenuItem(value: 'modern', child: Text('Modern')),
-                  ],
-                  onChanged: (value) =>
-                      setState(() => documentTemplate = value ?? 'boxed'),
+                  items: templates
+                      .map((template) => DropdownMenuItem(
+                          value: template.id, child: Text(template.label)))
+                      .toList(),
+                  onChanged: (value) => setState(
+                      () => documentTemplate = value ?? defaultTemplate),
                 ),
+                if (loadingTemplates || templateError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                      loadingTemplates
+                          ? 'Loading invoice designs...'
+                          : templateError!,
+                      style: const TextStyle(
+                          color: Cp.onVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700)),
+                ],
               ])),
           const SizedBox(height: 14),
           CpCard(

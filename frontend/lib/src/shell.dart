@@ -1936,6 +1936,7 @@ class _AppShellState extends State<AppShell> {
             onSaveProfile: savePdfMenuSettings,
             onClose: closeToParent),
         InvoiceSettingsScreen(
+            api: api,
             profile: businessProfile,
             onSave: saveInvoiceSettings,
             onClose: closeToParent),
