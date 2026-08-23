@@ -1765,7 +1765,7 @@ function documentTheme(businessProfile = emptyBusinessProfile()) {
 }
 
 function documentMetrics(theme = documentTheme()) {
-  if (theme.name === 'boxed') return { left: 36, right: 559, width: 523, tableY: 332 };
+  if (theme.name === 'boxed') return { left: 18, right: 577, width: 559, tableY: 228 };
   if (theme.name === 'elegant') return { left: 106, right: 559, width: 453, tableY: 228 };
   return { left: 36, right: 559, width: 523, tableY: theme.name === 'classic' ? 238 : 232 };
 }
@@ -1775,31 +1775,39 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
   const businessName = businessProfile.businessName || 'CaterPro';
   const contactLine = [businessProfile.phone, businessProfile.email].filter(Boolean).join(' | ');
   const taxLine = [businessProfile.gstin ? `GSTIN: ${businessProfile.gstin}` : '', businessProfile.pan ? `PAN: ${businessProfile.pan}` : ''].filter(Boolean).join(' | ');
+  const documentDate = event.invoiceDate || event.documentDate || new Date().toISOString().slice(0, 10);
   doc.rect(0, 0, doc.page.width, doc.page.height).fill(theme.page);
   if (theme.name === 'boxed') {
-    const boxX = 36;
-    const boxY = 44;
-    const boxW = 523;
-    doc.rect(boxX, boxY, boxW, 720).strokeColor(theme.accent).lineWidth(1).stroke();
-    doc.moveTo(boxX, 148).lineTo(boxX + boxW, 148).strokeColor(theme.accent).lineWidth(0.9).stroke();
+    const metrics = documentMetrics(theme);
+    const boxX = metrics.left;
+    const boxY = 18;
+    const boxW = metrics.width;
+    const headerH = 104;
+    const titleW = Math.floor(boxW * 0.25);
+    const leftW = boxW - titleW - 18;
+    doc.rect(boxX, boxY, boxW, 806).strokeColor(theme.accent).lineWidth(0.8).stroke();
+    doc.moveTo(boxX, boxY + headerH).lineTo(boxX + boxW, boxY + headerH).strokeColor(theme.accent).lineWidth(0.75).stroke();
 
-    const logoDrawn = drawProfileImage(doc, businessProfile.logoBase64, 52, 60, { fit: [34, 34] });
-    const nameX = logoDrawn ? 94 : 52;
-    const nameW = logoDrawn ? 250 : 292;
-    doc.fillColor(theme.ink).font(fonts.bold).fontSize(16).text(businessName, nameX, 61, { width: nameW, height: 22, ellipsis: true });
+    const logoDrawn = drawProfileImage(doc, businessProfile.logoBase64, boxX + 14, boxY + 18, { fit: [58, 58] });
+    const nameX = logoDrawn ? boxX + 84 : boxX + 16;
+    const nameW = logoDrawn ? leftW - 84 : leftW - 16;
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(15.5).text(businessName, nameX, boxY + 19, { width: nameW, height: 20, ellipsis: true });
     const profileLines = [
       businessProfile.address || 'Catering event management',
       contactLine,
       taxLine,
     ].filter(Boolean).join('\n');
-    drawTextRun(doc, profileLines, 52, 91, 292, fonts, {
+    drawTextRun(doc, profileLines, nameX, boxY + 42, nameW, fonts, {
       fontSize: PDF_BODY_FONT_SIZE,
       color: theme.muted,
       lineGap: 2,
-      height: 44,
+      height: 48,
       ellipsis: true,
     });
-    doc.fillColor(theme.primary).font(fonts.regular).fontSize(31).text(title, 390, 88, { width: 142, align: 'right', lineBreak: false });
+    const titleX = boxX + boxW - titleW - 16;
+    doc.fillColor(theme.primary).font(fonts.regular).fontSize(23).text(title, titleX, boxY + 34, { width: titleW, align: 'right', lineBreak: false });
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(8.2).text(number, titleX, boxY + 62, { width: titleW, align: 'right', lineBreak: false });
+    doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(prettyDate(documentDate), titleX, boxY + 77, { width: titleW, align: 'right', lineBreak: false });
     return;
   }
   if (theme.name === 'classic') {
@@ -1862,6 +1870,7 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   const theme = documentTheme(businessProfile);
   const metrics = documentMetrics(theme);
   const hasBusinessGst = Boolean(String(businessProfile.gstin || '').trim());
+  const documentDate = event.invoiceDate || event.documentDate || new Date().toISOString().slice(0, 10);
   const boxX = metrics.left;
   const boxW = metrics.width;
   const boxY = theme.name === 'classic' ? 116 : theme.name === 'elegant' ? 122 : 118;
@@ -1876,86 +1885,64 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
   const eventDates = event.dates.map((date) => prettyDate(date.date)).join(', ') || '-';
   const detailLines = [
     `${title} No: ${number}`,
-    `${title} Date: ${prettyDate(new Date().toISOString().slice(0, 10))}`,
+    `${title} Date: ${prettyDate(documentDate)}`,
     `Event Date: ${eventDates}`,
     ...(!isInvoice ? ['Valid Till: 15 days from quotation date'] : []),
   ];
   if (theme.name === 'boxed') {
     const splitX = boxX + Math.floor(boxW / 2);
-    const detailsY = 148;
-    const detailsH = 82;
-    const billHeaderY = detailsY + detailsH;
-    const billHeaderH = 26;
-    const billY = billHeaderY + billHeaderH;
-    const billW = boxW / 2 - 34;
+    const detailsY = 122;
+    const detailsH = 94;
+    const colPad = 14;
+    const colW = boxW / 2 - colPad * 2;
     const billLines = [
       clientName,
       event.mobile ? `Mobile: ${event.mobile}` : '',
       addressLine,
-      eventLine,
       clientGstLine,
     ].filter(Boolean);
-    const billText = billLines.join('\n');
-    const clientNameMeasureH = textRunHeight(doc, clientName, billW, fonts, { fontSize: 10.5, lineGap: 1, bold: true });
-    const billDetailMeasureH = textRunHeight(doc, billLines.slice(1).join('\n'), billW, fonts, { fontSize: 8.5, lineGap: 2 });
-    const billContentH = Math.max(86, clientNameMeasureH + billDetailMeasureH + 38);
-    const billH = Math.ceil(billContentH);
-
-    doc.rect(boxX, detailsY, boxW, detailsH).strokeColor(theme.accent).lineWidth(0.9).stroke();
-    doc.moveTo(splitX, detailsY).lineTo(splitX, detailsY + detailsH + billHeaderH + billH).strokeColor(theme.accent).lineWidth(0.9).stroke();
-    doc.rect(boxX, billHeaderY, boxW, billHeaderH).fill('#f3f5f8').strokeColor(theme.accent).lineWidth(0.9).stroke();
-    doc.rect(boxX, billY, boxW, billH).strokeColor(theme.accent).lineWidth(0.9).stroke();
-
-    const labelX = boxX + 14;
-    const valueX = boxX + 112;
-    const detailPairs = [
-      [`${title}#`, number],
-      [`${title} Date`, prettyDate(new Date().toISOString().slice(0, 10))],
-      ['Terms', isInvoice ? 'Due on Receipt' : 'Valid for 15 days'],
-      ['Event Date', eventDates],
-    ];
-    detailPairs.forEach(([label, value], index) => {
-      const rowY = detailsY + 13 + index * 18;
-      doc.fillColor(theme.muted).font(fonts.regular).fontSize(8.5).text(label, labelX, rowY, { width: 86 });
-      drawTextRun(doc, value, valueX, rowY, splitX - valueX - 16, fonts, {
-        fontSize: 8.7,
-        color: theme.ink,
-        bold: true,
-        lineBreak: false,
-        ellipsis: true,
-      });
-    });
-    const rightDetailLines = [
-      `Event: ${event.name || 'Untitled Event'}`,
+    const eventDetails = [
+      event.name || 'Untitled Event',
+      `Date: ${eventDates}`,
       event.venue ? `Venue: ${event.venue}` : '',
-      event.mobile ? `Mobile: ${event.mobile}` : '',
-    ].filter(Boolean).join('\n');
-    if (rightDetailLines) {
-      drawTextRun(doc, rightDetailLines, splitX + 14, detailsY + 14, boxW / 2 - 28, fonts, {
-        fontSize: 8.5,
-        color: theme.muted,
-        lineGap: 3,
-        height: detailsH - 24,
-        ellipsis: true,
-      });
-    }
-    doc.fillColor(theme.ink).font(fonts.regular).fontSize(12).text('Bill To', boxX + 14, billHeaderY + 7, { width: boxW / 2 - 28 });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(9).text('Customer Details', splitX + 14, billHeaderY + 9, { width: boxW / 2 - 28 });
-    const clientNameH = drawTextRun(doc, clientName, splitX + 14, billY + 14, boxW / 2 - 28, fonts, {
+    ].filter(Boolean);
+
+    doc.rect(boxX, detailsY, boxW, detailsH).strokeColor(theme.accent).lineWidth(0.75).stroke();
+    doc.moveTo(splitX, detailsY).lineTo(splitX, detailsY + detailsH).strokeColor(theme.accent).lineWidth(0.75).stroke();
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(9.8).text('Bill To', boxX + colPad, detailsY + 11, { width: colW });
+    doc.fillColor(theme.ink).font(fonts.bold).fontSize(9.8).text('Event Details', splitX + colPad, detailsY + 11, { width: colW });
+    const clientNameH = drawTextRun(doc, clientName, boxX + colPad, detailsY + 31, colW, fonts, {
       fontSize: 10.5,
       color: theme.ink,
       bold: true,
       lineGap: 1,
+      height: 25,
+      ellipsis: true,
     });
-    const billDetailY = billY + 14 + clientNameH + 7;
-    drawTextRun(doc, billLines.slice(1).join('\n'), splitX + 14, billDetailY, boxW / 2 - 28, fonts, {
+    const billDetailY = detailsY + 31 + clientNameH + 5;
+    drawTextRun(doc, billLines.slice(1).join('\n'), boxX + colPad, billDetailY, colW, fonts, {
       fontSize: 8.5,
       color: theme.muted,
       lineGap: 2,
-      height: Math.max(30, billY + billH - billDetailY - 10),
+      height: Math.max(28, detailsY + detailsH - billDetailY - 10),
       ellipsis: true,
     });
-    return billY + billH;
+    const eventNameH = drawTextRun(doc, eventDetails[0], splitX + colPad, detailsY + 31, colW, fonts, {
+      fontSize: 10.5,
+      color: theme.ink,
+      bold: true,
+      lineGap: 1,
+      height: 25,
+      ellipsis: true,
+    });
+    drawTextRun(doc, eventDetails.slice(1).join('\n'), splitX + colPad, detailsY + 31 + eventNameH + 5, colW, fonts, {
+      fontSize: 8.5,
+      color: theme.muted,
+      lineGap: 2,
+      height: 42,
+      ellipsis: true,
+    });
+    return detailsY + detailsH + 12;
   }
   const leftContentH =
     18 +
@@ -2026,7 +2013,7 @@ function documentInfoSection(doc, title, event, number, fonts, businessProfile, 
 
 function invoiceTableLayout(theme = documentTheme()) {
   if (theme.name === 'boxed') {
-    return { x: 36, w: 523, noX: 36, noW: 27, descX: 81, descW: 286, qtyX: 374, qtyW: 42, rateX: 432, rateW: 52, amountX: 500, amountW: 52 };
+    return { x: 18, w: 559, descX: 32, descW: 318, qtyX: 365, qtyW: 54, rateX: 434, rateW: 58, amountX: 508, amountW: 55 };
   }
   if (theme.name === 'elegant') {
     return { x: 112, w: 447, descX: 126, descW: 184, qtyX: 318, qtyW: 58, rateX: 386, rateW: 60, amountX: 462, amountW: 78 };
@@ -2040,14 +2027,13 @@ function invoiceTableLayout(theme = documentTheme()) {
 function tableHeader(doc, y, fonts, theme = documentTheme()) {
   const layout = invoiceTableLayout(theme);
   if (theme.name === 'boxed') {
-    doc.rect(layout.x, y, layout.w, 28).fill(theme.primary).strokeColor(theme.accent).lineWidth(0.9).stroke();
-    [layout.x + layout.noW, layout.qtyX - 8, layout.rateX - 8, layout.amountX - 8].forEach((x) => doc.moveTo(x, y).lineTo(x, y + 28).strokeColor(theme.accent).lineWidth(0.7).stroke());
+    doc.rect(layout.x, y, layout.w, 24).fill(theme.primary).strokeColor(theme.accent).lineWidth(0.75).stroke();
+    [layout.qtyX - 8, layout.rateX - 8, layout.amountX - 8].forEach((x) => doc.moveTo(x, y).lineTo(x, y + 24).strokeColor(theme.accent).lineWidth(0.6).stroke());
     doc.fillColor('white').font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE)
-      .text('#', layout.noX, y + 9, { width: layout.noW, align: 'center' })
-      .text('Item & Description', layout.descX, y + 9, { width: layout.descW })
-      .text('Qty', layout.qtyX, y + 9, { width: layout.qtyW, align: 'right' })
-      .text('Rate', layout.rateX, y + 9, { width: layout.rateW, align: 'right' })
-      .text('Amount', layout.amountX, y + 9, { width: layout.amountW, align: 'right' });
+      .text('Description', layout.descX, y + 8, { width: layout.descW })
+      .text('Members', layout.qtyX, y + 8, { width: layout.qtyW, align: 'right' })
+      .text('Rate', layout.rateX, y + 8, { width: layout.rateW, align: 'right' })
+      .text('Amount', layout.amountX, y + 8, { width: layout.amountW, align: 'right' });
     return;
   }
   if (theme.name === 'classic') {
@@ -2080,11 +2066,10 @@ function ensurePageSpace(doc, y, needed = 44, onNewPage = null) {
 function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = documentTheme()) {
   const layout = invoiceTableLayout(theme);
   const descHeight = textRunHeight(doc, columns.description, layout.descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 });
-  const rowHeight = Math.max(theme.name === 'boxed' ? 50 : 25, descHeight + (theme.name === 'boxed' ? 22 : 9));
+  const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, descHeight + (theme.name === 'boxed' ? 14 : 9));
   if (theme.name === 'boxed') {
-    doc.rect(layout.x, y - 4, layout.w, rowHeight).strokeColor(theme.accent).lineWidth(0.8).stroke();
-    [layout.x + layout.noW, layout.qtyX - 8, layout.rateX - 8, layout.amountX - 8].forEach((x) => doc.moveTo(x, y - 4).lineTo(x, y - 4 + rowHeight).strokeColor(theme.accent).lineWidth(0.7).stroke());
-    doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(columns.index || '', layout.noX, y + 8, { width: layout.noW, align: 'center' });
+    doc.rect(layout.x, y - 3, layout.w, rowHeight).strokeColor(theme.accent).lineWidth(0.65).stroke();
+    [layout.qtyX - 8, layout.rateX - 8, layout.amountX - 8].forEach((x) => doc.moveTo(x, y - 3).lineTo(x, y - 3 + rowHeight).strokeColor(theme.accent).lineWidth(0.55).stroke());
   } else if (theme.name === 'classic') {
     doc.rect(layout.x, y - 4, layout.w, rowHeight).strokeColor('#111827').lineWidth(0.35).stroke();
     [296, 364, 450].forEach((x) => doc.moveTo(x, y - 4).lineTo(x, y - 4 + rowHeight).strokeColor('#9ca3af').lineWidth(0.3).stroke());
@@ -2097,11 +2082,11 @@ function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = document
   } else if (theme.name === 'modern') {
     doc.roundedRect(layout.x, y - 4, layout.w, rowHeight, 6).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
   }
-  drawTextRun(doc, columns.description, layout.descX, theme.name === 'boxed' ? y + 7 : y, layout.descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
+  drawTextRun(doc, columns.description, layout.descX, theme.name === 'boxed' ? y + 5 : y, layout.descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
   doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
-    .text(columns.qty, layout.qtyX, theme.name === 'boxed' ? y + 8 : y, { width: layout.qtyW, align: 'right' })
-    .text(columns.rate, layout.rateX, theme.name === 'boxed' ? y + 8 : y, { width: layout.rateW, align: 'right' })
-    .text(columns.amount, layout.amountX, theme.name === 'boxed' ? y + 8 : y, { width: layout.amountW, align: 'right' });
+    .text(columns.qty, layout.qtyX, theme.name === 'boxed' ? y + 6 : y, { width: layout.qtyW, align: 'right' })
+    .text(columns.rate, layout.rateX, theme.name === 'boxed' ? y + 6 : y, { width: layout.rateW, align: 'right' })
+    .text(columns.amount, layout.amountX, theme.name === 'boxed' ? y + 6 : y, { width: layout.amountW, align: 'right' });
   if (theme.name === 'elegant') doc.moveTo(layout.x, y - 4 + rowHeight).lineTo(layout.x + layout.w, y - 4 + rowHeight).strokeColor('#e9dcc2').lineWidth(0.5).stroke();
   return rowHeight;
 }
@@ -2167,6 +2152,21 @@ function bankDetailLines(businessProfile = emptyBusinessProfile()) {
 function drawPaymentDetails(doc, x, y, fonts, theme, businessProfile = emptyBusinessProfile()) {
   const lines = bankDetailLines(businessProfile);
   const bankText = lines.join('\n');
+  if (theme.name === 'boxed') {
+    const bankW = 250;
+    const qrSize = 58;
+    const qrX = x + bankW + 28;
+    let bankHeight = 0;
+    if (lines.length > 0) {
+      doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text('Bank Details', x, y, { width: bankW });
+      bankHeight = 15 + drawTextRun(doc, bankText, x, y + 15, bankW, fonts, { fontSize: PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
+    }
+    if (businessProfile.qrBase64) {
+      drawProfileImage(doc, businessProfile.qrBase64, qrX, y, { fit: [qrSize, qrSize] });
+      doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text('Payment QR', qrX, y + qrSize + 2, { width: qrSize, align: 'center' });
+    }
+    return Math.max(bankHeight, businessProfile.qrBase64 ? qrSize + 12 : 0);
+  }
   const bankHeight = lines.length > 0
     ? 14 + Math.max(0, textRunHeight(doc, bankText, 220, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 }))
     : 0;
@@ -2223,10 +2223,10 @@ function drawDocumentClosing(doc, y, {
   }
 
   const lowerY = Math.max(y + 96, totalsY + totalsH + 18);
-  const paymentHeight = drawPaymentDetails(doc, metrics.left, lowerY, fonts, theme, businessProfile);
+  const paymentHeight = drawPaymentDetails(doc, theme.name === 'boxed' ? metrics.left + 10 : metrics.left, lowerY, fonts, theme, businessProfile);
 
   const signatureX = metrics.right - 154;
-  const signatureMaxY = theme.name === 'boxed' ? 672 : 716;
+  const signatureMaxY = theme.name === 'boxed' ? 704 : 716;
   const signatureY = Math.min(Math.max(lowerY + Math.max(28, paymentHeight + 12), totalsY + totalsH + 36), signatureMaxY);
   if (businessProfile.signatureBase64) {
     doc.save();
@@ -2244,15 +2244,15 @@ function resetDocumentPage(doc, theme) {
     doc.rect(0, 0, 86, doc.page.height).fill(theme.primary);
     doc.rect(86, 0, 5, doc.page.height).fill(theme.secondary);
   } else if (theme.name === 'boxed') {
-    doc.rect(36, 44, 523, 720).strokeColor(theme.accent).lineWidth(1).stroke();
+    doc.rect(18, 18, 559, 806).strokeColor(theme.accent).lineWidth(0.8).stroke();
   }
 }
 
 function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = false } = {}) {
   const metrics = documentMetrics(theme);
-  const footerY = theme.name === 'boxed' ? 748 : 778;
-  const thanksY = theme.name === 'boxed' ? 732 : 762;
-  const brandY = theme.name === 'boxed' ? 754 : 786;
+  const footerY = theme.name === 'boxed' ? 794 : 778;
+  const thanksY = theme.name === 'boxed' ? 778 : 762;
+  const brandY = theme.name === 'boxed' ? 800 : 786;
   doc.moveTo(metrics.left, footerY).lineTo(metrics.right, footerY).strokeColor(theme.name === 'classic' || theme.name === 'boxed' ? '#9ca3af' : '#d6dde0').lineWidth(0.5).stroke();
   if (thankYou) {
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(9.5)
@@ -2297,7 +2297,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   const metrics = documentMetrics(theme);
   let y = Math.max(metrics.tableY, infoBottom);
   tableHeader(doc, y, fonts, theme);
-  y += theme.name === 'modern' ? 32 : theme.name === 'boxed' ? 32 : 26;
+  y += theme.name === 'modern' ? 32 : theme.name === 'boxed' ? 28 : 26;
 
   let shaded = false;
   let rowNumber = 1;
@@ -2316,7 +2316,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         rate: money(slot.pricePerPax),
         amount: money(amount),
       };
-      const rowHeight = Math.max(theme.name === 'boxed' ? 50 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 22 : 9));
+      const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
       y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       rowNumber += 1;
@@ -2336,7 +2336,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         rate: '',
         amount: money(addOn.cost),
       };
-      const rowHeight = Math.max(theme.name === 'boxed' ? 50 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 22 : 9));
+      const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
       y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
       drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       rowNumber += 1;
@@ -2380,6 +2380,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
     clientAddress: invoice.clientAddress || '',
     clientGst: invoice.clientGst || '',
     venue: invoice.venue || '',
+    invoiceDate: invoice.invoiceDate || '',
     dates: invoice.eventDate ? [{ date: invoice.eventDate }] : [],
   };
   const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `INVOICE - ${event.name}` } });
@@ -2394,7 +2395,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   const metrics = documentMetrics(theme);
   let y = Math.max(metrics.tableY, infoBottom);
   tableHeader(doc, y, fonts, theme);
-  y += theme.name === 'modern' ? 32 : theme.name === 'boxed' ? 32 : 26;
+  y += theme.name === 'modern' ? 32 : theme.name === 'boxed' ? 28 : 26;
   let shaded = false;
   let rowNumber = 1;
   for (const finalItem of invoice.items || []) {
@@ -2405,7 +2406,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
       rate: finalItem.rate ? money(finalItem.rate) : '',
       amount: money(finalItem.amount),
     };
-    const rowHeight = Math.max(theme.name === 'boxed' ? 50 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 22 : 9));
+    const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
     y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
     drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
     rowNumber += 1;
@@ -5670,11 +5671,19 @@ function serveBuiltWebApp(req, res, next) {
 app.use(serveBuiltWebApp);
 app.use((req, res) => res.status(404).json({ message: 'Not found' }));
 
-initializeStorage().then(() => {
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`CaterPro API running on port ${port}`);
+if (require.main === module) {
+  initializeStorage().then(() => {
+    app.listen(port, '0.0.0.0', () => {
+      console.log(`CaterPro API running on port ${port}`);
+    });
+  }).catch((error) => {
+    console.error('Unable to initialize CaterPro storage:', error);
+    process.exit(1);
   });
-}).catch((error) => {
-  console.error('Unable to initialize CaterPro storage:', error);
-  process.exit(1);
-});
+}
+
+module.exports = {
+  boxedInvoiceBusinessProfile,
+  emptyBusinessProfile,
+  generateManualInvoicePdf,
+};
