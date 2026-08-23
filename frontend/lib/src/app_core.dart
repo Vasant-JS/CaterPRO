@@ -1071,15 +1071,23 @@ class BusinessProfile {
 }
 
 class InvoiceDocumentTemplate {
-  const InvoiceDocumentTemplate({required this.id, required this.label});
+  const InvoiceDocumentTemplate(
+      {required this.id, required this.label, this.isDefault = false});
 
   final String id;
   final String label;
+  final bool isDefault;
 
   factory InvoiceDocumentTemplate.fromJson(Map<String, dynamic> json) =>
       InvoiceDocumentTemplate(
         id: json['id']?.toString() ?? '',
-        label: json['label']?.toString() ?? json['id']?.toString() ?? '',
+        label: json['label']?.toString() ??
+            json['name']?.toString() ??
+            json['title']?.toString() ??
+            json['displayName']?.toString() ??
+            json['id']?.toString() ??
+            '',
+        isDefault: json['default'] == true || json['isDefault'] == true,
       );
 }
 
@@ -1090,15 +1098,28 @@ class InvoiceDocumentTemplateCatalog {
   final String defaultTemplate;
   final List<InvoiceDocumentTemplate> templates;
 
-  factory InvoiceDocumentTemplateCatalog.fromJson(Map<String, dynamic> json) =>
-      InvoiceDocumentTemplateCatalog(
-        defaultTemplate: json['defaultTemplate']?.toString() ?? 'boxed',
-        templates: ((json['templates'] as List?) ?? [])
-            .whereType<Map<String, dynamic>>()
-            .map(InvoiceDocumentTemplate.fromJson)
-            .where((template) => template.id.isNotEmpty)
-            .toList(),
-      );
+  factory InvoiceDocumentTemplateCatalog.fromJson(Map<String, dynamic> json) {
+    final templates = ((json['templates'] as List?) ?? [])
+        .whereType<Map>()
+        .map((template) => InvoiceDocumentTemplate.fromJson(
+            Map<String, dynamic>.from(template)))
+        .where((template) => template.id.isNotEmpty)
+        .toList();
+    String? markedDefault;
+    for (final template in templates) {
+      if (template.isDefault) {
+        markedDefault = template.id;
+        break;
+      }
+    }
+    return InvoiceDocumentTemplateCatalog(
+      defaultTemplate: json['defaultTemplate']?.toString() ??
+          json['defaultTemplateId']?.toString() ??
+          markedDefault ??
+          'boxed',
+      templates: templates,
+    );
+  }
 }
 
 class ApiConfig {
