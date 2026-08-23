@@ -2259,6 +2259,10 @@ function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = fal
   );
 }
 
+function boxedInvoiceBusinessProfile(profile = emptyBusinessProfile()) {
+  return { ...emptyBusinessProfile(), ...(profile || {}), documentTemplate: 'boxed' };
+}
+
 function generateEventPdf({ res, db, event, type, businessProfile = emptyBusinessProfile(), clients = [], disposition = 'attachment' }) {
   const isInvoice = type === 'invoice';
   const title = isInvoice ? 'INVOICE' : 'QUOTATION';
@@ -4063,7 +4067,7 @@ app.get('/api/admin/users/:userId/events/:eventId/documents/:type', (req, res) =
     db,
     event,
     type: req.params.type,
-    businessProfile: db.userData[targetUser.id].businessProfile,
+    businessProfile: boxedInvoiceBusinessProfile(db.userData[targetUser.id].businessProfile),
     clients: db.userData[targetUser.id].clients || [],
     disposition: 'inline',
   });
@@ -4140,7 +4144,7 @@ app.get('/api/admin/users/:userId/manual-invoices/:invoiceId/pdf', (req, res) =>
   return generateManualInvoicePdf({
     res,
     invoice,
-    businessProfile: db.userData[targetUser.id].businessProfile,
+    businessProfile: boxedInvoiceBusinessProfile(db.userData[targetUser.id].businessProfile),
     disposition: 'inline',
   });
 });
