@@ -1770,6 +1770,17 @@ function documentMetrics(theme = documentTheme()) {
   return { left: 36, right: 559, width: 523, tableY: theme.name === 'classic' ? 238 : 232 };
 }
 
+function documentContentBottom(theme = documentTheme()) {
+  if (theme.name === 'boxed') return 736;
+  return 780;
+}
+
+function documentContinuationTableY(theme = documentTheme()) {
+  if (theme.name === 'boxed') return 138;
+  if (theme.name === 'elegant') return 126;
+  return 116;
+}
+
 function writeDocumentHeader(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
   const theme = documentTheme(businessProfile);
   const businessName = businessProfile.businessName || 'CaterPro';
@@ -2054,17 +2065,27 @@ function tableHeader(doc, y, fonts, theme = documentTheme()) {
     .text('Amount', layout.amountX, y + (theme.name === 'modern' ? 10 : 7), { width: layout.amountW, align: 'right' });
 }
 
-function ensurePageSpace(doc, y, needed = 44, onNewPage = null) {
-  if (y + needed < 780) return y;
+function ensurePageSpace(doc, y, needed = 44, onNewPage = null, theme = documentTheme()) {
+  if (y + needed < documentContentBottom(theme)) return y;
   doc.addPage();
-  if (onNewPage) onNewPage();
+  if (onNewPage) {
+    const nextY = onNewPage();
+    if (Number.isFinite(nextY)) return nextY;
+  }
   return 44;
+}
+
+function invoiceRowHeight(doc, columns, fonts, theme = documentTheme()) {
+  const layout = invoiceTableLayout(theme);
+  const descHeight = textRunHeight(doc, columns.description, layout.descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 });
+  const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, descHeight + (theme.name === 'boxed' ? 14 : 9));
+  if (theme.name !== 'boxed') return rowHeight;
+  return Math.min(rowHeight, documentContentBottom(theme) - documentContinuationTableY(theme) - 12);
 }
 
 function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = documentTheme()) {
   const layout = invoiceTableLayout(theme);
-  const descHeight = textRunHeight(doc, columns.description, layout.descW, fonts, { fontSize: PDF_BODY_FONT_SIZE, lineGap: 1 });
-  const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, descHeight + (theme.name === 'boxed' ? 14 : 9));
+  const rowHeight = invoiceRowHeight(doc, columns, fonts, theme);
   if (theme.name === 'boxed') {
     doc.rect(layout.x, y - 3, layout.w, rowHeight).strokeColor(theme.accent).lineWidth(0.65).stroke();
     [layout.qtyX - 8, layout.rateX - 8, layout.amountX - 8].forEach((x) => doc.moveTo(x, y - 3).lineTo(x, y - 3 + rowHeight).strokeColor(theme.accent).lineWidth(0.55).stroke());
@@ -2080,7 +2101,7 @@ function drawInvoiceRow(doc, y, fonts, columns, shaded = false, theme = document
   } else if (theme.name === 'modern') {
     doc.roundedRect(layout.x, y - 4, layout.w, rowHeight, 6).fill('#fbfdfd').strokeColor('#e1eef0').lineWidth(0.6).stroke();
   }
-  drawTextRun(doc, columns.description, layout.descX, theme.name === 'boxed' ? y + 5 : y, layout.descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1 });
+  drawTextRun(doc, columns.description, layout.descX, theme.name === 'boxed' ? y + 5 : y, layout.descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, color: theme.ink, lineGap: 1, height: theme.name === 'boxed' ? rowHeight - 12 : undefined, ellipsis: theme.name === 'boxed' });
   doc.fillColor(theme.ink).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE)
     .text(columns.qty, layout.qtyX, theme.name === 'boxed' ? y + 6 : y, { width: layout.qtyW, align: 'right' })
     .text(columns.rate, layout.rateX, theme.name === 'boxed' ? y + 6 : y, { width: layout.rateW, align: 'right' })
@@ -2247,7 +2268,31 @@ function resetDocumentPage(doc, theme) {
   }
 }
 
-function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = false } = {}) {
+function continueDocumentTablePage(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
+  const theme = documentTheme(businessProfile);
+  if (theme.name === 'boxed') {
+    writeDocumentHeader(doc, title, event, number, fonts, businessProfile);
+    const y = documentContinuationTableY(theme);
+    tableHeader(doc, y, fonts, theme);
+    return y + 28;
+  }
+  resetDocumentPage(doc, theme);
+  const y = documentContinuationTableY(theme);
+  tableHeader(doc, y, fonts, theme);
+  return y + (theme.name === 'modern' ? 32 : 26);
+}
+
+function continueDocumentContentPage(doc, title, event, number, fonts, businessProfile = emptyBusinessProfile()) {
+  const theme = documentTheme(businessProfile);
+  if (theme.name === 'boxed') {
+    writeDocumentHeader(doc, title, event, number, fonts, businessProfile);
+    return documentContinuationTableY(theme);
+  }
+  resetDocumentPage(doc, theme);
+  return 44;
+}
+
+function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = false, pageNumber = 1, pageCount = 1 } = {}) {
   const metrics = documentMetrics(theme);
   const footerY = theme.name === 'boxed' ? 760 : 778;
   const thanksY = theme.name === 'boxed' ? 744 : 762;
@@ -2257,12 +2302,34 @@ function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = fal
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(9.5)
       .text('Thank you for the business', metrics.left, thanksY, { width: metrics.width, align: 'center', lineBreak: false });
   }
+  const showPageCount = pageCount > 1;
+  const brandWidth = showPageCount ? metrics.width - 92 : metrics.width;
   doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(
     `${caterProPdfFooter} | ${prettyDate(new Date().toISOString().slice(0, 10))}`,
     metrics.left,
     brandY,
-    { width: metrics.width, height: 10, align: 'center', lineBreak: false, link: caterProBrandUrl, underline: false },
+    { width: brandWidth, height: 10, align: 'center', lineBreak: false, link: caterProBrandUrl, underline: false },
   );
+  if (showPageCount) {
+    doc.fillColor(theme.muted).font(fonts.bold).fontSize(7).text(
+      `Page ${pageNumber} of ${pageCount}`,
+      metrics.right - 88,
+      brandY,
+      { width: 88, height: 10, align: 'right', lineBreak: false },
+    );
+  }
+}
+
+function drawBufferedDocumentFooters(doc, fonts, theme, businessProfile, options = {}) {
+  const range = doc.bufferedPageRange();
+  for (let index = 0; index < range.count; index += 1) {
+    doc.switchToPage(range.start + index);
+    drawDocumentFooter(doc, fonts, theme, businessProfile, {
+      ...options,
+      pageNumber: index + 1,
+      pageCount: range.count,
+    });
+  }
 }
 
 function boxedInvoiceBusinessProfile(profile = emptyBusinessProfile()) {
@@ -2284,7 +2351,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     clientAddress: event.clientAddress || eventClient?.address || eventClient?.city || '',
     clientGst: event.clientGst || eventClient?.gst || '',
   };
-  const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `${title} - ${event.name}` } });
+  const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `${title} - ${event.name}` } });
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
@@ -2303,7 +2370,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
   for (const date of sortedEventDates(event.dates)) {
     const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
     if (visibleSlots.length === 0) continue;
-    y = ensurePageSpace(doc, y, 22, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    y = ensurePageSpace(doc, y, 22, () => continueDocumentTablePage(doc, title, documentEvent, number, fonts, businessProfile), theme);
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left, y, { width: metrics.width });
     y += 15;
     for (const slot of visibleSlots) {
@@ -2315,8 +2382,8 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         rate: money(slot.pricePerPax),
         amount: money(amount),
       };
-      const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
-      y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+      const rowHeight = invoiceRowHeight(doc, rowData, fonts, theme);
+      y = ensurePageSpace(doc, y, rowHeight + 6, () => continueDocumentTablePage(doc, title, documentEvent, number, fonts, businessProfile), theme);
       drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       rowNumber += 1;
       shaded = !shaded;
@@ -2324,7 +2391,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     }
   }
   if ((event.addOns || []).length > 0) {
-    y = ensurePageSpace(doc, y, 22, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    y = ensurePageSpace(doc, y, 22, () => continueDocumentTablePage(doc, title, documentEvent, number, fonts, businessProfile), theme);
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text('Event Add-ons', metrics.left, y);
     y += 15;
     for (const addOn of event.addOns || []) {
@@ -2335,8 +2402,8 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
         rate: '',
         amount: money(addOn.cost),
       };
-      const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
-      y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+      const rowHeight = invoiceRowHeight(doc, rowData, fonts, theme);
+      y = ensurePageSpace(doc, y, rowHeight + 6, () => continueDocumentTablePage(doc, title, documentEvent, number, fonts, businessProfile), theme);
       drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
       rowNumber += 1;
       shaded = !shaded;
@@ -2355,7 +2422,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     if (totals.discount > 0) totalRows.push(['Settled Discount', money(totals.discount), '#0b6b3a', fonts.regular]);
     totalRows.push(['Balance Due', money(balanceDue), balanceDue > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
   }
-  y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126));
+  y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126), () => continueDocumentContentPage(doc, title, documentEvent, number, fonts, businessProfile), theme);
   const terms = isInvoice ? '' : 'Thank you for the business';
   drawDocumentClosing(doc, y + 4, {
     amountValue: isInvoice ? balanceDue || grandTotal : grandTotal,
@@ -2365,7 +2432,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     theme,
     businessProfile,
   });
-  drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou: isInvoice });
+  drawBufferedDocumentFooters(doc, fonts, theme, businessProfile, { thankYou: isInvoice });
   doc.end();
 }
 
@@ -2382,7 +2449,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
     invoiceDate: invoice.invoiceDate || '',
     dates: invoice.eventDate ? [{ date: invoice.eventDate }] : [],
   };
-  const doc = new PDFDocument({ size: 'A4', margin: 36, info: { Title: `INVOICE - ${event.name}` } });
+  const doc = new PDFDocument({ size: 'A4', margin: 36, bufferPages: true, info: { Title: `INVOICE - ${event.name}` } });
   const fonts = configurePdfFonts(doc);
   const theme = documentTheme(businessProfile);
   res.setHeader('Content-Type', 'application/pdf');
@@ -2405,8 +2472,8 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
       rate: finalItem.rate ? money(finalItem.rate) : '',
       amount: money(finalItem.amount),
     };
-    const rowHeight = Math.max(theme.name === 'boxed' ? 30 : 25, textRunHeight(doc, rowData.description, invoiceTableLayout(theme).descW, fonts, { fontSize: theme.name === 'boxed' ? 8.5 : PDF_BODY_FONT_SIZE, lineGap: 1 }) + (theme.name === 'boxed' ? 14 : 9));
-    y = ensurePageSpace(doc, y, rowHeight + 6, () => { resetDocumentPage(doc, theme); tableHeader(doc, 44, fonts, theme); });
+    const rowHeight = invoiceRowHeight(doc, rowData, fonts, theme);
+    y = ensurePageSpace(doc, y, rowHeight + 6, () => continueDocumentTablePage(doc, 'INVOICE', event, number, fonts, businessProfile), theme);
     drawInvoiceRow(doc, y, fonts, rowData, shaded, theme);
     rowNumber += 1;
     shaded = !shaded;
@@ -2428,7 +2495,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
   ];
   if (settlement > 0) totalRows.push(['Settlement', money(settlement), '#0b6b3a', fonts.regular]);
   totalRows.push(['Pending', money(pending), pending > 0 ? '#ba1a1a' : '#0b6b3a', fonts.bold]);
-  y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126));
+  y = ensurePageSpace(doc, y, Math.max(184, totalsPanelHeight(totalRows, theme) + 126), () => continueDocumentContentPage(doc, 'INVOICE', event, number, fonts, businessProfile), theme);
   drawDocumentClosing(doc, y + 4, {
     amountValue: pending || grandTotal,
     notes: invoice.notes,
@@ -2437,7 +2504,7 @@ function generateManualInvoicePdf({ res, invoice, businessProfile = emptyBusines
     theme,
     businessProfile,
   });
-  drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou: true });
+  drawBufferedDocumentFooters(doc, fonts, theme, businessProfile, { thankYou: true });
   doc.end();
 }
 
