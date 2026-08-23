@@ -626,8 +626,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   String normalizedDocumentTemplate(String value) => switch (value) {
         'premium' => 'elegant',
         'minimal' => 'classic',
-        'classic' || 'elegant' || 'modern' => value,
-        _ => 'modern',
+        'classic' || 'elegant' || 'modern' || 'boxed' => value,
+        _ => 'boxed',
       };
 
   late final businessName =

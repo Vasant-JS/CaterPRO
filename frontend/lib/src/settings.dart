@@ -1,9 +1,11 @@
 part of '../main.dart';
 
 Uint8List? bytesFromDataUrl(String value) {
-  if (value.isEmpty || !value.contains(',')) return null;
+  if (value.trim().isEmpty) return null;
+  final source = value.trim();
+  final base64Value = source.contains(',') ? source.split(',').last : source;
   try {
-    return base64Decode(value.split(',').last);
+    return base64Decode(base64Value.replaceAll(RegExp(r'\s+'), ''));
   } catch (_) {
     return null;
   }
@@ -1836,8 +1838,12 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
   late String documentTemplate = switch (widget.profile.documentTemplate) {
     'premium' => 'elegant',
     'minimal' => 'classic',
-    'classic' || 'elegant' || 'modern' => widget.profile.documentTemplate,
-    _ => 'modern',
+    'classic' ||
+    'elegant' ||
+    'modern' ||
+    'boxed' =>
+      widget.profile.documentTemplate,
+    _ => 'boxed',
   };
   late double invoiceTextScale = widget.profile.invoiceTextScale;
   late double pdfMenuFontSize = widget.profile.pdfMenuFontSize;
@@ -1913,12 +1919,13 @@ class _InvoiceSettingsScreenState extends State<InvoiceSettingsScreen> {
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(12))),
                   items: const [
+                    DropdownMenuItem(value: 'boxed', child: Text('Boxed Blue')),
                     DropdownMenuItem(value: 'classic', child: Text('Classic')),
                     DropdownMenuItem(value: 'elegant', child: Text('Elegant')),
                     DropdownMenuItem(value: 'modern', child: Text('Modern')),
                   ],
                   onChanged: (value) =>
-                      setState(() => documentTemplate = value ?? 'modern'),
+                      setState(() => documentTemplate = value ?? 'boxed'),
                 ),
               ])),
           const SizedBox(height: 14),

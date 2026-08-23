@@ -987,7 +987,7 @@ class BusinessProfile {
     this.logoBase64 = '',
     this.signatureBase64 = '',
     this.qrBase64 = '',
-    this.documentTemplate = 'modern',
+    this.documentTemplate = 'boxed',
     this.invoiceTextScale = 1,
     this.pdfMenuFontSize = 12,
   });
@@ -1037,7 +1037,7 @@ class BusinessProfile {
       logoBase64: data['logoBase64']?.toString() ?? '',
       signatureBase64: data['signatureBase64']?.toString() ?? '',
       qrBase64: data['qrBase64']?.toString() ?? '',
-      documentTemplate: data['documentTemplate']?.toString() ?? 'modern',
+      documentTemplate: data['documentTemplate']?.toString() ?? 'boxed',
       invoiceTextScale:
           double.tryParse(data['invoiceTextScale']?.toString() ?? '') ?? 1,
       pdfMenuFontSize:
