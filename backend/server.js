@@ -2829,7 +2829,11 @@ function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo)
     color: '#111827',
     bold: true,
   });
-  const eventH = drawTextRun(doc, `Event: ${event.name || '-'}`, 42, leftY + clientH + 6, 240, fonts, {
+  const mobileH = drawTextRun(doc, `Mobile: ${event.mobile || '-'}`, 42, leftY + clientH + 6, 240, fonts, {
+    fontSize: menuFontSize,
+    color: '#374151',
+  });
+  const eventH = drawTextRun(doc, `Event: ${event.name || '-'}`, 42, leftY + clientH + mobileH + 12, 240, fonts, {
     fontSize: menuFontSize,
     color: '#374151',
   });
@@ -2844,7 +2848,7 @@ function menuHeader(doc, event, date, fonts, businessProfile, pageLabel, pageNo)
     color: '#374151',
     align: 'right',
   });
-  const bottom = Math.max(leftY + clientH + 6 + eventH, rightY + dateH + 6 + venueH) + 14;
+  const bottom = Math.max(leftY + clientH + mobileH + 12 + eventH, rightY + dateH + 6 + venueH) + 14;
   doc.moveTo(42, bottom).lineTo(553, bottom).strokeColor('#d1d5db').lineWidth(0.6).stroke();
   return bottom + 16;
 }
