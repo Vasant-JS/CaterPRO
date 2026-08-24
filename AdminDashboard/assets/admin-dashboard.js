@@ -1848,12 +1848,99 @@
     });
   }
 
-  function reportPdfUrl(userId, month) {
-    return appendQuery(`${apiBase()}/admin/users/${encodeURIComponent(userId)}/reports/monthly.pdf${pdfTokenQuery()}`, { month });
+  function localDateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
 
-  function currentReportMonth() {
-    return new Date().toISOString().slice(0, 7);
+  function reportPdfUrl(userId, range) {
+    return appendQuery(`${apiBase()}/admin/users/${encodeURIComponent(userId)}/reports/monthly.pdf${pdfTokenQuery()}`, range);
+  }
+
+  function currentReportRange(type) {
+    const today = new Date();
+    const endDate = localDateKey(today);
+    if (type === "quarter") {
+      const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+      return { startDate: localDateKey(new Date(today.getFullYear(), quarterStartMonth, 1)), endDate };
+    }
+    if (type === "year") return { startDate: localDateKey(new Date(today.getFullYear(), 0, 1)), endDate };
+    return { startDate: localDateKey(new Date(today.getFullYear(), today.getMonth(), 1)), endDate };
+  }
+
+  function reportRangeModal() {
+    const today = localDateKey(new Date());
+    const yearBack = new Date();
+    yearBack.setFullYear(yearBack.getFullYear() - 1);
+    const minDate = localDateKey(yearBack);
+    return `<div id="report-range-modal" class="fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6">
+      <div class="w-full max-w-xl bg-white rounded-xl border border-outline-variant shadow-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between">
+          <div>
+            <h3 class="font-title-lg text-title-lg">Generate report</h3>
+            <p class="text-sm text-on-surface-variant">Choose the reporting period.</p>
+          </div>
+          <button type="button" class="report-range-close p-2 hover:bg-surface-container-highest rounded" title="Close"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="p-6 space-y-5">
+          <div class="grid sm:grid-cols-3 gap-3">
+            <button type="button" class="report-range-preset px-4 py-3 border border-outline-variant rounded-lg text-left hover:bg-surface-container-low" data-range="month">Current month</button>
+            <button type="button" class="report-range-preset px-4 py-3 border border-outline-variant rounded-lg text-left hover:bg-surface-container-low" data-range="quarter">Current quarter</button>
+            <button type="button" class="report-range-preset px-4 py-3 border border-outline-variant rounded-lg text-left hover:bg-surface-container-low" data-range="year">Current year</button>
+          </div>
+          <div class="rounded-lg border border-outline-variant p-4 space-y-3">
+            <p class="font-semibold">Custom date range</p>
+            <div class="grid sm:grid-cols-2 gap-3">
+              <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">From</span><input id="report-start-date" type="date" min="${minDate}" max="${today}" class="w-full border border-outline-variant rounded-lg px-3 py-2"></label>
+              <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">To</span><input id="report-end-date" type="date" min="${minDate}" max="${today}" value="${today}" class="w-full border border-outline-variant rounded-lg px-3 py-2"></label>
+            </div>
+            <p id="report-range-error" class="hidden text-sm text-error"></p>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t border-outline-variant flex justify-end gap-3">
+          <button type="button" class="report-range-close px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md">Cancel</button>
+          <button id="report-custom-download" type="button" class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">download</span>Open PDF</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function openReportRangeModal(userId) {
+    document.getElementById("report-range-modal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", reportRangeModal());
+    const modal = document.getElementById("report-range-modal");
+    const error = document.getElementById("report-range-error");
+    const close = () => modal?.remove();
+    const openRange = (range) => {
+      openPdfTab(reportPdfUrl(userId, range));
+      close();
+    };
+    modal?.querySelectorAll(".report-range-close").forEach((button) => button.addEventListener("click", close));
+    modal?.addEventListener("click", (event) => { if (event.target === modal) close(); });
+    modal?.querySelectorAll(".report-range-preset").forEach((button) => button.addEventListener("click", () => openRange(currentReportRange(button.dataset.range || "month"))));
+    document.getElementById("report-custom-download")?.addEventListener("click", () => {
+      const startDate = document.getElementById("report-start-date")?.value || "";
+      const endDate = document.getElementById("report-end-date")?.value || "";
+      if (!startDate || !endDate) {
+        if (error) {
+          error.textContent = "Select both from-date and to-date.";
+          error.classList.remove("hidden");
+        }
+        return;
+      }
+      const start = new Date(`${startDate}T00:00:00`);
+      const end = new Date(`${endDate}T00:00:00`);
+      const today = new Date(`${localDateKey(new Date())}T00:00:00`);
+      const maxEnd = new Date(start);
+      maxEnd.setDate(maxEnd.getDate() + 365);
+      if (end < start || end > today || end > maxEnd) {
+        if (error) {
+          error.textContent = end > today ? "To-date cannot be in the future." : end > maxEnd ? "Report date range cannot exceed 1 year." : "To-date must be after from-date.";
+          error.classList.remove("hidden");
+        }
+        return;
+      }
+      openRange({ startDate, endDate });
+    });
   }
 
   function reportInfoModal(row, data) {
@@ -1888,7 +1975,7 @@
     const close = () => modal?.remove();
     modal?.querySelectorAll(".report-info-close").forEach((button) => button.addEventListener("click", close));
     modal?.addEventListener("click", (event) => { if (event.target === modal) close(); });
-    document.getElementById("report-info-download")?.addEventListener("click", () => openPdfTab(reportPdfUrl(data.user?.id || "", currentReportMonth())));
+    document.getElementById("report-info-download")?.addEventListener("click", () => openReportRangeModal(data.user?.id || ""));
   }
 
   function wireClientReportActions(data) {
@@ -1906,7 +1993,7 @@
       if (row) openReportInfoModal(row, data);
     }));
     document.querySelectorAll(".report-download").forEach((button) => button.addEventListener("click", () => {
-      openPdfTab(reportPdfUrl(userId, currentReportMonth()));
+      openReportRangeModal(userId);
     }));
   }
 

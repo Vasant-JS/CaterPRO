@@ -2666,20 +2666,72 @@ function sameMonthValue(date, month) {
   return date && date.getFullYear() === month.getFullYear() && date.getMonth() === month.getMonth();
 }
 
+function isoDateFromDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function parseStrictIsoDate(value) {
+  const text = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
+  const [year, month, day] = text.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
+}
+
+function reportRangeFromQuery(query = {}) {
+  const today = parseStrictIsoDate(todayIso());
+  const hasCustomRange = query.startDate || query.endDate;
+  let startDate;
+  let endDate;
+  let label;
+  let fileKey;
+  if (hasCustomRange) {
+    startDate = parseStrictIsoDate(query.startDate);
+    endDate = parseStrictIsoDate(query.endDate);
+    if (!startDate || !endDate) return { error: 'Start date and to-date must be valid dates' };
+    if (endDate > today) endDate = today;
+    label = `${prettyDate(isoDateFromDate(startDate))} to ${prettyDate(isoDateFromDate(endDate))}`;
+    fileKey = `${isoDateFromDate(startDate)}-to-${isoDateFromDate(endDate)}`;
+  } else {
+    const [yearText, monthText] = String(query.month || todayIso().slice(0, 7)).split('-');
+    const year = Number(yearText || today.getFullYear());
+    const month = Number(monthText || today.getMonth() + 1);
+    startDate = new Date(year, month - 1, 1);
+    endDate = new Date(year, month, 0);
+    if (endDate > today) endDate = today;
+    label = startDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+    fileKey = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, '0')}`;
+  }
+  if (startDate > endDate) return { error: 'Start date cannot be after to-date' };
+  const maxEndDate = new Date(startDate);
+  maxEndDate.setDate(maxEndDate.getDate() + 365);
+  if (endDate > maxEndDate) return { error: 'Report date range cannot exceed 1 year' };
+  return {
+    startDate,
+    endDate,
+    startKey: isoDateFromDate(startDate),
+    endKey: isoDateFromDate(endDate),
+    label,
+    fileKey,
+  };
+}
+
 function eventMemberTotal(event) {
   return asArray(event.dates).reduce((dateSum, date) => dateSum + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + Number(slot.pax || 0), 0), 0);
 }
 
-function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, businessProfile = emptyBusinessProfile(), disposition = 'attachment' }) {
-  const [yearText, monthText] = String(monthKey || '').split('-');
-  const monthDate = new Date(Number(yearText || new Date().getFullYear()), Number(monthText || new Date().getMonth() + 1) - 1, 1);
-  const normalizedMonth = `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`;
-  const monthLabel = monthDate.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
-  const monthEvents = asArray(events).filter((event) => sameMonthValue(eventFirstDateValue(event), monthDate));
+function generateMonthlyReportPdf({ res, events, manualInvoices = [], range, businessProfile = emptyBusinessProfile(), disposition = 'attachment' }) {
+  const reportRange = range || reportRangeFromQuery({});
+  const reportLabel = reportRange.label || `${prettyDate(reportRange.startKey)} to ${prettyDate(reportRange.endKey)}`;
+  const rangeContains = (value) => {
+    const date = parseStrictIsoDate(value);
+    return date && date >= reportRange.startDate && date <= reportRange.endDate;
+  };
+  const monthEvents = asArray(events).filter((event) => asArray(event.dates).some((date) => rangeContains(date.date)));
   const monthPayments = asArray(events).flatMap((event) => asArray(event.payments)
-    .filter((payment) => String(payment.date || '').startsWith(normalizedMonth))
+    .filter((payment) => rangeContains(payment.date))
     .map((payment) => ({ ...payment, eventName: event.name || 'Event', client: event.primaryClient || event.mobile || '' })));
-  const monthManualInvoices = asArray(manualInvoices).filter((invoice) => String(invoice.invoiceDate || '').startsWith(normalizedMonth));
+  const monthManualInvoices = asArray(manualInvoices).filter((invoice) => rangeContains(invoice.invoiceDate));
   const bookedRevenue = monthEvents.reduce((sum, event) => sum + eventTotals(event).total, 0);
   const collected = monthPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
     + monthManualInvoices.reduce((sum, invoice) => sum + Number(invoice.paidAmount || 0), 0);
@@ -2695,7 +2747,7 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
   const avgMembers = monthEvents.length ? Math.round(members / monthEvents.length) : 0;
   const pendingEvents = monthEvents.filter((event) => eventTotals(event).balance > 0);
 
-  const doc = new PDFDocument({ size: 'A4', margin: 24, info: { Title: `Monthly Report - ${monthLabel}` }, autoFirstPage: false });
+  const doc = new PDFDocument({ size: 'A4', margin: 24, info: { Title: `Report - ${reportLabel}` }, autoFirstPage: false });
   const fonts = configurePdfFonts(doc);
   const pageW = 595.28;
   const pageH = 841.89;
@@ -2705,17 +2757,17 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
   let pageNo = 0;
   let y = 0;
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `${disposition}; filename="monthly-report-${normalizedMonth}.pdf"`);
+  res.setHeader('Content-Disposition', `${disposition}; filename="monthly-report-${reportRange.fileKey}.pdf"`);
   doc.pipe(res);
 
   function addPage() {
     doc.addPage({ size: 'A4', margin: 24 });
     pageNo += 1;
     doc.rect(0, 0, pageW, pageH).fill('#ffffff');
-    doc.fillColor('#111827').font(fonts.bold).fontSize(18).text('Monthly Report', left, 24, { width: 220 });
-    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${monthLabel} - ${businessProfile.businessName || 'CaterPro'} - Page ${pageNo}`, right - 270, 29, { width: 270, align: 'right' });
+    doc.fillColor('#111827').font(fonts.bold).fontSize(18).text('Report', left, 24, { width: 220 });
+    doc.fillColor('#4b5563').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(`${reportLabel} - ${businessProfile.businessName || 'CaterPro'} - Page ${pageNo}`, right - 270, 29, { width: 270, align: 'right' });
     doc.moveTo(left, 52).lineTo(right, 52).strokeColor('#d1d5db').lineWidth(0.6).stroke();
-    doc.fillColor('#6b7280').font(fonts.regular).fontSize(6.8).text(caterProPdfFooter, left, pageH - 24, { width, align: 'center', lineBreak: false, link: caterProBrandUrl, underline: false });
+    doc.fillColor('#6b7280').font(fonts.regular).fontSize(6.8).text(caterProPdfFooter, left, pageH - 38, { width, align: 'center', lineBreak: false, link: caterProBrandUrl, underline: false });
     y = 68;
   }
   function ensure(height) {
@@ -2765,14 +2817,14 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
     const totals = eventTotals(event);
     row([eventFirstDateValue(event)?.toISOString().slice(0, 10) || '-', event.name || 'Event', event.primaryClient || event.mobile || '-', eventMemberTotal(event), money(totals.total), money(totals.paid), money(totals.discount), money(totals.balance)], [48, 122, 82, 48, 66, 58, 58, 66], { align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
   }
-  if (!monthEvents.length) row(['No events for this month'], [width]);
+  if (!monthEvents.length) row(['No events for this range'], [width]);
 
-  section('Payments Collected This Month');
+  section('Payments Collected');
   row(['Date', 'Event', 'Client', 'Mode', 'Reference', 'Amount'], [56, 132, 96, 62, 132, 72], { header: true, align: ['', '', '', '', '', 'right'] });
   for (const payment of monthPayments) {
     row([payment.date || '-', payment.eventName, payment.client || '-', payment.mode || '-', payment.reference || '-', money(payment.amount)], [56, 132, 96, 62, 132, 72], { align: ['', '', '', '', '', 'right'] });
   }
-  if (!monthPayments.length) row(['No event payments collected this month'], [width]);
+  if (!monthPayments.length) row(['No event payments collected in this range'], [width]);
 
   section('Manual Invoices');
   row(['Date', 'Invoice', 'Client', 'Total', 'Paid', 'Pending'], [58, 120, 148, 76, 76, 76], { header: true, align: ['', '', '', 'right', 'right', 'right'] });
@@ -2781,7 +2833,7 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], monthKey, 
     const paid = Number(invoice.paidAmount || 0) + Number(invoice.settlementAmount || 0);
     row([invoice.invoiceDate || '-', invoice.invoiceNumber || invoice.id, invoice.clientName || '-', money(total), money(paid), money(Math.max(0, total - paid))], [58, 120, 148, 76, 76, 76], { align: ['', '', '', 'right', 'right', 'right'] });
   }
-  if (!monthManualInvoices.length) row(['No manual invoices for this month'], [width]);
+  if (!monthManualInvoices.length) row(['No manual invoices for this range'], [width]);
   doc.end();
 }
 
@@ -4173,12 +4225,13 @@ app.get('/api/admin/users/:userId/reports/monthly.pdf', (req, res) => {
   const targetUser = requireAdminTargetUser(req, res, db);
   if (!targetUser) return;
   const userData = db.userData[targetUser.id];
-  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  const range = reportRangeFromQuery(req.query);
+  if (range.error) return res.status(400).json({ message: range.error });
   return generateMonthlyReportPdf({
     res,
     events: userData.events,
     manualInvoices: userData.manualInvoices,
-    monthKey: month,
+    range,
     businessProfile: userData.businessProfile,
     disposition: 'inline',
   });
@@ -4871,12 +4924,13 @@ app.get('/api/reports/monthly.pdf', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  const month = String(req.query.month || new Date().toISOString().slice(0, 7));
+  const range = reportRangeFromQuery(req.query);
+  if (range.error) return res.status(400).json({ message: range.error });
   return generateMonthlyReportPdf({
     res,
     events: db.userData[user.id].events,
     manualInvoices: db.userData[user.id].manualInvoices,
-    monthKey: month,
+    range,
     businessProfile: db.userData[user.id].businessProfile,
   });
 });

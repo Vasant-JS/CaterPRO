@@ -2566,15 +2566,22 @@ class ApiService {
     });
   }
 
-  Future<Uri> monthlyReportPdfUri(String month) async {
+  Future<Uri> monthlyReportPdfUri(String month,
+      {String? startDate, String? endDate}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
-    return Uri.parse('${ApiConfig.baseUrl}/reports/monthly.pdf')
-        .replace(queryParameters: {
+    final params = <String, String>{
       'token': token,
-      'month': month,
       'ts': DateTime.now().millisecondsSinceEpoch.toString()
-    });
+    };
+    if (startDate != null && endDate != null) {
+      params['startDate'] = startDate;
+      params['endDate'] = endDate;
+    } else {
+      params['month'] = month;
+    }
+    return Uri.parse('${ApiConfig.baseUrl}/reports/monthly.pdf')
+        .replace(queryParameters: params);
   }
 
   Future<List<CustomMenu>> getCustomMenus() async {
@@ -2891,6 +2898,108 @@ class ApiService {
             '${ApiConfig.baseUrl}/events/$eventId/material-documents/$documentId/pdf')
         .replace(queryParameters: {'token': token});
   }
+}
+
+class ReportDateRangeSelection {
+  const ReportDateRangeSelection({
+    required this.label,
+    required this.fileLabel,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  final String label;
+  final String fileLabel;
+  final String startDate;
+  final String endDate;
+}
+
+String isoDateKey(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+String reportRangeFileLabel(DateTime start, DateTime end) =>
+    '${isoDateKey(start)} to ${isoDateKey(end)}';
+
+Future<ReportDateRangeSelection?> showReportDateRangePickerDialog(
+    BuildContext context) async {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final monthStart = DateTime(today.year, today.month);
+  final quarterStartMonth = ((today.month - 1) ~/ 3) * 3 + 1;
+  final quarterStart = DateTime(today.year, quarterStartMonth);
+  final yearStart = DateTime(today.year);
+
+  ReportDateRangeSelection selection(
+          String label, DateTime start, DateTime end) =>
+      ReportDateRangeSelection(
+          label: label,
+          fileLabel: reportRangeFileLabel(start, end),
+          startDate: isoDateKey(start),
+          endDate: isoDateKey(end));
+
+  final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+            title: const Text('Generate report'),
+            children: [
+              SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, 'current_month'),
+                  child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.calendar_month),
+                      title: Text('Current month'))),
+              SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, 'current_quarter'),
+                  child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.view_week),
+                      title: Text('Current quarter'))),
+              SimpleDialogOption(
+                  onPressed: () => Navigator.pop(dialogContext, 'current_year'),
+                  child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.event_available),
+                      title: Text('Current year'))),
+              SimpleDialogOption(
+                  onPressed: () => Navigator.pop(dialogContext, 'custom'),
+                  child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.date_range),
+                      title: Text('Custom date range'),
+                      subtitle: Text('Maximum 1 year, to-date up to today'))),
+            ],
+          ));
+
+  switch (choice) {
+    case 'current_month':
+      return selection('Current month', monthStart, today);
+    case 'current_quarter':
+      return selection('Current quarter', quarterStart, today);
+    case 'current_year':
+      return selection('Current year', yearStart, today);
+    case 'custom':
+      final firstDate = DateTime(today.year - 1, today.month, today.day);
+      final picked = await showDateRangePicker(
+          context: context,
+          firstDate: firstDate,
+          lastDate: today,
+          initialDateRange: DateTimeRange(
+              start: today.subtract(const Duration(days: 30)), end: today));
+      if (picked == null) return null;
+      final start =
+          DateTime(picked.start.year, picked.start.month, picked.start.day);
+      final end = DateTime(picked.end.year, picked.end.month, picked.end.day);
+      if (end.difference(start).inDays > 365) {
+        if (context.mounted) {
+          showCpSnack(context, 'Report date range cannot exceed 1 year');
+        }
+        return null;
+      }
+      return selection('Custom range', start, end);
+  }
+  return null;
 }
 
 List<T> decodeJsonList<T>(

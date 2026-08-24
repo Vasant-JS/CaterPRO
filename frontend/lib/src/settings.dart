@@ -633,13 +633,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Future<void> downloadMonthlyReportPdf() async {
     try {
+      final range = await showReportDateRangePickerDialog(context);
+      if (range == null) return;
+      if (!mounted) return;
       showCpSnack(context, 'Preparing monthly report...');
-      final uri = await widget.api.monthlyReportPdfUri(monthKey);
+      final uri = await widget.api.monthlyReportPdfUri(range.startDate,
+          startDate: range.startDate, endDate: range.endDate);
       if (!mounted) return;
       showDownloadSnack(context, uri,
-          title: 'Monthly report $monthKey.pdf',
+          title: '${range.label} report ${range.fileLabel}.pdf',
           kind: 'report',
-          successMessage: 'Monthly report download started',
+          successMessage: '${range.label} report download started',
           failureMessage: 'Unable to download report');
     } catch (e) {
       if (mounted) {

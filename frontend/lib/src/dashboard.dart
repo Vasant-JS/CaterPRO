@@ -128,18 +128,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String dateKey(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-  Future<void> downloadMonthlyReport(
-      BuildContext context, DateTime month) async {
+  Future<void> downloadMonthlyReport(BuildContext context) async {
     try {
+      final range = await showReportDateRangePickerDialog(context);
+      if (range == null) return;
+      if (!context.mounted) return;
       showCpSnack(context, 'Preparing monthly report...');
-      final monthKey =
-          '${month.year}-${month.month.toString().padLeft(2, '0')}';
-      final uri = await widget.api.monthlyReportPdfUri(monthKey);
+      final uri = await widget.api.monthlyReportPdfUri(range.startDate,
+          startDate: range.startDate, endDate: range.endDate);
       if (!context.mounted) return;
       showDownloadSnack(context, uri,
-          title: 'Monthly report $monthKey.pdf',
+          title: '${range.label} report ${range.fileLabel}.pdf',
           kind: 'report',
-          successMessage: 'Monthly report download started',
+          successMessage: '${range.label} report download started',
           failureMessage: 'Unable to download report');
     } catch (error) {
       if (context.mounted) {
@@ -385,7 +386,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             due: pending,
             values: trend,
             maxValue: maxTrend,
-            onReportTap: () => downloadMonthlyReport(context, month),
+            onReportTap: () => downloadMonthlyReport(context),
             monthLabels: List.generate(
                 6,
                 (index) =>
