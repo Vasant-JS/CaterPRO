@@ -4539,20 +4539,7 @@ function mergeUserDataForSync(existing = emptyUserData(), incoming = emptyUserDa
 }
 
 function backupUserDataForSync(existing = emptyUserData(), incoming = {}) {
-  const current = ensureUserDataShape({ ...emptyUserData(), ...existing });
-  const next = incoming && typeof incoming === 'object' ? incoming : {};
-  const merged = { ...current };
-  for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'menuItems', 'rawMaterials', 'produceItems', 'vesselItems', 'customMenus', 'requirementLists', 'payments', 'manualInvoices', 'auditLogs']) {
-    if (Array.isArray(next[key])) {
-      merged[key] = key === 'customMenus'
-        ? mergeSyncRecordList(current.customMenus, next.customMenus, 'customMenus')
-        : next[key];
-    }
-  }
-  if (next.businessProfile && typeof next.businessProfile === 'object') {
-    merged.businessProfile = { ...emptyBusinessProfile(), ...next.businessProfile };
-  }
-  return ensureUserDataShape(merged);
+  return mergeUserDataForSync(existing, incoming);
 }
 
 function syncSnapshotForUser(db, userId) {
