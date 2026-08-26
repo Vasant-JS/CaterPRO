@@ -4313,6 +4313,8 @@ app.delete('/api/admin/users/:userId/menu-items/:itemId', async (req, res) => {
   const db = readDb();
   const targetUser = requireAdminTargetUser(req, res, db);
   if (!targetUser) return;
+  const references = menuItemReferences(db.userData[targetUser.id], req.params.itemId);
+  if (sendMenuItemReferenceConflict(res, references)) return;
   const before = db.userData[targetUser.id].menuItems.length;
   db.userData[targetUser.id].menuItems = db.userData[targetUser.id].menuItems
     .filter((entry) => entry.id !== req.params.itemId);
@@ -4512,6 +4514,47 @@ function mergeSyncRecordList(existing, incoming, listKey) {
     }
   }
   return [...records.values()];
+}
+
+function menuItemReferences(userData = emptyUserData(), itemId = '') {
+  const id = String(itemId || '');
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const eventMenus = [];
+  for (const event of asArray(userData.events)) {
+    for (const date of asArray(event.dates)) {
+      for (const slot of asArray(date.menuSlots)) {
+        if (!asArray(slot.menuItemIds).map(String).includes(id)) continue;
+        eventMenus.push({
+          eventId: event.id || '',
+          eventName: event.name || 'Untitled event',
+          clientName: event.primaryClient || '',
+          date: date.date || '',
+          menuType: slot.type || '',
+          isFuture: !date.date || String(date.date) >= todayKey,
+        });
+      }
+    }
+  }
+  const customMenus = asArray(userData.customMenus)
+    .filter((menu) => asArray(menu.itemIds).map(String).includes(id))
+    .map((menu) => ({
+      id: menu.id || '',
+      name: menu.name || 'Unnamed ready-made menu',
+      type: menu.type || '',
+    }));
+  return { eventMenus, customMenus };
+}
+
+function sendMenuItemReferenceConflict(res, references) {
+  const eventCount = references.eventMenus.length;
+  const customMenuCount = references.customMenus.length;
+  if (!eventCount && !customMenuCount) return false;
+  res.status(409).json({
+    message:
+      'This menu item is used in event or ready-made menus. Edit this item or add a new menu item instead of deleting it.',
+    references,
+  });
+  return true;
 }
 
 function mergeUserDataForSync(existing = emptyUserData(), incoming = emptyUserData()) {
@@ -5135,6 +5178,8 @@ app.delete('/api/menu-items/:id', (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  const references = menuItemReferences(db.userData[user.id], req.params.id);
+  if (sendMenuItemReferenceConflict(res, references)) return;
   db.userData[user.id].menuItems = db.userData[user.id].menuItems.filter((entry) => entry.id !== req.params.id);
   writeDb(db);
   res.status(204).end();

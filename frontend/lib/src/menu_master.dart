@@ -77,9 +77,29 @@ String nextMenuMasterItemId() {
   return 'MNU-${(maxNumber + 1).toString().padLeft(3, '0')}';
 }
 
+enum _MenuItemReferenceSource { event, customMenu }
+
+class _MenuItemReference {
+  const _MenuItemReference(
+      {required this.title,
+      required this.subtitle,
+      required this.isFuture,
+      this.source = _MenuItemReferenceSource.event});
+  final String title;
+  final String subtitle;
+  final bool isFuture;
+  final _MenuItemReferenceSource source;
+}
+
 class MenuMasterScreen extends StatefulWidget {
-  const MenuMasterScreen({super.key, required this.onClose});
+  const MenuMasterScreen(
+      {super.key,
+      required this.onClose,
+      required this.events,
+      required this.customMenus});
   final VoidCallback onClose;
+  final List<AppEvent> events;
+  final List<CustomMenu> customMenus;
 
   static final List<MenuMasterItem> menuItems = [];
 
@@ -148,7 +168,126 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
     }));
   }
 
+  List<_MenuItemReference> referencesForMenuItem(String itemId) {
+    final references = <_MenuItemReference>[];
+    final today = DateTime.now();
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    for (final event in widget.events) {
+      for (final date in event.dates) {
+        final eventDate = DateTime.tryParse(date.date);
+        final isFuture = eventDate == null ||
+            !DateTime(eventDate.year, eventDate.month, eventDate.day)
+                .isBefore(todayOnly);
+        for (final slot in date.menuSlots) {
+          if (!slot.menuItemIds.contains(itemId)) continue;
+          references.add(_MenuItemReference(
+              title: event.name.isEmpty ? 'Untitled event' : event.name,
+              subtitle: [
+                event.primaryClient.isEmpty ? 'No client' : event.primaryClient,
+                if (date.date.isNotEmpty) date.date,
+                if (slot.type.isNotEmpty) slot.type,
+              ].join(' | '),
+              isFuture: isFuture));
+        }
+      }
+    }
+    for (final menu in widget.customMenus) {
+      if (!menu.itemIds.contains(itemId)) continue;
+      references.add(_MenuItemReference(
+          title: menu.name.isEmpty ? 'Unnamed ready-made menu' : menu.name,
+          subtitle:
+              '${menu.type.isEmpty ? 'Ready-made menu' : menu.type} ready-made menu',
+          isFuture: true,
+          source: _MenuItemReferenceSource.customMenu));
+    }
+    return references;
+  }
+
+  Future<void> showReferencedMenuItemDialog(
+      MenuMasterItem item, List<_MenuItemReference> references) {
+    final upcoming = references
+        .where((reference) =>
+            reference.source == _MenuItemReferenceSource.event &&
+            reference.isFuture)
+        .toList();
+    final previous = references
+        .where((reference) =>
+            reference.source == _MenuItemReferenceSource.event &&
+            !reference.isFuture)
+        .toList();
+    final readyMade = references
+        .where((reference) =>
+            reference.source == _MenuItemReferenceSource.customMenu)
+        .toList();
+    Widget section(String title, List<_MenuItemReference> items) {
+      if (items.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
+          const SizedBox(height: 8),
+          ...items.take(8).map((reference) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.event_note,
+                          size: 18, color: Cp.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                            Text(reference.title,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800)),
+                            Text(reference.subtitle,
+                                style: TextStyle(
+                                    color: Colors.black.withOpacity(.58),
+                                    fontWeight: FontWeight.w600)),
+                          ])),
+                    ]),
+              )),
+          if (items.length > 8)
+            Text('+${items.length - 8} more',
+                style: const TextStyle(fontWeight: FontWeight.w800)),
+        ]),
+      );
+    }
+
+    return showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('Menu item is in use'),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                            '"${item.english.isEmpty ? item.kannada : item.english}" is already used in menus. Edit this menu item or add a new menu item instead of deleting it.'),
+                        section('Upcoming event menus', upcoming),
+                        section('Previous event menus', previous),
+                        section('Ready-made menus', readyMade),
+                      ]),
+                ),
+              ),
+              actions: [
+                FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('OK')),
+              ],
+            ));
+  }
+
   Future<void> deleteMenuItem(MenuMasterItem item) async {
+    final references = referencesForMenuItem(item.id);
+    if (references.isNotEmpty) {
+      await showReferencedMenuItemDialog(item, references);
+      return;
+    }
     final confirmed = await showDialog<bool>(
           context: context,
           builder: (context) => AlertDialog(
