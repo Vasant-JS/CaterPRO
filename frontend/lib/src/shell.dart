@@ -1905,6 +1905,7 @@ class _AppShellState extends State<AppShell> {
             onAddEvent: openCreateEvent,
             onEventUpdated: updateSelectedEvent,
             onEventDeleted: removeSelectedEvent,
+            onSaveCustomMenu: saveCustomMenu,
             onClose: closeToParent),
         MenuMasterScreen(
             onClose: closeToParent,

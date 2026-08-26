@@ -40,6 +40,7 @@ class EventDetailsScreen extends StatelessWidget {
       required this.onAddEvent,
       required this.onEventUpdated,
       required this.onEventDeleted,
+      required this.onSaveCustomMenu,
       required this.onClose});
   final AppEvent? event;
   final ApiService api;
@@ -51,6 +52,7 @@ class EventDetailsScreen extends StatelessWidget {
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
   final ValueChanged<String> onEventDeleted;
+  final Future<void> Function(CustomMenu menu) onSaveCustomMenu;
   final VoidCallback onClose;
 
   Future<void> handleAction(
@@ -399,7 +401,8 @@ class EventDetailsScreen extends StatelessWidget {
                   businessProfile: businessProfile,
                   onEditStep: onEditStep,
                   onAddEvent: onAddEvent,
-                  onEventUpdated: onEventUpdated)
+                  onEventUpdated: onEventUpdated,
+                  onSaveCustomMenu: onSaveCustomMenu)
             ],
     );
   }
@@ -415,7 +418,8 @@ class EventDetailsContent extends StatefulWidget {
       required this.businessProfile,
       required this.onEditStep,
       required this.onAddEvent,
-      required this.onEventUpdated});
+      required this.onEventUpdated,
+      required this.onSaveCustomMenu});
   final AppEvent event;
   final List<AppEvent> events;
   final ApiService api;
@@ -424,6 +428,7 @@ class EventDetailsContent extends StatefulWidget {
   final void Function(AppEvent event, int step) onEditStep;
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final Future<void> Function(CustomMenu menu) onSaveCustomMenu;
 
   @override
   State<EventDetailsContent> createState() => _EventDetailsContentState();
@@ -773,7 +778,8 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
           businessProfile: widget.businessProfile,
           onEditStep: widget.onEditStep,
           onAddEvent: widget.onAddEvent,
-          onEventUpdated: widget.onEventUpdated),
+          onEventUpdated: widget.onEventUpdated,
+          onSaveCustomMenu: widget.onSaveCustomMenu),
     ]);
   }
 }
@@ -789,7 +795,8 @@ class EventDetailsTabContent extends StatelessWidget {
       required this.businessProfile,
       required this.onEditStep,
       required this.onAddEvent,
-      required this.onEventUpdated});
+      required this.onEventUpdated,
+      required this.onSaveCustomMenu});
   final int tab;
   final AppEvent event;
   final ApiService api;
@@ -799,6 +806,7 @@ class EventDetailsTabContent extends StatelessWidget {
   final void Function(AppEvent event, int step) onEditStep;
   final VoidCallback onAddEvent;
   final ValueChanged<AppEvent> onEventUpdated;
+  final Future<void> Function(CustomMenu menu) onSaveCustomMenu;
 
   Future<void> shareMenuDateOnWhatsApp(
       BuildContext context, AppEvent event, String message) async {
@@ -816,6 +824,57 @@ class EventDetailsTabContent extends StatelessWidget {
     if (!context.mounted) return;
     showCpSnack(
         context, launched ? 'Menu ready to share' : 'Unable to open WhatsApp');
+  }
+
+  Future<void> saveSlotAsReadyMadeMenu(
+      BuildContext context, AppMenuSlot slot) async {
+    if (slot.menuItemIds.isEmpty) {
+      showCpSnack(context, 'Select menu items before saving ready-made menu');
+      return;
+    }
+    final defaultName = [
+      slot.type,
+      if (event.name.trim().isNotEmpty) event.name.trim(),
+    ].join(' ');
+    final controller = TextEditingController(text: defaultName);
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Save as ready-made menu'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration:
+                const InputDecoration(labelText: 'Ready-made menu name'),
+            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, controller.text.trim()),
+                child: const Text('Save')),
+          ],
+        ),
+      );
+      if (name == null || name.trim().isEmpty || !context.mounted) return;
+      await onSaveCustomMenu(CustomMenu(
+          id: '',
+          name: name.trim(),
+          type: slot.type,
+          itemIds: slot.menuItemIds.toSet()));
+      if (context.mounted) showCpSnack(context, 'Ready-made menu saved');
+    } catch (e) {
+      if (context.mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      controller.dispose();
+    }
   }
 
   @override
@@ -858,7 +917,9 @@ class EventDetailsTabContent extends StatelessWidget {
                             successMessage: 'Menu download started',
                             failureMessage: 'Unable to start download');
                       }
-                    }))
+                    },
+                    onSaveReadyMade: (slot) =>
+                        saveSlotAsReadyMadeMenu(context, slot)))
               ]);
       case 2:
         final total = eventTotal(event);
@@ -1822,14 +1883,17 @@ class EventDateMenuCard extends StatelessWidget {
       {super.key,
       required this.date,
       required this.onShareWhatsApp,
-      required this.onDownload});
+      required this.onDownload,
+      required this.onSaveReadyMade});
   final AppEventDate date;
   final VoidCallback onShareWhatsApp;
   final VoidCallback onDownload;
+  final ValueChanged<AppMenuSlot> onSaveReadyMade;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: CpCard(
@@ -1861,9 +1925,9 @@ class EventDateMenuCard extends StatelessWidget {
                           fontWeight: FontWeight.w900)),
                   const SizedBox(height: 2),
                   Text(
-                      sortedVisibleMenuSlots(date.menuSlots).isEmpty
+                      visibleSlots.isEmpty
                           ? 'No menu slots'
-                          : sortedVisibleMenuSlots(date.menuSlots)
+                          : visibleSlots
                               .map((slot) =>
                                   '${slot.type} | ${slot.pax} Members | ${money(slot.pricePerPax)}/member')
                               .join('\n'),
@@ -1883,6 +1947,27 @@ class EventDateMenuCard extends StatelessWidget {
                 onPressed: onDownload,
                 icon: Icon(Icons.picture_as_pdf, color: cpPrimary(context)),
                 tooltip: 'Download menu PDF',
+              ),
+              PopupMenuButton<AppMenuSlot>(
+                tooltip: 'Menu actions',
+                icon: Icon(Icons.more_vert, color: cpOnVariant(context)),
+                enabled: visibleSlots.any((slot) => slot.menuItemIds.isNotEmpty),
+                onSelected: onSaveReadyMade,
+                itemBuilder: (context) => [
+                  for (final slot in visibleSlots)
+                    if (slot.menuItemIds.isNotEmpty)
+                      PopupMenuItem<AppMenuSlot>(
+                        value: slot,
+                        child: Row(children: [
+                          const Icon(Icons.bookmark_add, color: Cp.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                              child: Text('Save ${slot.type} as ready-made',
+                                  style: const TextStyle(
+                                      fontWeight: FontWeight.w800))),
+                        ]),
+                      ),
+                ],
               ),
             ]),
           ],
