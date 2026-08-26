@@ -4543,7 +4543,11 @@ function backupUserDataForSync(existing = emptyUserData(), incoming = {}) {
   const next = incoming && typeof incoming === 'object' ? incoming : {};
   const merged = { ...current };
   for (const key of ['events', 'clients', 'employees', 'attendance', 'additionalServices', 'menuItems', 'rawMaterials', 'produceItems', 'vesselItems', 'customMenus', 'requirementLists', 'payments', 'manualInvoices', 'auditLogs']) {
-    if (Array.isArray(next[key])) merged[key] = next[key];
+    if (Array.isArray(next[key])) {
+      merged[key] = key === 'customMenus'
+        ? mergeSyncRecordList(current.customMenus, next.customMenus, 'customMenus')
+        : next[key];
+    }
   }
   if (next.businessProfile && typeof next.businessProfile === 'object') {
     merged.businessProfile = { ...emptyBusinessProfile(), ...next.businessProfile };
