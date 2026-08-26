@@ -1889,7 +1889,8 @@ class _AppShellState extends State<AppShell> {
             clients: clients,
             customerEvents: events,
             onSaveService: upsertService,
-            onDeleteService: removeService),
+            onDeleteService: removeService,
+            onSaveCustomMenu: saveCustomMenu),
         EventDetailsScreen(
             event: events
                 .where((event) => event.id == selectedEventId)

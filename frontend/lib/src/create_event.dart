@@ -13,6 +13,7 @@ class CreateEventScreen extends StatefulWidget {
       required this.customerEvents,
       required this.onSaveService,
       required this.onDeleteService,
+      required this.onSaveCustomMenu,
       this.initialStep = 0});
   final AppEvent? initialEvent;
   final int initialStep;
@@ -25,6 +26,7 @@ class CreateEventScreen extends StatefulWidget {
   final List<AppEvent> customerEvents;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
+  final Future<void> Function(CustomMenu menu) onSaveCustomMenu;
 
   @override
   State<CreateEventScreen> createState() => _CreateEventScreenState();
@@ -268,7 +270,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 autosaveDraft();
               },
               onSaveService: widget.onSaveService,
-              onDeleteService: widget.onDeleteService),
+              onDeleteService: widget.onDeleteService,
+              onSaveCustomMenu: widget.onSaveCustomMenu),
         if (step == 3)
           CreateReviewStep(
               draft: draft,
@@ -724,13 +727,15 @@ class CreateMenuStep extends StatefulWidget {
       required this.customMenus,
       required this.onChanged,
       required this.onSaveService,
-      required this.onDeleteService});
+      required this.onDeleteService,
+      required this.onSaveCustomMenu});
   final List<DraftDateConfig> dates;
   final List<AdditionalServiceItem> services;
   final List<CustomMenu> customMenus;
   final VoidCallback onChanged;
   final ValueChanged<AdditionalServiceItem> onSaveService;
   final ValueChanged<String> onDeleteService;
+  final Future<void> Function(CustomMenu menu) onSaveCustomMenu;
 
   @override
   State<CreateMenuStep> createState() => _CreateMenuStepState();
@@ -812,6 +817,7 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                 widget.onChanged();
               },
               onEditMenu: () => openMenuPicker(slot),
+              onSaveAsCustomMenu: () => saveSlotAsCustomMenu(slot),
               onEditServices: () => openSlotServicePicker(slot),
               onAddImage: () => addMenuImage(slot),
               onRemoveImage: (image) {
@@ -884,6 +890,56 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
         ),
       ),
     );
+  }
+
+  Future<void> saveSlotAsCustomMenu(MealSlotConfig slot) async {
+    if (slot.selectedMenuIds.isEmpty) {
+      showCpSnack(context, 'Select menu items before saving custom menu');
+      return;
+    }
+    final config = currentConfig;
+    final defaultName = [
+      slot.type,
+      if (config != null) readableDateLabel(config.date),
+    ].join(' ');
+    final controller = TextEditingController(text: defaultName);
+    try {
+      final name = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Save as custom menu'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textInputAction: TextInputAction.done,
+            decoration: const InputDecoration(labelText: 'Custom menu name'),
+            onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, controller.text.trim()),
+                child: const Text('Save')),
+          ],
+        ),
+      );
+      if (name == null || name.trim().isEmpty || !mounted) return;
+      await widget.onSaveCustomMenu(CustomMenu(
+          id: '',
+          name: name.trim(),
+          type: slot.type,
+          itemIds: slot.selectedMenuIds));
+      if (mounted) showCpSnack(context, 'Custom menu saved');
+    } catch (e) {
+      if (mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
+    } finally {
+      controller.dispose();
+    }
   }
 
   void openSlotServicePicker(MealSlotConfig slot) {
@@ -1672,7 +1728,9 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
 
   void openReadyMadeMenuPicker() {
     final menus = widget.customMenus
-        .where((menu) => menu.type == widget.meal)
+        .where((menu) =>
+            menu.type == widget.meal ||
+            (widget.meal == 'Others' && menu.type == 'Other'))
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
     showModalBottomSheet<void>(
@@ -1759,6 +1817,7 @@ class MealSlotCard extends StatelessWidget {
       required this.onPriceChanged,
       required this.onTimeChanged,
       required this.onEditMenu,
+      required this.onSaveAsCustomMenu,
       required this.onEditServices,
       required this.onAddImage,
       required this.onRemoveImage,
@@ -1771,6 +1830,7 @@ class MealSlotCard extends StatelessWidget {
   final ValueChanged<String> onPriceChanged;
   final ValueChanged<String> onTimeChanged;
   final VoidCallback onEditMenu;
+  final VoidCallback onSaveAsCustomMenu;
   final VoidCallback onEditServices;
   final VoidCallback onAddImage;
   final ValueChanged<Map<String, dynamic>> onRemoveImage;
@@ -1873,6 +1933,11 @@ class MealSlotCard extends StatelessWidget {
             Expanded(
                 child: MenuSlotActionButton(
                     icon: Icons.edit, label: 'Menu', onPressed: onEditMenu)),
+            Expanded(
+                child: MenuSlotActionButton(
+                    icon: Icons.playlist_add_check,
+                    label: 'Custom',
+                    onPressed: items.isEmpty ? null : onSaveAsCustomMenu)),
             Expanded(
                 child: MenuSlotActionButton(
                     icon: Icons.room_service,

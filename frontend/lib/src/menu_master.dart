@@ -792,7 +792,7 @@ class CustomMenuScreen extends StatefulWidget {
     'Dinner',
     'Snack',
     'Juice',
-    'Other'
+    'Others'
   ];
 
   @override
@@ -807,7 +807,9 @@ class _CustomMenuScreenState extends State<CustomMenuScreen> {
 
   List<CustomMenu> get visibleMenus {
     return widget.customMenus
-        .where((menu) => menu.type == selectedType)
+        .where((menu) =>
+            menu.type == selectedType ||
+            (selectedType == 'Others' && menu.type == 'Other'))
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
