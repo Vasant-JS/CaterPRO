@@ -367,6 +367,18 @@
       if (child !== header) child.remove();
     });
     main.insertAdjacentHTML("beforeend", html);
+    renderAdminFooter();
+  }
+
+  function renderAdminFooter() {
+    const main = document.querySelector("main");
+    if (!main || location.pathname.split("/").pop() === "login.html") return;
+    if (main.querySelector(".cp-admin-footer")) return;
+    const footer = document.createElement("footer");
+    footer.className = "cp-admin-footer";
+    footer.innerHTML =
+      'Developed by <a href="http://ekathvainnovations.com/" target="_blank" rel="noopener noreferrer">Ekathva Innvoations</a>';
+    main.append(footer);
   }
 
   function showAdminState(message) {
@@ -405,12 +417,33 @@
     return `${file}?userId=${encodeURIComponent(userId || "")}`;
   }
 
+  function imageMimeFromBase64(value) {
+    if (value.startsWith("/9j/")) return "image/jpeg";
+    if (value.startsWith("iVBOR")) return "image/png";
+    if (value.startsWith("UklGR")) return "image/webp";
+    if (value.startsWith("R0lGOD")) return "image/gif";
+    if (value.startsWith("PHN2Zy")) return "image/svg+xml";
+    return "image/jpeg";
+  }
+
+  function imageSrc(value, fallback = "../assets/caterpro_logo.png") {
+    const source = String(value || "").trim();
+    if (!source) return fallback;
+    if (/^(data:|https?:\/\/|blob:|\.{1,2}\/)/i.test(source)) return source;
+    const compact = source.replace(/\s+/g, "");
+    if (/^[A-Za-z0-9+/]+=*$/.test(compact) && compact.length > 80) {
+      return `data:${imageMimeFromBase64(compact)};base64,${compact}`;
+    }
+    if (source.startsWith("/")) return source;
+    return source;
+  }
+
   function clientFrame(data, activeKey, body) {
     const user = data.user || {};
     const profile = data.businessProfile || {};
     const clientEmail = profile.email || user.email || "";
     const clientLogo = profile.logoBase64 || profile.logoUrl || profile.logo || "";
-    const logoSrc = clientLogo || "../assets/caterpro_logo.png";
+    const logoSrc = imageSrc(clientLogo);
     const tabs = [
       ["Client Details", "client-detail.html", "details"],
       ["Events", "client-events.html", "events"],
@@ -425,7 +458,7 @@
       <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div class="flex items-start gap-5 min-w-0">
           <div class="w-20 h-20 rounded-2xl bg-white border border-outline-variant shadow-sm flex items-center justify-center overflow-hidden shrink-0">
-            <img class="w-full h-full object-contain p-2" alt="${escapeHtml(user.businessName || user.name || "Client")} logo" src="${escapeHtml(logoSrc)}"/>
+            <img class="w-full h-full object-contain p-2" alt="${escapeHtml(user.businessName || user.name || "Client")} logo" src="${escapeHtml(logoSrc)}" onerror="this.onerror=null;this.src='../assets/caterpro_logo.png';"/>
           </div>
           <div class="min-w-0">
             <div class="flex flex-wrap items-center gap-3 mb-1">

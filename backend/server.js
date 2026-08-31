@@ -96,9 +96,12 @@ async function saveSupabaseDb(db) {
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' }),
   );
-  syncSupabaseTables(db).catch((error) => {
+  try {
+    return await syncSupabaseTables(db);
+  } catch (error) {
     console.warn('Supabase reporting-table sync skipped:', error.message);
-  });
+    return { status: 'failed', error: error.message, tables: {} };
+  }
 }
 
 const supabaseTables = [
@@ -262,27 +265,49 @@ function isMissingSupabaseTableError(error) {
 }
 
 async function syncSupabaseTables(db) {
-  if (!supabase) return;
+  if (!supabase) return { status: 'disabled', tables: {} };
   const rowsByTable = buildSupabaseRows(db);
   const skippedTables = [];
+  const failedTables = [];
+  const tableStatus = {};
   for (const table of supabaseTables) {
     try {
       await supabaseRequest(supabase.from(table).delete().eq('state_id', supabaseStateId));
     } catch (error) {
       if (isMissingSupabaseTableError(error)) {
         skippedTables.push(table);
+        tableStatus[table] = { status: 'skipped', rows: rowsByTable[table].length, error: error.message };
         continue;
       }
-      throw error;
+      failedTables.push(table);
+      tableStatus[table] = { status: 'failed', rows: rowsByTable[table].length, error: error.message };
     }
   }
   for (const table of [...supabaseTables].reverse()) {
-    if (skippedTables.includes(table)) continue;
-    await upsertSupabaseRows(table, rowsByTable[table]);
+    if (skippedTables.includes(table) || failedTables.includes(table)) continue;
+    try {
+      await upsertSupabaseRows(table, rowsByTable[table]);
+      tableStatus[table] = { status: 'synced', rows: rowsByTable[table].length };
+    } catch (error) {
+      failedTables.push(table);
+      tableStatus[table] = { status: 'failed', rows: rowsByTable[table].length, error: error.message };
+    }
   }
   if (skippedTables.length) {
     console.warn(`Supabase reporting tables not found and skipped: ${skippedTables.join(', ')}`);
   }
+  if (failedTables.length) {
+    console.warn(`Supabase reporting tables failed: ${failedTables.join(', ')}`);
+  }
+  const totalRows = Object.values(rowsByTable).reduce((sum, rows) => sum + rows.length, 0);
+  return {
+    status: failedTables.length ? 'partial' : skippedTables.length ? 'partial' : 'synced',
+    stateId: supabaseStateId,
+    totalRows,
+    skippedTables,
+    failedTables,
+    tables: tableStatus,
+  };
 }
 
 function scheduleSupabaseSave(db) {
@@ -4613,6 +4638,13 @@ app.post('/api/sync/snapshot', (req, res) => {
   db.userData[user.id] = backupUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
   db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
   ensureUniversal(db);
+  if (req.body?.includeMirrorSync === true) {
+    runtimeDb = db;
+    saveSupabaseDb(db)
+      .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
+      .catch((error) => res.status(500).json({ message: 'Unable to sync CaterPro data', error: error.message }));
+    return;
+  }
   writeDb(db);
   res.json(syncSnapshotForUser(db, user.id));
 });
@@ -5720,12 +5752,12 @@ app.get('/api/storage/tables', async (req, res) => {
   if (!user) return;
   if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
-    await syncSupabaseTables(db);
+    const mirrorSync = await syncSupabaseTables(db);
     const counts = {};
     for (const table of supabaseTables) {
       counts[table] = await supabaseTableCount(table);
     }
-    res.json({ stateId: supabaseStateId, counts });
+    res.json({ stateId: supabaseStateId, counts, mirrorSync });
   } catch (error) {
     res.status(500).json({ message: 'Unable to inspect Supabase tables', error: error.message });
   }

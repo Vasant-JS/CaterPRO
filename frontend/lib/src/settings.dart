@@ -67,6 +67,7 @@ class SettingsScreen extends StatelessWidget {
       required this.onBackupToGoogleDrive,
       required this.onSyncNow,
       this.lastSyncedAt,
+      this.syncProgress,
       required this.businessProfile,
       required this.services,
       required this.onSaveService,
@@ -91,6 +92,7 @@ class SettingsScreen extends StatelessWidget {
   final Future<void> Function() onBackupToGoogleDrive;
   final Future<void> Function() onSyncNow;
   final DateTime? lastSyncedAt;
+  final SyncProgress? syncProgress;
   final BusinessProfile businessProfile;
   final List<AdditionalServiceItem> services;
   final ValueChanged<AdditionalServiceItem> onSaveService;
@@ -341,15 +343,52 @@ class SettingsScreen extends StatelessWidget {
         }),
         CpCard(
             color: Cp.primaryFixed,
-            child: Row(children: [
-              const Icon(Icons.sync, color: Cp.primary),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: Text(
-                      'Auto sync runs every 1 minute. Last sync: ${lastSyncedAt == null ? 'not yet' : '${lastSyncedAt!.hour.toString().padLeft(2, '0')}:${lastSyncedAt!.minute.toString().padLeft(2, '0')}'}',
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Icon(
+                    syncProgress?.warning == true
+                        ? Icons.sync_problem
+                        : Icons.sync,
+                    color:
+                        syncProgress?.warning == true ? Cp.error : Cp.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Text(
+                        syncProgress?.label ??
+                            'Auto sync runs every 5 minutes. Last sync: ${lastSyncedAt == null ? 'not yet' : '${lastSyncedAt!.hour.toString().padLeft(2, '0')}:${lastSyncedAt!.minute.toString().padLeft(2, '0')}'}',
+                        style: TextStyle(
+                            color: syncProgress?.warning == true
+                                ? Cp.error
+                                : cpPrimary(context),
+                            fontWeight: FontWeight.w800))),
+                if (syncProgress != null)
+                  Text('${syncProgress!.percent}%',
                       style: TextStyle(
-                          color: cpPrimary(context),
-                          fontWeight: FontWeight.w800))),
+                          color: syncProgress!.warning
+                              ? Cp.error
+                              : cpPrimary(context),
+                          fontWeight: FontWeight.w900)),
+              ]),
+              if (syncProgress != null) ...[
+                const SizedBox(height: 12),
+                LinearProgressIndicator(
+                  value: syncProgress!.percent / 100,
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(999),
+                  backgroundColor: Colors.white,
+                  color: syncProgress!.warning ? Cp.error : Cp.primary,
+                ),
+                if (syncProgress!.detail.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(syncProgress!.detail,
+                      style: TextStyle(
+                          color: syncProgress!.warning
+                              ? Cp.error
+                              : cpOnVariant(context),
+                          fontWeight: FontWeight.w700)),
+                ],
+              ],
             ])),
         const SizedBox(height: 16),
         Center(

@@ -36,6 +36,11 @@ class MainActivity : FlutterFragmentActivity() {
                         call.argument<String>("text"),
                         result
                     )
+                    "shareText" -> shareText(
+                        call.argument<String>("title"),
+                        call.argument<String>("text"),
+                        result
+                    )
                     else -> result.notImplemented()
                 }
             }
@@ -118,6 +123,23 @@ class MainActivity : FlutterFragmentActivity() {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(Intent.createChooser(intent, title ?: "Share PDF"))
+            result.success(true)
+        } catch (_: Exception) {
+            result.success(false)
+        }
+    }
+
+    private fun shareText(title: String?, text: String?, result: MethodChannel.Result) {
+        if (text.isNullOrBlank()) {
+            result.success(false)
+            return
+        }
+        try {
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            startActivity(Intent.createChooser(intent, title ?: "Share"))
             result.success(true)
         } catch (_: Exception) {
             result.success(false)

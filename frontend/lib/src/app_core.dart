@@ -407,6 +407,22 @@ Future<bool> shareDownloadedFile(Uri uri,
       mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
 }
 
+Future<bool> shareText({required String title, required String text}) async {
+  if (text.trim().isEmpty) return false;
+  if (!kIsWeb) {
+    final shared = await downloadChannel.invokeMethod<bool>(
+          'shareText',
+          {'title': title, 'text': text},
+        ) ??
+        false;
+    return shared;
+  }
+  return launchUrl(
+      Uri(scheme: 'mailto', queryParameters: {'subject': title, 'body': text}),
+      mode: LaunchMode.externalApplication,
+      webOnlyWindowName: '_blank');
+}
+
 Future<Uri> saveAndShareDownload(
     {required String title,
     required Uri uri,
@@ -1329,10 +1345,45 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (checking) {
-      return const Scaffold(
-          body: Center(child: CircularProgressIndicator(color: Cp.primary)));
+      return const StartupScreen();
     }
     return loggedIn ? const AppShell() : const LoginScreen();
+  }
+}
+
+class StartupScreen extends StatelessWidget {
+  const StartupScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      backgroundColor: scheme.surface,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            const Center(
+              child: CircularProgressIndicator(color: Cp.primary),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 22),
+                child: Text(
+                  'Developed by Ekathva Innvoations',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -1792,8 +1843,8 @@ class AuditLogEntry {
         summary: json['summary']?.toString() ?? '',
         createdAt: DateTime.tryParse(json['createdAt']?.toString() ?? '') ??
             DateTime.fromMillisecondsSinceEpoch(0),
-        metadata: Map<String, dynamic>.from(
-            (json['metadata'] as Map?) ?? const {}),
+        metadata:
+            Map<String, dynamic>.from((json['metadata'] as Map?) ?? const {}),
       );
 
   Map<String, dynamic> toJson() => {
@@ -2099,14 +2150,19 @@ class ApiService {
   Future<Map<String, dynamic>> pushSyncSnapshot({
     required Map<String, dynamic> userData,
     required Map<String, dynamic> universal,
+    bool includeMirrorSync = false,
   }) async {
     final response = await http
         .post(
           Uri.parse('${ApiConfig.baseUrl}/sync/snapshot'),
           headers: await authHeaders(),
-          body: jsonEncode({'userData': userData, 'universal': universal}),
+          body: jsonEncode({
+            'userData': userData,
+            'universal': universal,
+            if (includeMirrorSync) 'includeMirrorSync': true,
+          }),
         )
-        .timeout(const Duration(seconds: 25));
+        .timeout(const Duration(seconds: 45));
     if (response.statusCode != 200) {
       throw Exception('Unable to push local CaterPro data');
     }

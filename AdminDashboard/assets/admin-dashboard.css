@@ -16,6 +16,26 @@
   border: 1px solid rgba(112, 122, 111, 0.24);
 }
 
+.cp-admin-footer {
+  margin: 8px 24px 24px;
+  padding: 18px 0 0;
+  border-top: 1px solid rgba(112, 122, 111, 0.28);
+  color: #404940;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.cp-admin-footer a {
+  color: #0e6430;
+  text-decoration: none;
+}
+
+.cp-admin-footer a:hover {
+  text-decoration: underline;
+}
+
 body {
   font-size: 14px;
   line-height: 1.38;
