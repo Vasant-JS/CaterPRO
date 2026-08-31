@@ -1140,7 +1140,7 @@ class InvoiceDocumentTemplateCatalog {
 
 class ApiConfig {
   static const _definedBaseUrl = String.fromEnvironment('CATERPRO_API_URL');
-  static const liveBaseUrl = 'https://caterpro-api.onrender.com/api';
+  static const liveBaseUrl = 'https://caterpro-api-21rt.onrender.com/api';
 
   static String get baseUrl {
     if (_definedBaseUrl.isNotEmpty) {
