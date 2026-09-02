@@ -468,13 +468,57 @@ class _AppShellState extends State<AppShell> {
     for (final key in userLists) {
       merged[key] = mergeRecordLists(cached[key], server[key], key: key);
     }
-    merged['businessProfile'] = {
-      if (cached['businessProfile'] is Map)
-        ...Map<String, dynamic>.from(cached['businessProfile'] as Map),
-      if (server['businessProfile'] is Map)
-        ...Map<String, dynamic>.from(server['businessProfile'] as Map),
-    };
+    merged['businessProfile'] = mergeBusinessProfileData(
+        server['businessProfile'], cached['businessProfile']);
     return merged;
+  }
+
+  Map<String, dynamic> mergeBusinessProfileData(
+      Object? preferred, Object? fallback) {
+    final preferredProfile = preferred is Map
+        ? Map<String, dynamic>.from(preferred)
+        : <String, dynamic>{};
+    final fallbackProfile = fallback is Map
+        ? Map<String, dynamic>.from(fallback)
+        : <String, dynamic>{};
+    final merged = <String, dynamic>{...fallbackProfile, ...preferredProfile};
+    for (final entry in fallbackProfile.entries) {
+      final preferredValue = preferredProfile[entry.key];
+      final fallbackValue = entry.value;
+      if (preferredValue is String &&
+          preferredValue.trim().isEmpty &&
+          fallbackValue is String &&
+          fallbackValue.trim().isNotEmpty) {
+        merged[entry.key] = fallbackValue;
+      }
+    }
+    return merged;
+  }
+
+  bool hasBusinessProfileDetails(Object? value) {
+    if (value is! Map) return false;
+    for (final key in const [
+      'businessName',
+      'serviceType',
+      'gstin',
+      'pan',
+      'address',
+      'phone',
+      'email',
+      'accountHolderName',
+      'bankName',
+      'branchName',
+      'accountNumber',
+      'ifsc',
+      'terms',
+      'logoBase64',
+      'signatureBase64',
+      'qrBase64',
+    ]) {
+      final field = value[key];
+      if (field is String && field.trim().isNotEmpty) return true;
+    }
+    return false;
   }
 
   List<Map<String, dynamic>> mergeServerEventsWithLocalDrafts(
@@ -839,8 +883,12 @@ class _AppShellState extends State<AppShell> {
       final localHasData =
           localUserData != null && userDataRecordCount(localUserData) > 0;
       final serverHasNoUserData = userDataRecordCount(serverUserData) == 0;
-      final shouldUploadLocal =
-          localDirty || (localHasData && serverHasNoUserData);
+      final localHasOnlyBusinessProfile = localUserData != null &&
+          hasBusinessProfileDetails(localUserData['businessProfile']) &&
+          !hasBusinessProfileDetails(serverUserData['businessProfile']);
+      final shouldUploadLocal = localDirty ||
+          (localHasData && serverHasNoUserData) ||
+          localHasOnlyBusinessProfile;
       if (localUserData == null || localUniversal == null) {
         if (!silent) updateSyncProgress(75, 'Saving local copy');
         await applySnapshot(
@@ -1908,9 +1956,7 @@ class _AppShellState extends State<AppShell> {
             onSaveCustomMenu: saveCustomMenu,
             onClose: closeToParent),
         MenuMasterScreen(
-            onClose: closeToParent,
-            events: events,
-            customMenus: customMenus),
+            onClose: closeToParent, events: events, customMenus: customMenus),
         BusinessProfileScreen(
             profile: businessProfile,
             onSave: saveBusinessProfile,
