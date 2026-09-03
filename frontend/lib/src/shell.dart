@@ -878,8 +878,24 @@ class _AppShellState extends State<AppShell> {
       final snapshot = await api.getSyncSnapshot();
       final serverUniversal = Map<String, dynamic>.from(
           (snapshot['universal'] as Map?) ?? const {});
-      final serverUserData = normalizeUserData(Map<String, dynamic>.from(
+      var serverUserData = normalizeUserData(Map<String, dynamic>.from(
           (snapshot['userData'] as Map?) ?? const {}));
+      if (!hasBusinessProfileDetails(serverUserData['businessProfile'])) {
+        try {
+          if (!silent) updateSyncProgress(50, 'Fetching business profile');
+          final remoteProfile = await api.getBusinessProfile();
+          final remoteProfileJson = remoteProfile.toJson();
+          if (hasBusinessProfileDetails(remoteProfileJson)) {
+            serverUserData = normalizeUserData({
+              ...serverUserData,
+              'businessProfile': mergeBusinessProfileData(
+                remoteProfileJson,
+                serverUserData['businessProfile'],
+              ),
+            });
+          }
+        } catch (_) {}
+      }
       final localHasData =
           localUserData != null && userDataRecordCount(localUserData) > 0;
       final serverHasNoUserData = userDataRecordCount(serverUserData) == 0;

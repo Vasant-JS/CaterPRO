@@ -104,6 +104,92 @@ async function saveSupabaseDb(db) {
   }
 }
 
+function hasBusinessProfileDetails(profile = {}) {
+  return [
+    'businessName',
+    'serviceType',
+    'gstin',
+    'pan',
+    'address',
+    'phone',
+    'email',
+    'accountHolderName',
+    'bankName',
+    'branchName',
+    'accountNumber',
+    'ifsc',
+    'terms',
+    'logoBase64',
+    'signatureBase64',
+    'qrBase64',
+  ].some((key) => String(profile?.[key] || '').trim());
+}
+
+function mergeBusinessProfile(existing = {}, incoming = {}) {
+  const merged = { ...emptyBusinessProfile(), ...existing, ...incoming };
+  for (const [key, value] of Object.entries(existing || {})) {
+    if (typeof value === 'string' && value.trim() && typeof incoming?.[key] === 'string' && !incoming[key].trim()) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
+function businessProfileFromSupabaseRow(row = {}) {
+  const raw = row.raw && typeof row.raw === 'object' && !Array.isArray(row.raw) ? row.raw : {};
+  return mergeBusinessProfile(raw, {
+    businessName: row.business_name || raw.businessName || '',
+    serviceType: row.service_type || raw.serviceType || '',
+    gstin: row.gstin || raw.gstin || '',
+    gstType: row.gst_type || raw.gstType || 'cgst_sgst',
+    gstRate: Number(row.gst_rate ?? raw.gstRate ?? 5) || 5,
+    ifsc: row.ifsc || raw.ifsc || '',
+    phone: row.phone || raw.phone || '',
+    email: row.email || raw.email || '',
+  });
+}
+
+async function loadSupabaseBusinessProfile(userId) {
+  if (!supabase) return null;
+  const exact = await supabaseRequest(
+    supabase
+      .from('cp_business_profiles')
+      .select('business_name,service_type,gstin,gst_type,gst_rate,ifsc,phone,email,raw')
+      .eq('state_id', supabaseStateId)
+      .eq('user_id', userId)
+      .maybeSingle(),
+  );
+  const exactProfile = businessProfileFromSupabaseRow(exact.data || {});
+  if (hasBusinessProfileDetails(exactProfile)) return exactProfile;
+
+  const { data: stateProfiles } = await supabaseRequest(
+    supabase
+      .from('cp_business_profiles')
+      .select('business_name,service_type,gstin,gst_type,gst_rate,ifsc,phone,email,raw')
+      .eq('state_id', supabaseStateId)
+      .limit(2),
+  );
+  const usefulProfiles = asArray(stateProfiles)
+    .map(businessProfileFromSupabaseRow)
+    .filter(hasBusinessProfileDetails);
+  return usefulProfiles.length === 1 ? usefulProfiles[0] : null;
+}
+
+async function hydrateBusinessProfileFromSupabase(db, userId) {
+  db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
+  const current = db.userData[userId].businessProfile || emptyBusinessProfile();
+  if (hasBusinessProfileDetails(current)) return false;
+  try {
+    const profile = await loadSupabaseBusinessProfile(userId);
+    if (!profile || !hasBusinessProfileDetails(profile)) return false;
+    db.userData[userId].businessProfile = mergeBusinessProfile(current, profile);
+    return true;
+  } catch (error) {
+    console.warn('Supabase business profile recovery skipped:', error.message);
+    return false;
+  }
+}
+
 const supabaseTables = [
   'cp_manual_invoice_items',
   'cp_manual_invoices',
@@ -4508,6 +4594,9 @@ function recordKeyForSync(item, listKey) {
 }
 
 function mergeSyncRecord(existing = {}, incoming = {}, listKey = '') {
+  if (listKey === 'businessProfile') {
+    return mergeBusinessProfile(existing, incoming);
+  }
   const existingUpdatedAt = recordUpdatedAtValue(existing);
   const incomingUpdatedAt = recordUpdatedAtValue(incoming);
   const base = incomingUpdatedAt >= existingUpdatedAt ? { ...existing, ...incoming } : { ...incoming, ...existing };
@@ -4621,10 +4710,11 @@ function syncSnapshotForUser(db, userId) {
   };
 }
 
-app.get('/api/sync/snapshot', (req, res) => {
+app.get('/api/sync/snapshot', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  await hydrateBusinessProfileFromSupabase(db, user.id);
   writeDb(db);
   res.json(syncSnapshotForUser(db, user.id));
 });
@@ -4753,10 +4843,12 @@ app.post('/api/backup/import', (req, res) => {
   });
 });
 
-app.get('/api/business-profile', (req, res) => {
+app.get('/api/business-profile', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
+  const hydrated = await hydrateBusinessProfileFromSupabase(db, user.id);
+  if (hydrated) writeDb(db);
   res.json(db.userData[user.id].businessProfile);
 });
 
