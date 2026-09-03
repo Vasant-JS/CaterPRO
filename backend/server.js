@@ -125,6 +125,11 @@ function hasBusinessProfileDetails(profile = {}) {
   ].some((key) => String(profile?.[key] || '').trim());
 }
 
+function hasBusinessProfileImages(profile = {}) {
+  return ['logoBase64', 'signatureBase64', 'qrBase64']
+    .every((key) => String(profile?.[key] || '').trim());
+}
+
 function mergeBusinessProfile(existing = {}, incoming = {}) {
   const merged = { ...emptyBusinessProfile(), ...existing, ...incoming };
   for (const [key, value] of Object.entries(existing || {})) {
@@ -178,12 +183,14 @@ async function loadSupabaseBusinessProfile(userId) {
 async function hydrateBusinessProfileFromSupabase(db, userId) {
   db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
   const current = db.userData[userId].businessProfile || emptyBusinessProfile();
-  if (hasBusinessProfileDetails(current)) return false;
+  if (hasBusinessProfileDetails(current) && hasBusinessProfileImages(current)) return false;
   try {
     const profile = await loadSupabaseBusinessProfile(userId);
-    if (!profile || !hasBusinessProfileDetails(profile)) return false;
-    db.userData[userId].businessProfile = mergeBusinessProfile(current, profile);
-    return true;
+    if (!profile || (!hasBusinessProfileDetails(profile) && !hasBusinessProfileImages(profile))) return false;
+    const merged = mergeBusinessProfile(current, profile);
+    const changed = JSON.stringify(current) !== JSON.stringify(merged);
+    db.userData[userId].businessProfile = merged;
+    return changed;
   } catch (error) {
     console.warn('Supabase business profile recovery skipped:', error.message);
     return false;

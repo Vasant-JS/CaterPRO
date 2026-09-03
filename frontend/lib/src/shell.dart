@@ -521,6 +521,15 @@ class _AppShellState extends State<AppShell> {
     return false;
   }
 
+  bool hasBusinessProfileImages(Object? value) {
+    if (value is! Map) return false;
+    for (final key in const ['logoBase64', 'signatureBase64', 'qrBase64']) {
+      final field = value[key];
+      if (field is! String || field.trim().isEmpty) return false;
+    }
+    return true;
+  }
+
   List<Map<String, dynamic>> mergeServerEventsWithLocalDrafts(
       Object? server, Object? cached) {
     final serverEvents = jsonMapList(server);
@@ -880,12 +889,14 @@ class _AppShellState extends State<AppShell> {
           (snapshot['universal'] as Map?) ?? const {});
       var serverUserData = normalizeUserData(Map<String, dynamic>.from(
           (snapshot['userData'] as Map?) ?? const {}));
-      if (!hasBusinessProfileDetails(serverUserData['businessProfile'])) {
+      if (!hasBusinessProfileDetails(serverUserData['businessProfile']) ||
+          !hasBusinessProfileImages(serverUserData['businessProfile'])) {
         try {
           if (!silent) updateSyncProgress(50, 'Fetching business profile');
           final remoteProfile = await api.getBusinessProfile();
           final remoteProfileJson = remoteProfile.toJson();
-          if (hasBusinessProfileDetails(remoteProfileJson)) {
+          if (hasBusinessProfileDetails(remoteProfileJson) ||
+              hasBusinessProfileImages(remoteProfileJson)) {
             serverUserData = normalizeUserData({
               ...serverUserData,
               'businessProfile': mergeBusinessProfileData(
