@@ -96,7 +96,7 @@ function compactSupabaseState(db) {
     const menuItems = asArray(userData?.menuItems);
     const mostlyUniversalMenuItems = menuItems.length > 300
       && menuItems.filter((item) => universalMenuIds.has(item.id)).length >= Math.floor(menuItems.length * 0.9);
-    if (mostlyUniversalMenuItems) {
+    if (menuItems.length > 300 || mostlyUniversalMenuItems) {
       userData.menuItems = [];
     }
   }
@@ -218,6 +218,41 @@ async function hydrateBusinessProfileFromSupabase(db, userId) {
     return changed;
   } catch (error) {
     console.warn('Supabase business profile recovery skipped:', error.message);
+    return false;
+  }
+}
+
+function userMenuItemFromSupabaseRow(row = {}) {
+  const raw = row.raw && typeof row.raw === 'object' && !Array.isArray(row.raw) ? row.raw : {};
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('mnu'),
+    english: row.english ?? raw.english ?? '',
+    kannada: row.kannada ?? raw.kannada ?? '',
+    title: row.title ?? raw.title ?? `${row.kannada || raw.kannada || ''}/${row.english || raw.english || ''}`,
+    category: row.category ?? raw.category ?? '',
+    meals: asArray(row.meals ?? raw.meals),
+    veg: row.veg === null || row.veg === undefined ? Boolean(raw.veg) : Boolean(row.veg),
+  };
+}
+
+async function hydrateUserMenuItemsFromSupabase(db, userId) {
+  db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
+  if (asArray(db.userData[userId].menuItems).length > 0 || !supabase) return false;
+  try {
+    const { data: rows } = await supabaseRequest(
+      supabase
+        .from('cp_user_menu_items')
+        .select('id, english, kannada, title, category, meals, veg, raw')
+        .eq('state_id', supabaseStateId)
+        .eq('user_id', userId)
+        .order('id'),
+    );
+    if (!rows || rows.length === 0) return false;
+    db.userData[userId].menuItems = rows.map(userMenuItemFromSupabaseRow);
+    return true;
+  } catch (error) {
+    console.warn('Supabase user menu recovery skipped:', error.message);
     return false;
   }
 }
@@ -4772,8 +4807,9 @@ app.get('/api/sync/snapshot', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  await hydrateBusinessProfileFromSupabase(db, user.id);
-  writeDb(db);
+  const profileChanged = await hydrateBusinessProfileFromSupabase(db, user.id);
+  const menuItemsChanged = await hydrateUserMenuItemsFromSupabase(db, user.id);
+  if (profileChanged || menuItemsChanged) writeDb(db);
   res.json(syncSnapshotForUser(db, user.id));
 });
 
@@ -4790,7 +4826,17 @@ app.post('/api/sync/snapshot', (req, res) => {
     runtimeDb = db;
     saveSupabaseDb(db)
       .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
-      .catch((error) => res.status(500).json({ message: 'Unable to sync CaterPro data', error: error.message }));
+      .catch((error) => {
+        console.warn('Supabase sync skipped after local merge:', error.message);
+        res.json({
+          ...syncSnapshotForUser(db, user.id),
+          mirrorSync: {
+            status: 'failed',
+            error: error.message,
+            failedTables: ['caterpro_state'],
+          },
+        });
+      });
     return;
   }
   writeDb(db);
