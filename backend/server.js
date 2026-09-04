@@ -48,16 +48,16 @@ app.use((req, res, next) => {
 
 function readDb() {
   if (!runtimeDb) {
-    throw new Error('Online database state is not loaded. Check Supabase configuration and caterpro_state data.');
+    throw new Error('Online database state is not loaded. Check Supabase table data.');
   }
   ensureUniversal(runtimeDb);
   return runtimeDb;
 }
 
-function writeDb(db) {
+function writeDb(db, options = {}) {
   ensureUniversal(db);
   runtimeDb = db;
-  scheduleSupabaseSave(db);
+  scheduleSupabaseSave(db, options);
 }
 
 function asArray(value) {
@@ -78,53 +78,17 @@ async function supabaseRequest(builder) {
 
 async function loadSupabaseDb() {
   if (!supabase) return null;
-  const { data } = await supabaseRequest(
-    supabase.from('caterpro_state').select('data').eq('id', supabaseStateId).maybeSingle(),
-  );
-  if (!data?.data) return null;
-  const db = typeof data.data === 'string' ? JSON.parse(data.data) : data.data;
-  ensureUniversal(db);
-  return db;
+  return loadSupabaseTableState();
 }
 
-function compactSupabaseState(db) {
-  const compacted = JSON.parse(JSON.stringify(db));
-  ensureUniversal(compacted);
-  const universalMenuIds = new Set(asArray(compacted.universal?.menuItems).map((item) => item.id).filter(Boolean));
-  for (const [userId, userData] of Object.entries(compacted.userData || {})) {
-    if (userId === 'usr_demo_admin') continue;
-    const menuItems = asArray(userData?.menuItems);
-    const mostlyUniversalMenuItems = menuItems.length > 300
-      && menuItems.filter((item) => universalMenuIds.has(item.id)).length >= Math.floor(menuItems.length * 0.9);
-    if (menuItems.length > 300 || mostlyUniversalMenuItems) {
-      userData.menuItems = [];
-    }
-  }
-  return compacted;
-}
-
-async function saveSupabaseState(db) {
-  if (!supabase) return;
-  const state = compactSupabaseState(db);
-  await supabaseRequest(
-    supabase.from('caterpro_state').upsert({
-      id: supabaseStateId,
-      data: state,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' }),
-  );
-}
-
-async function saveSupabaseDb(db, { syncMirrorTables = false } = {}) {
+async function saveSupabaseDb(db, { syncMirrorTables = false, userId = null, includeUniversal = false } = {}) {
   if (!supabase) return { status: 'disabled', tables: {} };
-  await saveSupabaseState(db);
-  if (!syncMirrorTables) {
-    return { status: 'skipped', reason: 'mirror table sync not requested', tables: {} };
-  }
   try {
-    return await syncSupabaseTables(db);
+    if (syncMirrorTables) return await syncSupabaseTables(db);
+    if (userId) return await replaceSupabaseUserTableState(db, userId, { includeUniversal });
+    return await upsertSupabaseTableState(db);
   } catch (error) {
-    console.warn('Supabase reporting-table sync skipped:', error.message);
+    console.warn('Supabase table sync skipped:', error.message);
     return { status: 'failed', error: error.message, tables: {} };
   }
 }
@@ -236,6 +200,201 @@ function userMenuItemFromSupabaseRow(row = {}) {
   };
 }
 
+function rawFromSupabaseRow(row = {}) {
+  return row.raw && typeof row.raw === 'object' && !Array.isArray(row.raw) ? row.raw : {};
+}
+
+function userFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('usr'),
+    name: row.name ?? raw.name ?? '',
+    email: row.email ?? raw.email ?? '',
+    role: row.role ?? raw.role ?? '',
+  };
+}
+
+function inventoryItemFromSupabaseRow(row = {}, prefix = 'itm') {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId(prefix),
+    name: row.name ?? raw.name ?? '',
+    category: row.category ?? raw.category ?? '',
+    unit: row.unit ?? raw.unit ?? '',
+  };
+}
+
+function additionalServiceFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('svc'),
+    name: row.name ?? raw.name ?? '',
+    unit: row.unit ?? raw.unit ?? '',
+    price: Number(row.price ?? raw.price ?? 0) || 0,
+  };
+}
+
+function clientFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('cli'),
+    name: row.name ?? raw.name ?? '',
+    mobile: row.mobile ?? raw.mobile ?? '',
+    city: row.city ?? raw.city ?? '',
+  };
+}
+
+function employeeFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('emp'),
+    name: row.name ?? raw.name ?? '',
+    mobile: row.mobile ?? raw.mobile ?? '',
+    designation: row.designation ?? raw.designation ?? '',
+    payPerDay: Number(row.pay_per_day ?? raw.payPerDay ?? 0) || 0,
+    payPerHour: Number(row.pay_per_hour ?? raw.payPerHour ?? 0) || 0,
+  };
+}
+
+function customMenuFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('cmu'),
+    name: row.name ?? raw.name ?? '',
+    type: row.type ?? raw.type ?? '',
+    itemIds: asArray(row.item_ids ?? raw.itemIds),
+  };
+}
+
+function requirementListFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return materialDocumentFromBody({
+    ...raw,
+    id: row.id || raw.id || makeId('req'),
+    type: row.type ?? raw.type ?? '',
+    title: row.title ?? raw.title ?? '',
+  });
+}
+
+function eventFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return normalizeEventShape({
+    ...raw,
+    id: row.id || raw.id || makeId('evt'),
+    name: row.name ?? raw.name ?? '',
+    primaryClient: row.primary_client ?? raw.primaryClient ?? '',
+    mobile: row.mobile ?? raw.mobile ?? '',
+    venue: row.venue ?? raw.venue ?? '',
+    status: row.status ?? raw.status ?? '',
+    notes: row.notes ?? raw.notes ?? '',
+    addOns: asArray(row.add_ons ?? raw.addOns),
+    dates: [],
+    payments: [],
+    employeeAssignments: [],
+  });
+}
+
+function eventDateFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return normalizeEventDate({
+    ...raw,
+    id: row.id || raw.id || row.event_date || makeId('date'),
+    date: row.event_date ?? raw.date ?? '',
+    label: row.label ?? raw.label ?? '',
+    additionalServices: asArray(row.additional_services ?? raw.additionalServices),
+    menuSlots: [],
+  });
+}
+
+function menuSlotFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('slot'),
+    type: row.type ?? raw.type ?? '',
+    time: row.delivery_time ?? raw.time ?? '',
+    pax: Number(row.pax ?? raw.pax ?? 0) || 0,
+    pricePerPax: Number(row.price_per_pax ?? raw.pricePerPax ?? 0) || 0,
+    enabled: row.enabled === null || row.enabled === undefined ? raw.enabled !== false : Boolean(row.enabled),
+    menuItemIds: asArray(row.menu_item_ids ?? raw.menuItemIds),
+    additionalServices: asArray(row.additional_services ?? raw.additionalServices),
+  };
+}
+
+function paymentFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('pay'),
+    amount: Number(row.amount ?? raw.amount ?? 0) || 0,
+    date: row.payment_date ?? raw.date ?? '',
+    mode: row.mode ?? raw.mode ?? '',
+    reference: row.reference ?? raw.reference ?? '',
+    settled: row.settled === null || row.settled === undefined ? raw.settled === true : Boolean(row.settled),
+  };
+}
+
+function assignmentFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    employeeId: row.employee_id || raw.employeeId || raw.id || '',
+    name: row.name ?? raw.name ?? raw.employeeName ?? '',
+    designation: row.designation ?? raw.designation ?? '',
+    payPerDay: Number(row.pay_per_day ?? raw.payPerDay ?? 0) || 0,
+    payPerHour: Number(row.pay_per_hour ?? raw.payPerHour ?? 0) || 0,
+  };
+}
+
+function attendanceFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    eventId: row.event_id || raw.eventId || '',
+    employeeId: row.employee_id || raw.employeeId || '',
+    date: row.attendance_date ?? raw.date ?? '',
+    status: row.status ?? raw.status ?? '',
+    hours: Number(row.hours ?? raw.hours ?? 0) || 0,
+    payPerDay: Number(row.pay_per_day ?? raw.payPerDay ?? 0) || 0,
+    payPerHour: Number(row.pay_per_hour ?? raw.payPerHour ?? 0) || 0,
+  };
+}
+
+function manualInvoiceFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || makeId('inv'),
+    invoiceNumber: row.invoice_number ?? raw.invoiceNumber ?? '',
+    clientName: row.client_name ?? raw.clientName ?? '',
+    mobile: row.mobile ?? raw.mobile ?? '',
+    eventName: row.event_name ?? raw.eventName ?? '',
+    eventDate: row.event_date ?? raw.eventDate ?? '',
+    invoiceDate: row.invoice_date ?? raw.invoiceDate ?? '',
+    total: Number(row.total ?? raw.total ?? 0) || 0,
+    pending: Number(row.pending ?? raw.pending ?? 0) || 0,
+    items: [],
+  };
+}
+
+function manualInvoiceItemFromSupabaseRow(row = {}) {
+  const raw = rawFromSupabaseRow(row);
+  return {
+    ...raw,
+    id: row.id || raw.id || row.title || makeId('itm'),
+    title: row.title ?? raw.title ?? '',
+    quantity: Number(row.quantity ?? raw.quantity ?? 0) || 0,
+    rate: Number(row.rate ?? raw.rate ?? 0) || 0,
+    amount: Number(row.amount ?? raw.amount ?? 0) || 0,
+  };
+}
+
 async function hydrateUserMenuItemsFromSupabase(db, userId) {
   db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
   if (asArray(db.userData[userId].menuItems).length > 0 || !supabase) return false;
@@ -309,8 +468,113 @@ const supabaseTableConflicts = {
   cp_vessel_items: 'state_id,id',
 };
 
+const supabaseUniversalTables = new Set(['cp_menu_items', 'cp_raw_materials', 'cp_produce_items', 'cp_vessel_items']);
+
 function emptySupabaseRows() {
   return Object.fromEntries(supabaseTables.map((table) => [table, []]));
+}
+
+async function loadSupabaseRows(table) {
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data } = await supabaseRequest(
+      supabase
+        .from(table)
+        .select('*')
+        .eq('state_id', supabaseStateId)
+        .range(from, from + pageSize - 1),
+    );
+    rows.push(...asArray(data));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function loadSupabaseTableState() {
+  const rows = emptySupabaseRows();
+  for (const table of [...supabaseTables].reverse()) {
+    try {
+      rows[table] = await loadSupabaseRows(table);
+    } catch (error) {
+      throw new Error(`Unable to load ${table}: ${error.message}`);
+    }
+  }
+  if (!rows.cp_users.length) return null;
+
+  const db = { users: rows.cp_users.map(userFromSupabaseRow), userData: {}, universal: {} };
+  const ensureLoadedUserData = (userId) => {
+    db.userData[userId] = ensureUserDataShape(db.userData[userId] || emptyUserData());
+    return db.userData[userId];
+  };
+
+  for (const user of db.users) ensureLoadedUserData(user.id);
+
+  db.universal.menuItems = rows.cp_menu_items.map(userMenuItemFromSupabaseRow);
+  db.universal.rawMaterials = rows.cp_raw_materials.map((row) => inventoryItemFromSupabaseRow(row, 'raw'));
+  db.universal.produceItems = rows.cp_produce_items.map((row) => inventoryItemFromSupabaseRow(row, 'prd'));
+  db.universal.vesselItems = rows.cp_vessel_items.map((row) => inventoryItemFromSupabaseRow(row, 'vsl'));
+
+  for (const row of rows.cp_business_profiles) ensureLoadedUserData(row.user_id).businessProfile = businessProfileFromSupabaseRow(row);
+  for (const row of rows.cp_clients) ensureLoadedUserData(row.user_id).clients.push(clientFromSupabaseRow(row));
+  for (const row of rows.cp_employees) ensureLoadedUserData(row.user_id).employees.push(employeeFromSupabaseRow(row));
+  for (const row of rows.cp_additional_services) ensureLoadedUserData(row.user_id).additionalServices.push(additionalServiceFromSupabaseRow(row));
+  for (const row of rows.cp_user_menu_items) ensureLoadedUserData(row.user_id).menuItems.push(userMenuItemFromSupabaseRow(row));
+  for (const row of rows.cp_user_raw_materials) ensureLoadedUserData(row.user_id).rawMaterials.push(inventoryItemFromSupabaseRow(row, 'raw'));
+  for (const row of rows.cp_user_produce_items) ensureLoadedUserData(row.user_id).produceItems.push(inventoryItemFromSupabaseRow(row, 'prd'));
+  for (const row of rows.cp_user_vessel_items) ensureLoadedUserData(row.user_id).vesselItems.push(inventoryItemFromSupabaseRow(row, 'vsl'));
+  for (const row of rows.cp_custom_menus) ensureLoadedUserData(row.user_id).customMenus.push(customMenuFromSupabaseRow(row));
+  for (const row of rows.cp_requirement_lists) ensureLoadedUserData(row.user_id).requirementLists.push(requirementListFromSupabaseRow(row));
+  for (const row of rows.cp_attendance) ensureLoadedUserData(row.user_id).attendance.push(attendanceFromSupabaseRow(row));
+
+  const eventMap = new Map();
+  const dateMap = new Map();
+  const eventKey = (userId, eventId) => `${userId}\n${eventId}`;
+  const dateKey = (userId, eventId, dateId) => `${userId}\n${eventId}\n${dateId}`;
+
+  for (const row of rows.cp_events) {
+    const event = eventFromSupabaseRow(row);
+    ensureLoadedUserData(row.user_id).events.push(event);
+    eventMap.set(eventKey(row.user_id, row.id), event);
+  }
+  for (const row of rows.cp_event_dates) {
+    const event = eventMap.get(eventKey(row.user_id, row.event_id));
+    if (!event) continue;
+    const date = eventDateFromSupabaseRow(row);
+    event.dates.push(date);
+    dateMap.set(dateKey(row.user_id, row.event_id, row.id), date);
+  }
+  for (const row of rows.cp_menu_slots) {
+    const date = dateMap.get(dateKey(row.user_id, row.event_id, row.date_id));
+    if (!date) continue;
+    date.menuSlots.push(menuSlotFromSupabaseRow(row));
+  }
+  for (const row of rows.cp_event_payments) {
+    const event = eventMap.get(eventKey(row.user_id, row.event_id));
+    if (event) event.payments.push(paymentFromSupabaseRow(row));
+  }
+  for (const row of rows.cp_event_assignments) {
+    const event = eventMap.get(eventKey(row.user_id, row.event_id));
+    if (event) event.employeeAssignments.push(assignmentFromSupabaseRow(row));
+  }
+
+  const invoiceMap = new Map();
+  const invoiceKey = (userId, invoiceId) => `${userId}\n${invoiceId}`;
+  for (const row of rows.cp_manual_invoices) {
+    const invoice = manualInvoiceFromSupabaseRow(row);
+    ensureLoadedUserData(row.user_id).manualInvoices.push(invoice);
+    invoiceMap.set(invoiceKey(row.user_id, row.id), invoice);
+  }
+  for (const row of rows.cp_manual_invoice_items) {
+    const invoice = invoiceMap.get(invoiceKey(row.user_id, row.invoice_id));
+    if (invoice) invoice.items.push(manualInvoiceItemFromSupabaseRow(row));
+  }
+
+  ensureUniversal(db);
+  for (const user of db.users) {
+    db.userData[user.id] = ensureUserDataShape(db.userData[user.id] || emptyUserData());
+  }
+  return db;
 }
 
 function buildSupabaseRows(db) {
@@ -463,12 +727,122 @@ async function syncSupabaseTables(db) {
   };
 }
 
-function scheduleSupabaseSave(db) {
+async function upsertSupabaseTableState(db) {
+  if (!supabase) return { status: 'disabled', tables: {} };
+  const rowsByTable = buildSupabaseRows(db);
+  const skippedTables = [];
+  const failedTables = [];
+  const tableStatus = {};
+  for (const table of [...supabaseTables].reverse()) {
+    try {
+      await upsertSupabaseRows(table, rowsByTable[table]);
+      tableStatus[table] = { status: 'upserted', rows: rowsByTable[table].length };
+    } catch (error) {
+      if (isMissingSupabaseTableError(error)) {
+        skippedTables.push(table);
+        tableStatus[table] = { status: 'skipped', rows: rowsByTable[table].length, error: error.message };
+        continue;
+      }
+      failedTables.push(table);
+      tableStatus[table] = { status: 'failed', rows: rowsByTable[table].length, error: error.message };
+    }
+  }
+  if (skippedTables.length) {
+    console.warn(`Supabase state tables not found and skipped: ${skippedTables.join(', ')}`);
+  }
+  if (failedTables.length) {
+    console.warn(`Supabase state tables failed: ${failedTables.join(', ')}`);
+  }
+  const totalRows = Object.values(rowsByTable).reduce((sum, rows) => sum + rows.length, 0);
+  return {
+    status: failedTables.length || skippedTables.length ? 'partial' : 'synced',
+    mode: 'table-upsert',
+    stateId: supabaseStateId,
+    totalRows,
+    skippedTables,
+    failedTables,
+    tables: tableStatus,
+  };
+}
+
+async function replaceSupabaseUserTableState(db, userId, { includeUniversal = false } = {}) {
+  if (!supabase) return { status: 'disabled', tables: {} };
+  const rowsByTable = buildSupabaseRows(db);
+  const tableStatus = {};
+  const skippedTables = [];
+  const failedTables = [];
+  const userTables = supabaseTables.filter((table) => (
+    table !== 'cp_users' && !supabaseUniversalTables.has(table)
+  ));
+
+  for (const table of userTables) {
+    try {
+      await supabaseRequest(
+        supabase
+          .from(table)
+          .delete()
+          .eq('state_id', supabaseStateId)
+          .eq('user_id', userId),
+      );
+    } catch (error) {
+      if (isMissingSupabaseTableError(error)) {
+        skippedTables.push(table);
+        tableStatus[table] = { status: 'skipped', rows: 0, error: error.message };
+        continue;
+      }
+      failedTables.push(table);
+      tableStatus[table] = { status: 'failed', rows: 0, error: error.message };
+    }
+  }
+
+  const tablesToUpsert = [...supabaseTables].reverse().filter((table) => {
+    if (table === 'cp_users') return true;
+    if (supabaseUniversalTables.has(table)) return includeUniversal;
+    return userTables.includes(table);
+  });
+
+  for (const table of tablesToUpsert) {
+    if (skippedTables.includes(table) || failedTables.includes(table)) continue;
+    const rows = rowsByTable[table].filter((row) => {
+      if (table === 'cp_users') return row.id === userId;
+      if (supabaseUniversalTables.has(table)) return includeUniversal;
+      return row.user_id === userId;
+    });
+    try {
+      await upsertSupabaseRows(table, rows);
+      tableStatus[table] = { status: tableStatus[table]?.status || 'synced', rows: rows.length };
+    } catch (error) {
+      if (isMissingSupabaseTableError(error)) {
+        skippedTables.push(table);
+        tableStatus[table] = { status: 'skipped', rows: rows.length, error: error.message };
+        continue;
+      }
+      failedTables.push(table);
+      tableStatus[table] = { status: 'failed', rows: rows.length, error: error.message };
+    }
+  }
+
+  const totalRows = Object.values(tableStatus).reduce((sum, status) => sum + Number(status.rows || 0), 0);
+  return {
+    status: failedTables.length || skippedTables.length ? 'partial' : 'synced',
+    mode: 'user-table-replace',
+    stateId: supabaseStateId,
+    userId,
+    includeUniversal,
+    totalRows,
+    skippedTables,
+    failedTables,
+    tables: tableStatus,
+  };
+}
+
+function scheduleSupabaseSave(db, options = {}) {
   if (!supabase) return;
   const snapshot = JSON.parse(JSON.stringify(db));
+  const saveOptions = { ...options, syncMirrorTables: false };
   pendingSupabaseWrite = pendingSupabaseWrite
     .catch(() => {})
-    .then(() => saveSupabaseDb(snapshot, { syncMirrorTables: false }))
+    .then(() => saveSupabaseDb(snapshot, saveOptions))
     .catch((error) => console.error('Supabase sync failed:', error.message));
 }
 
@@ -481,10 +855,10 @@ async function initializeStorage() {
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
     runtimeDb = ensureAdminUser(supabaseDb);
-    console.log(`CaterPro storage: loaded Supabase state "${supabaseStateId}"`);
+    console.log(`CaterPro storage: loaded Supabase tables for state "${supabaseStateId}"`);
     return;
   }
-  throw new Error(`No Supabase state found for "${supabaseStateId}". Create caterpro_state data before starting the API.`);
+  throw new Error(`No Supabase table data found for "${supabaseStateId}". Create cp_users and related table rows before starting the API.`);
 }
 function makeId(prefix) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
@@ -4819,12 +5193,14 @@ app.post('/api/sync/snapshot', (req, res) => {
   if (!user) return;
   const incomingUserData = req.body?.userData && typeof req.body.userData === 'object' ? req.body.userData : {};
   const incomingUniversal = req.body?.universal && typeof req.body.universal === 'object' ? req.body.universal : {};
+  const isAdminSync = String(user.email || '').toLowerCase() === 'admin@caterpro.in';
+  const includeUniversal = isAdminSync && Object.keys(incomingUniversal).length > 0;
   db.userData[user.id] = backupUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
-  db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
+  if (includeUniversal) db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
   ensureUniversal(db);
   if (req.body?.includeMirrorSync === true) {
     runtimeDb = db;
-    saveSupabaseDb(db)
+    saveSupabaseDb(db, { userId: user.id, includeUniversal })
       .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
       .catch((error) => {
         console.warn('Supabase sync skipped after local merge:', error.message);
@@ -4833,13 +5209,13 @@ app.post('/api/sync/snapshot', (req, res) => {
           mirrorSync: {
             status: 'failed',
             error: error.message,
-            failedTables: ['caterpro_state'],
+            failedTables: ['supabase_tables'],
           },
         });
       });
     return;
   }
-  writeDb(db);
+  writeDb(db, { userId: user.id, includeUniversal });
   res.json(syncSnapshotForUser(db, user.id));
 });
 
@@ -5922,14 +6298,13 @@ app.get('/api/storage/status', async (req, res) => {
   let supabaseStatus = { enabled: Boolean(supabase), connected: false, updatedAt: null };
   if (supabase) {
     try {
-      const { data } = await supabaseRequest(
-        supabase.from('caterpro_state').select('updated_at').eq('id', supabaseStateId).maybeSingle(),
-      );
+      const userCount = await supabaseTableCount('cp_users');
       supabaseStatus = {
         enabled: true,
         connected: true,
         stateId: supabaseStateId,
-        updatedAt: data?.updated_at || null,
+        liveState: 'tables',
+        userCount,
       };
     } catch (error) {
       supabaseStatus = { enabled: true, connected: false, stateId: supabaseStateId, error: error.message };
