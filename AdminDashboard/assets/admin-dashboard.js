@@ -217,7 +217,10 @@
         node.addEventListener("click", () => goToPage("dashboard.html"));
       }
       if (label.includes("Create User") || label.includes("Create Client")) {
-        node.addEventListener("click", () => goToPage("client-detail.html"));
+        node.addEventListener("click", (event) => {
+          event.preventDefault();
+          showCreateUserModal();
+        });
       }
       if (label.includes("Open Audit Log")) {
         node.addEventListener("click", () => goToPage("audit-log.html"));
@@ -328,6 +331,92 @@
     } finally {
       stopAdminLoading();
     }
+  }
+
+  function showCreateUserModal() {
+    document.getElementById("admin-create-user-modal")?.remove();
+    const modal = document.createElement("div");
+    modal.id = "admin-create-user-modal";
+    modal.className = "fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4";
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl border border-outline-variant shadow-2xl w-full max-w-2xl overflow-hidden">
+        <div class="p-5 border-b border-outline-variant flex items-center justify-between gap-4">
+          <div>
+            <h2 class="font-title-lg text-title-lg">Create User</h2>
+            <p class="text-sm text-on-surface-variant">Add a business account to CaterPro DB.</p>
+          </div>
+          <button type="button" class="admin-create-user-close p-2 rounded hover:bg-surface-container-highest" title="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <form id="admin-create-user-form" class="p-5 space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Business Name</span>
+              <input name="businessName" class="w-full border border-outline-variant rounded-lg px-4 py-2.5" required autocomplete="organization"/>
+            </label>
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Owner Name</span>
+              <input name="name" class="w-full border border-outline-variant rounded-lg px-4 py-2.5" required autocomplete="name"/>
+            </label>
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Email</span>
+              <input name="email" type="email" class="w-full border border-outline-variant rounded-lg px-4 py-2.5" required autocomplete="email"/>
+            </label>
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Temporary Password</span>
+              <input name="password" type="text" class="w-full border border-outline-variant rounded-lg px-4 py-2.5" required minlength="4" value="password"/>
+            </label>
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Phone</span>
+              <input name="phone" class="w-full border border-outline-variant rounded-lg px-4 py-2.5" autocomplete="tel"/>
+            </label>
+            <label class="space-y-1.5">
+              <span class="text-label-sm font-label-sm text-on-surface-variant">Plan</span>
+              <select name="plan" class="w-full border border-outline-variant rounded-lg px-4 py-2.5 bg-white">
+                <option value="Pro">Pro</option>
+                <option value="Annual">Annual</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Trial">Trial</option>
+              </select>
+            </label>
+          </div>
+          <p id="admin-create-user-state" class="text-sm text-on-surface-variant min-h-5"></p>
+          <div class="flex justify-end gap-3 pt-2">
+            <button type="button" class="admin-create-user-close px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md">Cancel</button>
+            <button type="submit" class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">person_add</span>Create User
+            </button>
+          </div>
+        </form>
+      </div>`;
+    document.body.append(modal);
+
+    const close = () => modal.remove();
+    modal.querySelectorAll(".admin-create-user-close").forEach((button) => button.addEventListener("click", close));
+    modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+    modal.querySelector("#admin-create-user-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = form.querySelector('button[type="submit"]');
+      const state = modal.querySelector("#admin-create-user-state");
+      const body = Object.fromEntries(new FormData(form).entries());
+      body.status = "Active";
+      body.subscriptionStatus = "Active";
+      if (submit) submit.disabled = true;
+      if (state) state.textContent = "Creating user...";
+      try {
+        const created = await adminRequest("/admin/users", { method: "POST", body });
+        const userId = created.user?.id || "";
+        if (state) state.textContent = "User created. Opening client details...";
+        setTimeout(() => {
+          goToPage(userId ? clientTabHref("client-detail.html", userId) : "clients.html");
+        }, 250);
+      } catch (error) {
+        if (state) state.textContent = `Create failed: ${error.message}`;
+        if (submit) submit.disabled = false;
+      }
+    });
   }
 
   function escapeHtml(value) {
@@ -532,7 +621,12 @@
             ${[...new Set(data.map((user) => user.status).filter(Boolean))].sort().map((status) => `<option value="${escapeHtml(status)}">${escapeHtml(status)}</option>`).join("")}
           </select>
         </div>
-        <span class="text-xs font-label-sm text-on-surface-variant">${data.length} clients from DB</span>
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-label-sm text-on-surface-variant">${data.length} clients from DB</span>
+          <button id="admin-create-client" type="button" class="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2">
+            <span class="material-symbols-outlined text-[18px]">person_add</span>Create User
+          </button>
+        </div>
       </div>
       <div class="bg-white rounded-xl border border-outline-variant overflow-hidden">
         <table class="w-full text-left border-collapse table-fixed min-w-[1200px]">
@@ -579,6 +673,7 @@
       });
     });
     [search, planFilter, statusFilter].forEach((control) => control?.addEventListener("input", renderRows));
+    document.getElementById("admin-create-client")?.addEventListener("click", showCreateUserModal);
     renderRows();
   }
 

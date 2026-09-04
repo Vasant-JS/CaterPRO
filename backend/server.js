@@ -3804,13 +3804,14 @@ app.post('/api/auth/forgot-password', (req, res) => {
   res.json({ message: `Password reset requested for ${req.body.email || 'unknown email'}` });
 });
 
-app.post('/api/admin/users', (req, res) => {
+app.post('/api/admin/users', async (req, res) => {
   const db = readDb();
   const admin = requireAdminUser(req, res, db);
   if (!admin) return;
   const email = String(req.body.email || '').trim().toLowerCase();
   const password = String(req.body.password || '');
   const name = String(req.body.name || '').trim() || email;
+  const businessName = String(req.body.businessName || '').trim() || name;
   const id = String(req.body.id || '').trim() || makeId('usr');
   if (!email.includes('@') || password.length < 4) {
     return res.status(400).json({ message: 'Valid email and password are required' });
@@ -3824,13 +3825,35 @@ app.post('/api/admin/users', (req, res) => {
       user: { id: duplicate.id, name: duplicate.name, email: duplicate.email },
     });
   }
-  const user = { id, name, email, password };
+  const now = new Date().toISOString();
+  const user = {
+    id,
+    name,
+    email,
+    password,
+    plan: String(req.body.plan || 'Pro').trim() || 'Pro',
+    status: String(req.body.status || 'Active').trim() || 'Active',
+    subscriptionStatus: String(req.body.subscriptionStatus || 'Active').trim() || 'Active',
+    billingCycle: String(req.body.billingCycle || '').trim(),
+    createdAt: now,
+    updatedAt: now,
+  };
   db.users.push(user);
   db.userData[id] = ensureUserDataShape(emptyUserData());
-  writeDb(db);
+  db.userData[id].businessProfile = {
+    ...db.userData[id].businessProfile,
+    businessName,
+    phone: String(req.body.phone || '').trim(),
+    email,
+    city: String(req.body.city || '').trim(),
+    address: String(req.body.address || '').trim(),
+    plan: user.plan,
+    updatedAt: now,
+  };
+  await writeDbAndFlush(db);
   res.status(201).json({
     message: 'User inserted',
-    user: { id: user.id, name: user.name, email: user.email },
+    user: adminUserMetrics(db, user),
   });
 });
 
