@@ -166,6 +166,7 @@ class _AppShellState extends State<AppShell> {
     final mirror = response['mirrorSync'];
     if (mirror is! Map) return '';
     final status = mirror['status']?.toString() ?? '';
+    if (status == 'failed' || status == 'skipped') return '';
     final failed = ((mirror['failedTables'] as List?) ?? const [])
         .map((item) => item.toString())
         .where((item) => item.isNotEmpty)
@@ -816,7 +817,7 @@ class _AppShellState extends State<AppShell> {
       final response = await api.pushSyncSnapshot(
         userData: currentUserDataJson(),
         universal: currentUniversalJson(),
-        includeMirrorSync: true,
+        includeMirrorSync: false,
       );
       updateSyncProgress(80, 'Refreshing app data');
       final universal = Map<String, dynamic>.from(
@@ -955,7 +956,7 @@ class _AppShellState extends State<AppShell> {
       final pushed = await api.pushSyncSnapshot(
         userData: mergedUserData,
         universal: mergedUniversal,
-        includeMirrorSync: !silent,
+        includeMirrorSync: false,
       );
       await applySnapshot(
         userData:
