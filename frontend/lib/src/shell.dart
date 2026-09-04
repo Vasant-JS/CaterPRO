@@ -867,7 +867,14 @@ class _AppShellState extends State<AppShell> {
     Map<String, dynamic>? localUserData;
     Map<String, dynamic>? localUniversal;
     var localDirty = false;
-    final localSnapshot = await LocalCaterProDb.instance.loadSnapshot();
+    Map<String, dynamic>? localSnapshot;
+    try {
+      localSnapshot = await LocalCaterProDb.instance
+          .loadSnapshot()
+          .timeout(const Duration(seconds: 5));
+    } catch (_) {
+      localSnapshot = null;
+    }
     if (!silent) updateSyncProgress(20, 'Reading local cache');
     if (localSnapshot != null) {
       localUserData =
