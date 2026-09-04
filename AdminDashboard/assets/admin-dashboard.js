@@ -419,6 +419,145 @@
     });
   }
 
+  const businessProfileFieldGroups = [
+    ["Account", [
+      ["name", "Owner Name", "text"],
+      ["plan", "Plan", "text"],
+      ["status", "Status", "select", ["Active", "Disabled"]],
+      ["subscriptionStatus", "Subscription Status", "select", ["Active", "Expired", "Paused", "Trial"]],
+      ["billingCycle", "Billing Cycle", "text"],
+      ["subscriptionStartDate", "Subscription Start Date", "date"],
+      ["subscriptionEndDate", "Subscription End Date", "date"],
+      ["nextRenewal", "Next Renewal", "date"],
+    ]],
+    ["Business", [
+      ["businessName", "Business Name", "text"],
+      ["serviceType", "Service Type", "text"],
+      ["email", "Email", "email"],
+      ["phone", "Phone", "text"],
+      ["city", "City", "text"],
+      ["address", "Address", "textarea"],
+    ]],
+    ["Tax & Legal", [
+      ["gstin", "GSTIN", "text"],
+      ["gstType", "GST Type", "select", ["cgst_sgst", "igst"]],
+      ["gstRate", "GST Rate", "number"],
+      ["pan", "PAN", "text"],
+    ]],
+    ["Bank", [
+      ["accountHolderName", "Account Holder Name", "text"],
+      ["bankName", "Bank Name", "text"],
+      ["branchName", "Branch Name", "text"],
+      ["accountNumber", "Account Number", "text"],
+      ["ifsc", "IFSC", "text"],
+    ]],
+    ["Documents", [
+      ["terms", "Terms / Thank You Text", "textarea"],
+      ["documentTemplate", "Document Template", "select", ["boxed", "classic", "elegant", "modern"]],
+      ["invoiceTextScale", "Invoice Text Scale", "number"],
+      ["pdfMenuFontSize", "PDF Menu Font Size", "number"],
+    ]],
+    ["Images", [
+      ["logoBase64", "Logo URL / Base64", "textarea"],
+      ["signatureBase64", "Signature URL / Base64", "textarea"],
+      ["qrBase64", "QR Code URL / Base64", "textarea"],
+    ]],
+  ];
+
+  function businessProfileFields() {
+    return businessProfileFieldGroups.flatMap(([section, fields]) =>
+      fields.map(([key, label, type, options]) => ({ section, key, label, type, options: options || [] }))
+    );
+  }
+
+  function profileInput(field, value) {
+    const common = `name="${escapeHtml(field.key)}" class="w-full border border-outline-variant rounded-lg px-4 py-2.5 bg-white"`;
+    if (field.type === "textarea") {
+      return `<textarea ${common} rows="${field.key.includes("Base64") ? "4" : "3"}">${escapeHtml(value || "")}</textarea>`;
+    }
+    if (field.type === "select") {
+      return `<select ${common}>${field.options.map((option) => `<option value="${escapeHtml(option)}" ${String(value || "") === option ? "selected" : ""}>${escapeHtml(option)}</option>`).join("")}</select>`;
+    }
+    return `<input ${common} type="${escapeHtml(field.type || "text")}" value="${escapeHtml(value || "")}" ${field.type === "number" ? 'step="0.1" min="0"' : ""}/>`;
+  }
+
+  function showBusinessProfileModal(data, focusKey = "") {
+    const user = data.user || {};
+    const profile = { ...(data.businessProfile || {}) };
+    const valueForField = (key) => profile[key] ?? user[key] ?? "";
+    document.getElementById("admin-business-profile-modal")?.remove();
+    const modal = document.createElement("div");
+    modal.id = "admin-business-profile-modal";
+    modal.className = "fixed inset-0 z-[1000] bg-black/40 flex items-center justify-center p-4";
+    modal.innerHTML = `
+      <div class="bg-white rounded-xl border border-outline-variant shadow-2xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col">
+        <div class="p-5 border-b border-outline-variant flex items-center justify-between gap-4 shrink-0">
+          <div>
+            <h2 class="font-title-lg text-title-lg">Edit Business Profile</h2>
+            <p class="text-sm text-on-surface-variant">${escapeHtml(user.businessName || user.name || user.email || "Client")}</p>
+          </div>
+          <button type="button" class="admin-business-profile-close p-2 rounded hover:bg-surface-container-highest" title="Close">
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+        <form id="admin-business-profile-form" class="p-5 overflow-y-auto space-y-6">
+          ${businessProfileFieldGroups.map(([section, sectionFields]) => `
+            <section class="space-y-3">
+              <h3 class="font-title-md text-title-md">${escapeHtml(section)}</h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                ${sectionFields.map(([key, label, type, options]) => {
+                  const field = { key, label, type, options: options || [] };
+                  const wide = type === "textarea" ? "md:col-span-2" : "";
+                  return `<label class="space-y-1.5 ${wide}" data-profile-field="${escapeHtml(key)}">
+                    <span class="text-label-sm font-label-sm text-on-surface-variant">${escapeHtml(label)}</span>
+                    ${profileInput(field, valueForField(key))}
+                  </label>`;
+                }).join("")}
+              </div>
+            </section>`).join("")}
+          <p id="admin-business-profile-state" class="text-sm text-on-surface-variant min-h-5"></p>
+          <div class="sticky bottom-0 bg-white border-t border-outline-variant pt-4 flex justify-end gap-3">
+            <button type="button" class="admin-business-profile-close px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md">Cancel</button>
+            <button type="submit" class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">save</span>Save Profile
+            </button>
+          </div>
+        </form>
+      </div>`;
+    document.body.append(modal);
+    if (focusKey) {
+      const target = modal.querySelector(`[data-profile-field="${CSS.escape(focusKey)}"] input, [data-profile-field="${CSS.escape(focusKey)}"] textarea, [data-profile-field="${CSS.escape(focusKey)}"] select`);
+      target?.focus();
+    }
+    const close = () => modal.remove();
+    modal.querySelectorAll(".admin-business-profile-close").forEach((button) => button.addEventListener("click", close));
+    modal.addEventListener("click", (event) => { if (event.target === modal) close(); });
+    modal.querySelector("#admin-business-profile-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const submit = form.querySelector('button[type="submit"]');
+      const state = modal.querySelector("#admin-business-profile-state");
+      const body = Object.fromEntries(new FormData(form).entries());
+      if (submit) submit.disabled = true;
+      if (state) state.textContent = "Saving business profile...";
+      try {
+        await adminRequest(`/admin/users/${encodeURIComponent(user.id)}`, {
+          method: "PUT",
+          body: {
+            ...body,
+            name: body.name || user.name || body.businessName || user.email,
+            email: body.email || user.email,
+          },
+        });
+        if (state) state.textContent = "Saved. Refreshing client details...";
+        setTimeout(() => location.reload(), 250);
+      } catch (error) {
+        if (state) state.textContent = `Save failed: ${error.message}`;
+        if (submit) submit.disabled = false;
+      }
+    });
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -559,7 +698,7 @@
           </div>
         </div>
         <div class="flex gap-3">
-          <button class="px-5 py-2.5 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-white transition-all flex items-center gap-2"><span class="material-symbols-outlined text-lg">edit</span> Edit Client</button>
+          <button class="admin-business-profile-edit px-5 py-2.5 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-white transition-all flex items-center gap-2" type="button"><span class="material-symbols-outlined text-lg">edit</span> Edit Client</button>
           <button class="px-5 py-2.5 bg-primary text-on-primary rounded-lg font-label-md text-label-md hover:bg-primary/90 transition-all flex items-center gap-2 shadow-md shadow-primary/20"><span class="material-symbols-outlined text-lg">add_circle</span> New Order</button>
         </div>
       </div>
@@ -730,21 +869,7 @@
     document.querySelectorAll(".client-edit").forEach((button) => button.addEventListener("click", async () => {
       const user = byId.get(button.dataset.id || "");
       if (!user) return;
-      const businessName = prompt("Business name", user.businessName || "");
-      if (businessName === null) return;
-      const ownerName = prompt("Owner name", user.ownerName || user.name || "");
-      if (ownerName === null) return;
-      const phone = prompt("Phone", user.phone || "");
-      if (phone === null) return;
-      const plan = prompt("Plan", user.plan || "");
-      if (plan === null) return;
-      const status = prompt("Status", user.status || "Active");
-      if (status === null) return;
-      await adminRequest(`/admin/users/${encodeURIComponent(user.id)}`, {
-        method: "PUT",
-        body: { businessName, name: ownerName, phone, plan, status },
-      });
-      location.reload();
+      showBusinessProfileModal({ user, businessProfile: user.businessProfile || {} });
     }));
     document.querySelectorAll(".client-disable").forEach((button) => button.addEventListener("click", async () => {
       const user = byId.get(button.dataset.id || "");
@@ -777,6 +902,9 @@
     };
     setMainContent(clientFrame(data, activeKey, bodies[activeKey] || bodies.details));
     wireAdminDataTables();
+    document.querySelectorAll(".admin-business-profile-edit, .admin-business-profile-info").forEach((button) => {
+      button.addEventListener("click", () => showBusinessProfileModal(data, button.dataset.profileKey || ""));
+    });
     if (activeKey === "events") wireClientEventActions(data);
     if (activeKey === "billing") wireClientBillingActions(data);
     if (activeKey === "menu") wireClientMenuActions(data);
@@ -790,30 +918,33 @@
     const appClientId = params.get("appClientId") || "";
     if (appClientId) return appClientDetailsBody(data, appClientId);
     const profile = data.businessProfile || {};
-    const rows = [
-      { section: "Business", field: "Business Name", value: profile.businessName || data.user?.businessName || "" },
-      { section: "Business", field: "Email", value: profile.email || data.user?.email || "" },
-      { section: "Business", field: "Phone", value: profile.phone || data.user?.phone || "" },
-      { section: "Tax & Legal", field: "GSTIN", value: profile.gstin || "" },
-      { section: "Bank", field: "Bank", value: profile.bankName || "" },
-      { section: "Bank", field: "IFSC", value: profile.ifsc || "" },
-      { section: "Address", field: "Address", value: profile.address || "" },
-      { section: "Operations", field: "Events", value: String(data.events?.length || 0) },
-      { section: "Operations", field: "Invoices", value: String(data.invoices?.length || 0) },
-      { section: "Operations", field: "Employees", value: String(data.employees?.length || 0) },
-      { section: "Operations", field: "Menu Items", value: String(data.menuItems?.length || 0) },
-    ];
+    const rows = businessProfileFields().map((field) => ({
+      section: field.section,
+      field: field.label,
+      key: field.key,
+      value: profile[field.key] || data.user?.[field.key] || (field.key === "email" ? data.user?.email : "") || (field.key === "businessName" ? data.user?.businessName : ""),
+    })).concat([
+      { section: "Operations", field: "Events", key: "", value: String(data.events?.length || 0), readonly: true },
+      { section: "Operations", field: "Invoices", key: "", value: String(data.invoices?.length || 0), readonly: true },
+      { section: "Operations", field: "Employees", key: "", value: String(data.employees?.length || 0), readonly: true },
+      { section: "Operations", field: "Menu Items", key: "", value: String(data.menuItems?.length || 0), readonly: true },
+    ]);
     return adminTable({
       id: "client-details-table",
       title: "Client Details",
       subtitle: "Business profile and operational snapshot from the client DB state.",
+      toolbarActions: `<button type="button" class="admin-business-profile-edit px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2"><span class="material-symbols-outlined text-[18px]">edit</span>Edit Profile</button>`,
       filters: [{ key: "section", label: "section", values: uniqueValues(rows, (row) => row.section) }],
       columns: [{ label: "Section", key: "section", width: "18%" }, { label: "Field", key: "field", width: "18%" }, { label: "Value", key: "value", width: "auto" }],
       rows: rows.map((row) => `<tr ${rowAttrs([row.section, row.field, row.value].join(" "), { section: row.section })}>
         ${cell(escapeHtml(row.section), "section")}
         ${cell(`<div class="font-semibold">${escapeHtml(row.field)}</div>`, "field")}
-        ${cell(escapeHtml(row.value || "-"), "value")}
-        <td class="px-4 py-4 text-right whitespace-nowrap">${iconButton("info", `${row.field} info`)}${iconButton("edit", `Edit ${row.field}`)}</td>
+        ${cell(escapeHtml(String(row.value || "-")).slice(0, 180), "value")}
+        <td class="px-4 py-4 text-right whitespace-nowrap">${
+          row.readonly
+            ? iconButton("info", `${row.field} info`)
+            : `<button class="admin-business-profile-info p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-profile-key="${escapeHtml(row.key)}" title="${escapeHtml(row.field)} info"><span class="material-symbols-outlined text-[18px]">info</span></button><button class="admin-business-profile-edit p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-profile-key="${escapeHtml(row.key)}" title="Edit ${escapeHtml(row.field)}"><span class="material-symbols-outlined text-[18px]">edit</span></button>`
+        }</td>
       </tr>`),
       empty: "No client details found.",
       actionWidth: "136px",

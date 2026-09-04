@@ -495,7 +495,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'boxed', invoiceTextScale: 1, pdfMenuFontSize: 12 };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', city: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'boxed', invoiceTextScale: 1, pdfMenuFontSize: 12 };
 }
 
 const invoiceDocumentTemplates = [
@@ -4275,10 +4275,14 @@ app.put('/api/admin/users/:userId', async (req, res) => {
   if (req.body.subscriptionStartDate !== undefined) user.subscriptionStartDate = String(req.body.subscriptionStartDate || '').trim();
   if (req.body.subscriptionEndDate !== undefined) user.subscriptionEndDate = String(req.body.subscriptionEndDate || '').trim();
   if (req.body.nextRenewal !== undefined) user.nextRenewal = String(req.body.nextRenewal || '').trim();
-  if (req.body.businessName !== undefined) profile.businessName = String(req.body.businessName || '').trim();
-  if (req.body.phone !== undefined) profile.phone = String(req.body.phone || '').trim();
-  if (req.body.city !== undefined) profile.city = String(req.body.city || '').trim();
-  if (req.body.address !== undefined) profile.address = String(req.body.address || '').trim();
+  for (const key of Object.keys(emptyBusinessProfile())) {
+    if (req.body[key] === undefined) continue;
+    if (key === 'gstRate' || key === 'invoiceTextScale' || key === 'pdfMenuFontSize') {
+      profile[key] = Number(req.body[key]) || emptyBusinessProfile()[key];
+    } else {
+      profile[key] = String(req.body[key] || '').trim();
+    }
+  }
   profile.updatedAt = new Date().toISOString();
   user.updatedAt = new Date().toISOString();
   db.userData[user.id].businessProfile = profile;
