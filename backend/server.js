@@ -505,20 +505,20 @@ const invoiceDocumentTemplates = [
   { id: 'modern', label: 'Modern' },
 ];
 
-function defaultEmployees() {
-  return [
-    { id: 'emp_default_001', name: 'Ramesh K', age: 32, mobile: '9000000001', designation: 'Chef', payPerDay: 1200, payPerHour: 150 },
-    { id: 'emp_default_002', name: 'Suresh P', age: 28, mobile: '9000000002', designation: 'Server', payPerDay: 700, payPerHour: 90 },
-    { id: 'emp_default_003', name: 'Manjunath S', age: 35, mobile: '9000000003', designation: 'Supervisor', payPerDay: 1000, payPerHour: 125 },
-    { id: 'emp_default_004', name: 'Lakshmi H', age: 30, mobile: '9000000004', designation: 'Cleaning', payPerDay: 600, payPerHour: 75 },
-  ].map((employee) => ({ ...employee, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+function isOnlyDefaultEmployeeSeed(employees = [], userData = {}) {
+  const defaultIds = new Set(['emp_default_001', 'emp_default_002', 'emp_default_003', 'emp_default_004']);
+  const list = asArray(employees);
+  if (list.length !== defaultIds.size) return false;
+  const hasOnlyDefaults = list.every((employee) => defaultIds.has(String(employee.id || '')));
+  if (!hasOnlyDefaults) return false;
+  return asArray(userData.events).length === 0 && asArray(userData.attendance).length === 0;
 }
 
 function ensureUserDataShape(userData) {
   userData.events = userData.events || [];
   userData.clients = userData.clients || [];
   userData.employees = userData.employees || [];
-  if (userData.employees.length === 0) userData.employees = defaultEmployees();
+  if (isOnlyDefaultEmployeeSeed(userData.employees, userData)) userData.employees = [];
   userData.employees = userData.employees.map((employee) => ({ ...employee, payPerHour: Number(employee.payPerHour ?? (employee.payPerDay ? Math.round(Number(employee.payPerDay) / 8) : 0)) }));
   userData.events = userData.events.map((event) => normalizeEventShape({ employeeAssignments: [], ...event }));
   userData.attendance = userData.attendance || [];
