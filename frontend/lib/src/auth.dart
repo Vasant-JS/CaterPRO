@@ -11,8 +11,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final formKey = GlobalKey<FormState>();
   final authService = AuthService();
   final biometricService = BiometricAuthService();
-  final email = TextEditingController(text: 'admin@caterpro.in');
-  final password = TextEditingController(text: 'password');
+  final email = TextEditingController();
+  final password = TextEditingController();
   bool obscurePassword = true;
   bool rememberMe = true;
   bool loading = false;

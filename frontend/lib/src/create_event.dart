@@ -1184,6 +1184,7 @@ class ServicePickerSheet extends StatefulWidget {
 class _ServicePickerSheetState extends State<ServicePickerSheet> {
   late Set<String> selectedIds;
   final quantityControllers = <String, TextEditingController>{};
+  final search = TextEditingController();
 
   @override
   void initState() {
@@ -1207,13 +1208,28 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
     for (final controller in quantityControllers.values) {
       controller.dispose();
     }
+    search.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final services = [...widget.services]..sort((a, b) {
+    final query = search.text.trim().toLowerCase();
+    final services = widget.services.where((service) {
+      if (query.isEmpty) return true;
+      final quantity =
+          int.tryParse(quantityControllers[service.id]?.text ?? '') ??
+              service.quantity;
+      final searchable = [
+        service.name,
+        service.unit,
+        service.price.toString(),
+        serviceLine(service.name, quantity, service.unit, service.price),
+      ].join(' ').toLowerCase();
+      return searchable.contains(query);
+    }).toList()
+      ..sort((a, b) {
         final selectedCompare = (selectedIds.contains(b.id) ? 1 : 0)
             .compareTo(selectedIds.contains(a.id) ? 1 : 0);
         if (selectedCompare != 0) return selectedCompare;
@@ -1249,67 +1265,94 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
               Text('Choose services from Settings > Additional Services.',
                   style: TextStyle(color: cpOnVariant(context))),
               const SizedBox(height: 16),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: services.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final service = services[index];
-                    final selected = selectedIds.contains(service.id);
-                    return CpCard(
-                      color: selected ? Cp.primaryFixed : Cp.card,
-                      onTap: () => setState(() => selected
-                          ? selectedIds.remove(service.id)
-                          : selectedIds.add(service.id)),
-                      child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                                padding: const EdgeInsets.only(top: 10),
-                                child: Icon(
-                                    selected
-                                        ? Icons.check_circle
-                                        : Icons.circle_outlined,
-                                    color: selected
-                                        ? cpPrimary(context)
-                                        : cpOutline(context))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: Text(
-                                    serviceLine(
-                                        service.name,
-                                        int.tryParse(
-                                                quantityControllers[service.id]
-                                                        ?.text ??
-                                                    '') ??
-                                            service.quantity,
-                                        service.unit,
-                                        service.price),
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w800))),
-                            if (selected) ...[
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 96,
-                                child: TextField(
-                                  controller: quantityControllers[service.id],
-                                  keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                      labelText: 'Count',
-                                      isDense: true,
-                                      border: OutlineInputBorder(
-                                          borderRadius:
-                                              BorderRadius.circular(10))),
-                                  onTap: () {},
-                                  onChanged: (_) => setState(() {}),
-                                ),
-                              ),
-                            ],
-                          ]),
-                    );
-                  },
+              TextField(
+                controller: search,
+                textInputAction: TextInputAction.search,
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: search.text.isEmpty
+                      ? null
+                      : IconButton(
+                          tooltip: 'Clear search',
+                          onPressed: () => setState(search.clear),
+                          icon: const Icon(Icons.close),
+                        ),
+                  labelText: 'Search services',
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              Flexible(
+                child: services.isEmpty
+                    ? Center(
+                        child: Text('No services match your search.',
+                            style: TextStyle(
+                                color: cpOnVariant(context),
+                                fontWeight: FontWeight.w700)),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: services.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final service = services[index];
+                          final selected = selectedIds.contains(service.id);
+                          return CpCard(
+                            color: selected ? Cp.primaryFixed : Cp.card,
+                            onTap: () => setState(() => selected
+                                ? selectedIds.remove(service.id)
+                                : selectedIds.add(service.id)),
+                            child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                      padding: const EdgeInsets.only(top: 10),
+                                      child: Icon(
+                                          selected
+                                              ? Icons.check_circle
+                                              : Icons.circle_outlined,
+                                          color: selected
+                                              ? cpPrimary(context)
+                                              : cpOutline(context))),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                      child: Text(
+                                          serviceLine(
+                                              service.name,
+                                              int.tryParse(quantityControllers[
+                                                              service.id]
+                                                          ?.text ??
+                                                      '') ??
+                                                  service.quantity,
+                                              service.unit,
+                                              service.price),
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w800))),
+                                  if (selected) ...[
+                                    const SizedBox(width: 12),
+                                    SizedBox(
+                                      width: 96,
+                                      child: TextField(
+                                        controller:
+                                            quantityControllers[service.id],
+                                        keyboardType: TextInputType.number,
+                                        decoration: InputDecoration(
+                                            labelText: 'Count',
+                                            isDense: true,
+                                            border: OutlineInputBorder(
+                                                borderRadius:
+                                                    BorderRadius.circular(10))),
+                                        onTap: () {},
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                  ],
+                                ]),
+                          );
+                        },
+                      ),
               ),
               const SizedBox(height: 16),
               SizedBox(

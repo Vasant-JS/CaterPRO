@@ -87,15 +87,40 @@ async function loadSupabaseDb() {
   return db;
 }
 
-async function saveSupabaseDb(db) {
+function compactSupabaseState(db) {
+  const compacted = JSON.parse(JSON.stringify(db));
+  ensureUniversal(compacted);
+  const universalMenuIds = new Set(asArray(compacted.universal?.menuItems).map((item) => item.id).filter(Boolean));
+  for (const [userId, userData] of Object.entries(compacted.userData || {})) {
+    if (userId === 'usr_demo_admin') continue;
+    const menuItems = asArray(userData?.menuItems);
+    const mostlyUniversalMenuItems = menuItems.length > 300
+      && menuItems.filter((item) => universalMenuIds.has(item.id)).length >= Math.floor(menuItems.length * 0.9);
+    if (mostlyUniversalMenuItems) {
+      userData.menuItems = [];
+    }
+  }
+  return compacted;
+}
+
+async function saveSupabaseState(db) {
   if (!supabase) return;
+  const state = compactSupabaseState(db);
   await supabaseRequest(
     supabase.from('caterpro_state').upsert({
       id: supabaseStateId,
-      data: db,
+      data: state,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' }),
   );
+}
+
+async function saveSupabaseDb(db, { syncMirrorTables = false } = {}) {
+  if (!supabase) return { status: 'disabled', tables: {} };
+  await saveSupabaseState(db);
+  if (!syncMirrorTables) {
+    return { status: 'skipped', reason: 'mirror table sync not requested', tables: {} };
+  }
   try {
     return await syncSupabaseTables(db);
   } catch (error) {
@@ -408,7 +433,7 @@ function scheduleSupabaseSave(db) {
   const snapshot = JSON.parse(JSON.stringify(db));
   pendingSupabaseWrite = pendingSupabaseWrite
     .catch(() => {})
-    .then(() => saveSupabaseDb(snapshot))
+    .then(() => saveSupabaseDb(snapshot, { syncMirrorTables: false }))
     .catch((error) => console.error('Supabase sync failed:', error.message));
 }
 
@@ -421,7 +446,6 @@ async function initializeStorage() {
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
     runtimeDb = ensureAdminUser(supabaseDb);
-    scheduleSupabaseSave(runtimeDb);
     console.log(`CaterPro storage: loaded Supabase state "${supabaseStateId}"`);
     return;
   }
