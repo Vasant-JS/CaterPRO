@@ -30,7 +30,7 @@ class _EventsScreenState extends State<EventsScreen> {
   String? clientFilter;
   String? dateFilter;
   DateTimeRange? dateRangeFilter;
-  bool showPastEvents = false;
+  bool showPastEvents = true;
   bool showOverduePayments = false;
   String paymentFilter = 'All';
   static const shortMonths = [
@@ -280,7 +280,7 @@ class _EventsScreenState extends State<EventsScreen> {
     clientFilter = null;
     dateFilter = null;
     dateRangeFilter = null;
-    showPastEvents = false;
+    showPastEvents = true;
     showOverduePayments = false;
     paymentFilter = 'All';
     query = '';
