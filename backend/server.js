@@ -5351,21 +5351,37 @@ app.get('/api/admin/audit-logs', (req, res) => {
   res.json(logs.slice(0, limit));
 });
 
+function userDataFromImportPayload(payload, user) {
+  const rawUserData = payload?.userData || payload;
+  if (!rawUserData || typeof rawUserData !== 'object' || Array.isArray(rawUserData)) return null;
+  if (Array.isArray(rawUserData.events) || Array.isArray(rawUserData.clients)) return rawUserData;
+  if (rawUserData[user.id] && typeof rawUserData[user.id] === 'object') return rawUserData[user.id];
+  const users = asArray(payload?.users);
+  const matchingUser = users.find((item) => String(item?.email || '').toLowerCase() === String(user.email || '').toLowerCase());
+  if (matchingUser?.id && rawUserData[matchingUser.id] && typeof rawUserData[matchingUser.id] === 'object') {
+    return rawUserData[matchingUser.id];
+  }
+  return null;
+}
+
 app.post('/api/backup/import', (req, res) => {
   const db = readDb();
   ensureUniversal(db);
   const user = requireUser(req, res, db);
   if (!user) return;
   const payload = req.body || {};
-  const importedUserData = payload.userData || payload;
+  const importedUserData = userDataFromImportPayload(payload, user);
   if (!importedUserData || typeof importedUserData !== 'object' || Array.isArray(importedUserData)) {
     return res.status(400).json({ message: 'Invalid CaterPro backup file' });
   }
-  db.userData[user.id] = ensureUserDataShape({
+  const normalizedImport = ensureUserDataShape({
     ...emptyUserData(),
     ...importedUserData,
     businessProfile: { ...emptyBusinessProfile(), ...(importedUserData.businessProfile || {}) },
   });
+  db.userData[user.id] = req.body?.replace === true
+    ? normalizedImport
+    : mergeUserDataForSync(db.userData[user.id] || emptyUserData(), normalizedImport);
   if (payload.universal && typeof payload.universal === 'object' && !Array.isArray(payload.universal)) {
     db.universal = mergeProtectedUniversalCatalog(db.universal || {}, payload.universal);
   }

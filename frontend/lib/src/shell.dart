@@ -305,9 +305,9 @@ class _AppShellState extends State<AppShell> {
   }
 
   Future<void> startupRefresh() async {
-    final ready = await ensureMasterDataReady();
-    if (!mounted || !ready) return;
     await refreshEvents();
+    if (!mounted) return;
+    await ensureMasterDataReady();
   }
 
   Future<bool> ensureMasterDataReady() async {
@@ -808,6 +808,42 @@ class _AppShellState extends State<AppShell> {
     }
   }
 
+  Future<void> saveServerSnapshotToSqlite({
+    required Map<String, dynamic> userData,
+    required Map<String, dynamic> universal,
+  }) async {
+    await LocalCaterProDb.instance.saveSnapshot(
+      userData: userData,
+      universal: universal,
+      synced: true,
+    );
+  }
+
+  Future<Map<String, dynamic>> hydrateMissingServerDataFromEndpoints(
+      Map<String, dynamic> userData) async {
+    final hydrated = <String, dynamic>{...userData};
+    if (jsonMapList(hydrated['events']).isEmpty) {
+      final remoteEvents = await api.getEvents();
+      hydrated['events'] = remoteEvents.map((event) => event.toJson()).toList();
+    }
+    if (jsonMapList(hydrated['clients']).isEmpty) {
+      final remoteClients = await api.getClients();
+      hydrated['clients'] =
+          remoteClients.map((client) => client.toJson()).toList();
+    }
+    if (jsonMapList(hydrated['employees']).isEmpty) {
+      final remoteEmployees = await api.getEmployees();
+      hydrated['employees'] =
+          remoteEmployees.map((employee) => employee.toJson()).toList();
+    }
+    if (jsonMapList(hydrated['manualInvoices']).isEmpty) {
+      final remoteInvoices = await api.getManualInvoices();
+      hydrated['manualInvoices'] =
+          remoteInvoices.map((invoice) => invoice.toJson()).toList();
+    }
+    return normalizeUserData(hydrated);
+  }
+
   Future<void> pushCurrentSnapshot() async {
     if (syncInProgress) return;
     syncInProgress = true;
@@ -892,11 +928,19 @@ class _AppShellState extends State<AppShell> {
     }
     try {
       if (!silent) updateSyncProgress(40, 'Downloading server snapshot');
-      final snapshot = await api.getSyncSnapshot();
+      final snapshot =
+          await api.getSyncSnapshot().timeout(const Duration(seconds: 30));
       final serverUniversal = Map<String, dynamic>.from(
           (snapshot['universal'] as Map?) ?? const {});
       var serverUserData = normalizeUserData(Map<String, dynamic>.from(
           (snapshot['userData'] as Map?) ?? const {}));
+      if (jsonMapList(serverUserData['events']).isEmpty) {
+        try {
+          if (!silent) updateSyncProgress(50, 'Loading server events');
+          serverUserData =
+              await hydrateMissingServerDataFromEndpoints(serverUserData);
+        } catch (_) {}
+      }
       if (!hasBusinessProfileDetails(serverUserData['businessProfile']) ||
           !hasBusinessProfileImages(serverUserData['businessProfile'])) {
         try {
@@ -924,13 +968,23 @@ class _AppShellState extends State<AppShell> {
       final shouldUploadLocal = localDirty ||
           (localHasData && serverHasNoUserData) ||
           localHasOnlyBusinessProfile;
+      final shouldSaveServerToSqlite =
+          !localDirty && !localHasOnlyBusinessProfile;
+      if (shouldSaveServerToSqlite) {
+        if (!silent) updateSyncProgress(65, 'Saving server data to SQLite');
+        await saveServerSnapshotToSqlite(
+          userData: serverUserData,
+          universal: serverUniversal,
+        );
+      }
       if (localUserData == null || localUniversal == null) {
-        if (!silent) updateSyncProgress(75, 'Saving local copy');
+        if (!silent) updateSyncProgress(75, 'Applying server changes');
         await applySnapshot(
           userData: serverUserData,
           universal: serverUniversal,
           synced: true,
           updateLastSynced: true,
+          persist: !shouldSaveServerToSqlite,
         );
         if (!silent) {
           updateSyncProgress(100, 'Sync complete', active: false);
@@ -944,6 +998,7 @@ class _AppShellState extends State<AppShell> {
           universal: serverUniversal,
           synced: true,
           updateLastSynced: true,
+          persist: !shouldSaveServerToSqlite,
         );
         if (!silent) {
           updateSyncProgress(100, 'Sync complete', active: false);
