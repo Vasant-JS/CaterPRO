@@ -294,9 +294,9 @@ function eventFromSupabaseRow(row = {}) {
     status: row.status ?? raw.status ?? '',
     notes: row.notes ?? raw.notes ?? '',
     addOns: asArray(row.add_ons ?? raw.addOns),
-    dates: [],
-    payments: [],
-    employeeAssignments: [],
+    dates: asArray(raw.dates),
+    payments: asArray(raw.payments),
+    employeeAssignments: asArray(raw.employeeAssignments),
   });
 }
 
@@ -308,7 +308,7 @@ function eventDateFromSupabaseRow(row = {}) {
     date: row.event_date ?? raw.date ?? '',
     label: row.label ?? raw.label ?? '',
     additionalServices: asArray(row.additional_services ?? raw.additionalServices),
-    menuSlots: [],
+    menuSlots: asArray(raw.menuSlots),
   });
 }
 
@@ -536,6 +536,10 @@ async function loadSupabaseTableState() {
     const event = eventFromSupabaseRow(row);
     ensureLoadedUserData(row.user_id).events.push(event);
     eventMap.set(eventKey(row.user_id, row.id), event);
+    for (const date of asArray(event.dates)) {
+      const id = date.id || date.date || '';
+      if (id) dateMap.set(dateKey(row.user_id, row.id, id), date);
+    }
   }
   for (const row of rows.cp_event_dates) {
     const event = eventMap.get(eventKey(row.user_id, row.event_id));
