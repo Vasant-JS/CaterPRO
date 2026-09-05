@@ -1036,6 +1036,7 @@ function normalizeEventShape(event = {}) {
     })),
   };
   normalized.dates = mergeEventDates(normalized.dates);
+  normalized.payments = dedupeBy(normalized.payments, (payment) => payment.id || [payment.eventId, payment.date, payment.amount, payment.mode].join('|'));
   normalized.attendance = dedupeBy(asArray(normalized.attendance), (record) => [record.eventId, record.employeeId, record.date].join('|'));
   return normalized;
 }
