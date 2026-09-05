@@ -17,6 +17,7 @@ class _CaterProAppState extends State<CaterProApp> {
     super.initState();
     appPreferences.load();
     downloadHistory.load();
+    unawaited(LocalCaterProDb.instance.createDailyBackupIfNeeded());
   }
 
   @override

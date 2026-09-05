@@ -4,8 +4,11 @@ class LocalCaterProDb {
   LocalCaterProDb._();
   static final instance = LocalCaterProDb._();
   Database? _db;
+  Future<void>? _dailyBackupRun;
 
   static const stateId = 'default';
+  static const databaseFileName = 'caterpro_local.db';
+  static const dailyBackupPrefsKey = 'localDb.lastDailyBackupDate';
 
   Future<Database> get database async {
     if (kIsWeb) {
@@ -14,7 +17,7 @@ class LocalCaterProDb {
     final existing = _db;
     if (existing != null) return existing;
     final basePath = await getDatabasesPath();
-    final dbPath = path_package.join(basePath, 'caterpro_local.db');
+    final dbPath = path_package.join(basePath, databaseFileName);
     return _db = await openDatabase(
       dbPath,
       version: 6,
@@ -38,6 +41,69 @@ class LocalCaterProDb {
         }
       },
     );
+  }
+
+  Future<void> createDailyBackupIfNeeded() {
+    if (kIsWeb) return Future.value();
+    return _dailyBackupRun ??= _createDailyBackupIfNeeded().whenComplete(() {
+      _dailyBackupRun = null;
+    });
+  }
+
+  Future<void> _createDailyBackupIfNeeded() async {
+    try {
+      final now = DateTime.now();
+      final today =
+          '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getString(dailyBackupPrefsKey) == today) return;
+
+      final db = await database;
+      final basePath = await getDatabasesPath();
+      final backupDir = Directory(path_package.join(basePath, 'backups'));
+      if (!await backupDir.exists()) await backupDir.create(recursive: true);
+
+      final backupPath =
+          path_package.join(backupDir.path, 'caterpro_local_$today.db');
+      final backupFile = File(backupPath);
+      if (await backupFile.exists()) await backupFile.delete();
+
+      try {
+        final escapedPath = backupPath.replaceAll("'", "''");
+        await db.execute("VACUUM INTO '$escapedPath'");
+      } catch (_) {
+        await db.close();
+        _db = null;
+        final sourcePath = path_package.join(basePath, databaseFileName);
+        await File(sourcePath).copy(backupPath);
+        await database;
+      }
+
+      await rotateDailyBackups(backupDir);
+      await prefs.setString(dailyBackupPrefsKey, today);
+    } catch (error) {
+      debugPrint('Daily SQLite backup skipped: $error');
+    }
+  }
+
+  Future<void> rotateDailyBackups(Directory backupDir) async {
+    final files = await backupDir
+        .list()
+        .where((entity) =>
+            entity is File &&
+            path_package.basename(entity.path).startsWith('caterpro_local_') &&
+            path_package.extension(entity.path) == '.db')
+        .cast<File>()
+        .toList();
+    files.sort((a, b) =>
+        path_package.basename(b.path).compareTo(path_package.basename(a.path)));
+    for (final file in files.skip(7)) {
+      try {
+        await file.delete();
+      } catch (error) {
+        debugPrint('Old SQLite backup delete skipped: $error');
+      }
+    }
   }
 
   Future<void> createSchema(Database db) async {
