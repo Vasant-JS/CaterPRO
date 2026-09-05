@@ -2922,7 +2922,7 @@ function generateEventPdf({ res, db, event, type, businessProfile = emptyBusines
     const visibleSlots = sortedVisibleMenuSlots(date.menuSlots);
     if (visibleSlots.length === 0) continue;
     y = ensurePageSpace(doc, y, 22, () => continueDocumentTablePage(doc, title, documentEvent, number, fonts, businessProfile), theme);
-    doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left, y, { width: metrics.width });
+    doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.8).text(`${prettyDate(date.date)}${date.label ? ` - ${date.label}` : ''}`, metrics.left + 10, y, { width: metrics.width - 10 });
     y += 15;
     for (const slot of visibleSlots) {
       const amount = Number(slot.pax || 0) * Number(slot.pricePerPax || 0);

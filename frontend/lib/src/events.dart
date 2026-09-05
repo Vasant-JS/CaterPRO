@@ -705,11 +705,21 @@ class EventListCard extends StatelessWidget {
               ]),
             ]),
             const SizedBox(height: 14),
-            Row(children: [
-              Icon(Icons.calendar_today, size: 18, color: mutedColor),
-              Text(' $dates',
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(Icons.calendar_today, size: 18, color: mutedColor),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  dates,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style:
-                      TextStyle(color: mutedColor, fontWeight: FontWeight.w700))
+                      TextStyle(color: mutedColor, fontWeight: FontWeight.w700),
+                ),
+              )
             ]),
             const SizedBox(height: 12),
             Wrap(
