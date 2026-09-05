@@ -965,10 +965,27 @@ function ensureUserDataShape(userData) {
   userData.customMenus = userData.customMenus || [];
   userData.requirementLists = asArray(userData.requirementLists).map((item) => materialDocumentFromBody(item));
   userData.payments = userData.payments || [];
+  attachUserPaymentsToEvents(userData);
   userData.manualInvoices = userData.manualInvoices || [];
   userData.auditLogs = asArray(userData.auditLogs);
   userData.businessProfile = { ...emptyBusinessProfile(), ...(userData.businessProfile || {}) };
   return userData;
+}
+
+function attachUserPaymentsToEvents(userData) {
+  const eventsById = new Map(asArray(userData.events).map((event) => [String(event.id || ''), event]));
+  for (const payment of asArray(userData.payments)) {
+    const eventId = String(payment.eventId || payment.event_id || '');
+    if (!eventId) continue;
+    const event = eventsById.get(eventId);
+    if (!event) continue;
+    const paymentId = String(payment.id || '');
+    event.payments = asArray(event.payments);
+    const exists = paymentId
+      ? event.payments.some((item) => String(item.id || '') === paymentId)
+      : event.payments.some((item) => JSON.stringify(item) === JSON.stringify(payment));
+    if (!exists) event.payments.push({ ...payment, eventId });
+  }
 }
 
 function cloneCatalog(items = []) {

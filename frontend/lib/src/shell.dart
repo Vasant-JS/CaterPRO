@@ -609,8 +609,10 @@ class _AppShellState extends State<AppShell> {
 
   Map<String, dynamic> normalizeUserData(Map<String, dynamic> userData) {
     final normalized = <String, dynamic>{...userData};
-    normalized['events'] =
-        jsonMapList(userData['events']).map(normalizeEventJson).toList();
+    normalized['events'] = attachUserPaymentsToEvents(
+            jsonMapList(userData['events']), jsonMapList(userData['payments']))
+        .map(normalizeEventJson)
+        .toList();
     normalized['attendance'] =
         dedupeJsonList(userData['attendance'], key: 'attendance');
     normalized['menuItems'] = jsonMapList(userData['menuItems']);
@@ -622,6 +624,38 @@ class _AppShellState extends State<AppShell> {
           ..sort((a, b) => (b['createdAt']?.toString() ?? '')
               .compareTo(a['createdAt']?.toString() ?? ''));
     return normalized;
+  }
+
+  List<Map<String, dynamic>> attachUserPaymentsToEvents(
+      List<Map<String, dynamic>> events, List<Map<String, dynamic>> payments) {
+    if (events.isEmpty || payments.isEmpty) return events;
+    final eventsById = <String, Map<String, dynamic>>{
+      for (final event in events)
+        if ((event['id']?.toString() ?? '').isNotEmpty)
+          event['id'].toString(): event
+    };
+    for (final payment in payments) {
+      final eventId = payment['eventId']?.toString() ??
+          payment['event_id']?.toString() ??
+          '';
+      if (eventId.isEmpty) continue;
+      final event = eventsById[eventId];
+      if (event == null) continue;
+      final eventPayments = jsonMapList(event['payments']);
+      final paymentId = payment['id']?.toString() ?? '';
+      final exists = paymentId.isNotEmpty
+          ? eventPayments
+              .any((item) => (item['id']?.toString() ?? '') == paymentId)
+          : eventPayments
+              .any((item) => jsonEncode(item) == jsonEncode(payment));
+      if (!exists) {
+        event['payments'] = [
+          ...eventPayments,
+          {...payment, 'eventId': eventId}
+        ];
+      }
+    }
+    return events;
   }
 
   Map<String, dynamic> normalizeEventJson(Map<String, dynamic> event) {
