@@ -1172,12 +1172,19 @@ class AuthSession {
 }
 
 class AuthService {
+  static const _tokenKey = 'auth.token';
+  static const _userIdKey = 'auth.userId';
+  static const _emailKey = 'auth.email';
+  static const _nameKey = 'auth.name';
+  static const _rememberedKey = 'auth.remembered';
+  static const _biometricEnabledKey = 'auth.biometric.enabled';
+
   Future<AuthSession?> savedSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth.token');
-    final userId = prefs.getString('auth.userId');
-    final email = prefs.getString('auth.email');
-    final name = prefs.getString('auth.name');
+    final token = prefs.getString(_tokenKey);
+    final userId = prefs.getString(_userIdKey);
+    final email = prefs.getString(_emailKey);
+    final name = prefs.getString(_nameKey);
     if (token == null ||
         token.isEmpty ||
         userId == null ||
@@ -1189,7 +1196,9 @@ class AuthService {
   }
 
   Future<AuthSession> login(
-      {required String email, required String password}) async {
+      {required String email,
+      required String password,
+      bool remember = true}) async {
     final response = await http.post(
       Uri.parse('${ApiConfig.baseUrl}/auth/login'),
       headers: const {'Content-Type': 'application/json'},
@@ -1206,11 +1215,29 @@ class AuthService {
         email: user['email'] as String,
         name: user['name'] as String);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth.token', session.token);
-    await prefs.setString('auth.userId', session.userId);
-    await prefs.setString('auth.email', session.email);
-    await prefs.setString('auth.name', session.name);
+    await prefs.setString(_tokenKey, session.token);
+    await prefs.setString(_userIdKey, session.userId);
+    await prefs.setString(_emailKey, session.email);
+    await prefs.setString(_nameKey, session.name);
+    await prefs.setBool(_rememberedKey, remember);
+    if (!remember) {
+      await prefs.remove(_biometricEnabledKey);
+    }
     return session;
+  }
+
+  Future<AuthSession?> restoreRememberedSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final remembered = prefs.getBool(_rememberedKey);
+    final session = await savedSession();
+    if (remembered ?? session != null) {
+      if (remembered == null && session != null) {
+        await prefs.setBool(_rememberedKey, true);
+      }
+      return session;
+    }
+    if (session != null) await clearSession();
+    return null;
   }
 
   Future<void> forgotPassword(String email) async {
@@ -1224,7 +1251,7 @@ class AuthService {
   Future<void> changePassword(
       {required String oldPassword, required String newPassword}) async {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('auth.token') ?? '';
+    final token = prefs.getString(_tokenKey) ?? '';
     if (token.isEmpty) {
       throw Exception('Please login again before changing password');
     }
@@ -1261,12 +1288,17 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await clearSession();
+  }
+
+  Future<void> clearSession() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth.token');
-    await prefs.remove('auth.userId');
-    await prefs.remove('auth.email');
-    await prefs.remove('auth.name');
-    await prefs.remove('auth.biometric.enabled');
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userIdKey);
+    await prefs.remove(_emailKey);
+    await prefs.remove(_nameKey);
+    await prefs.remove(_rememberedKey);
+    await prefs.remove(_biometricEnabledKey);
   }
 }
 
@@ -1290,12 +1322,12 @@ class BiometricAuthService {
 
   Future<bool> isEnabled() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool('auth.biometric.enabled') ?? false;
+    return prefs.getBool(AuthService._biometricEnabledKey) ?? false;
   }
 
   Future<void> setEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('auth.biometric.enabled', enabled);
+    await prefs.setBool(AuthService._biometricEnabledKey, enabled);
   }
 
   Future<bool> authenticate(String reason) async {
@@ -1331,13 +1363,10 @@ class _AuthGateState extends State<AuthGate> {
   }
 
   Future<void> restore() async {
-    final session = await auth.savedSession();
-    final needsBiometric = session != null &&
-        await biometric.isSupported() &&
-        await biometric.isEnabled();
+    final session = await auth.restoreRememberedSession();
     if (!mounted) return;
     setState(() {
-      loggedIn = session != null && !needsBiometric;
+      loggedIn = session != null;
       checking = false;
     });
   }
@@ -2983,6 +3012,8 @@ Future<ReportDateRangeSelection?> showReportDateRangePickerDialog(
   final monthStart = DateTime(today.year, today.month);
   final quarterStartMonth = ((today.month - 1) ~/ 3) * 3 + 1;
   final quarterStart = DateTime(today.year, quarterStartMonth);
+  final halfYearStartMonth = today.month <= 6 ? 1 : 7;
+  final halfYearStart = DateTime(today.year, halfYearStartMonth);
   final yearStart = DateTime(today.year);
 
   ReportDateRangeSelection selection(
@@ -3004,20 +3035,27 @@ Future<ReportDateRangeSelection?> showReportDateRangePickerDialog(
                   child: const ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.calendar_month),
-                      title: Text('Current month'))),
+                      title: Text('Monthly'))),
               SimpleDialogOption(
                   onPressed: () =>
                       Navigator.pop(dialogContext, 'current_quarter'),
                   child: const ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.view_week),
-                      title: Text('Current quarter'))),
+                      title: Text('3 month'))),
+              SimpleDialogOption(
+                  onPressed: () =>
+                      Navigator.pop(dialogContext, 'current_half_year'),
+                  child: const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.view_agenda),
+                      title: Text('Half yearly'))),
               SimpleDialogOption(
                   onPressed: () => Navigator.pop(dialogContext, 'current_year'),
                   child: const ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.event_available),
-                      title: Text('Current year'))),
+                      title: Text('Annual'))),
               SimpleDialogOption(
                   onPressed: () => Navigator.pop(dialogContext, 'custom'),
                   child: const ListTile(
@@ -3030,11 +3068,13 @@ Future<ReportDateRangeSelection?> showReportDateRangePickerDialog(
 
   switch (choice) {
     case 'current_month':
-      return selection('Current month', monthStart, today);
+      return selection('Monthly', monthStart, today);
     case 'current_quarter':
-      return selection('Current quarter', quarterStart, today);
+      return selection('3 month', quarterStart, today);
+    case 'current_half_year':
+      return selection('Half yearly', halfYearStart, today);
     case 'current_year':
-      return selection('Current year', yearStart, today);
+      return selection('Annual', yearStart, today);
     case 'custom':
       final firstDate = DateTime(today.year - 1, today.month, today.day);
       final picked = await showDateRangePicker(
@@ -3076,6 +3116,111 @@ bool isValidEmail(String value) =>
     RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(value.trim());
 String? requiredTextValidator(String? value, String label) =>
     (value ?? '').trim().isEmpty ? '$label is required' : null;
+
+TextCapitalization cpTextCapitalizationForField({
+  String? label,
+  String? hint,
+  TextInputType? keyboardType,
+  bool obscureText = false,
+}) {
+  if (obscureText) return TextCapitalization.none;
+  if (keyboardType == TextInputType.emailAddress ||
+      keyboardType == TextInputType.phone ||
+      keyboardType?.index == TextInputType.number.index ||
+      keyboardType == TextInputType.url ||
+      keyboardType == TextInputType.visiblePassword) {
+    return TextCapitalization.none;
+  }
+
+  final source = [label, hint]
+      .whereType<String>()
+      .join(' ')
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9/& ]+'), ' ');
+  final words = RegExp(r'[a-z0-9]+').allMatches(source).map((match) {
+    return match.group(0) ?? '';
+  }).toSet();
+  if (source.trim().isEmpty) return TextCapitalization.sentences;
+  if (source.contains('date label')) return TextCapitalization.words;
+
+  const noneKeywords = [
+    'search',
+    'password',
+    'email',
+    'mobile',
+    'phone',
+    'qty',
+    'quantity',
+    'count',
+    'members',
+    'pax',
+    'price',
+    'cost',
+    'amount',
+    'rate',
+    'date',
+    'time',
+    'gst',
+    'gstin',
+    'pan',
+    'ifsc',
+    'invoice no',
+    'quote no',
+    'number',
+    'age',
+    'a/c',
+    'account',
+  ];
+  if (noneKeywords.any(source.contains)) return TextCapitalization.none;
+  const noneTokens = ['id', 'ref', 'no'];
+  if (noneTokens.any(words.contains)) return TextCapitalization.none;
+
+  const sentenceKeywords = [
+    'address',
+    'notes',
+    'terms',
+    'logistics',
+    'description',
+  ];
+  if (sentenceKeywords.any(source.contains)) {
+    return TextCapitalization.sentences;
+  }
+
+  const wordKeywords = [
+    'name',
+    'client',
+    'city',
+    'area',
+    'venue',
+    'event',
+    'title',
+    'service',
+    'designation',
+    'category',
+    'bank',
+    'branch',
+    'unit',
+    'english',
+    'kannada',
+    'menu',
+    'item',
+  ];
+  if (wordKeywords.any(source.contains)) return TextCapitalization.words;
+
+  return TextCapitalization.sentences;
+}
+
+EdgeInsets cpTextFieldScrollPadding(BuildContext context) {
+  final media = MediaQuery.of(context);
+  final keyboardPadding = media.viewInsets.bottom + 28;
+  final upperHalfPadding = media.size.height * .46;
+  return EdgeInsets.fromLTRB(20, 20, 20,
+      keyboardPadding > upperHalfPadding ? keyboardPadding : upperHalfPadding);
+}
+
+double cpSheetMaxHeight(BuildContext context, [double factor = .86]) =>
+    MediaQuery.of(context).size.height * factor;
+
 String? mobileValidator(String? value,
     {String label = 'Mobile number', bool required = true}) {
   final clean = normalizeMobileText(value ?? '');

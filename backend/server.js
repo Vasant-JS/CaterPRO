@@ -3229,6 +3229,20 @@ function parseStrictIsoDate(value) {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day ? date : null;
 }
 
+function monthKeyFromDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function monthLabelFromKey(key) {
+  const [year, month] = String(key || '').split('-').map(Number);
+  if (!year || !month) return 'Undated';
+  return new Date(year, month - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
+
+function monthSpanCount(startDate, endDate) {
+  return ((endDate.getFullYear() - startDate.getFullYear()) * 12) + endDate.getMonth() - startDate.getMonth() + 1;
+}
+
 function reportRangeFromQuery(query = {}) {
   const today = parseStrictIsoDate(todayIso());
   const hasCustomRange = query.startDate || query.endDate;
@@ -3278,6 +3292,10 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], range, bus
     const date = parseStrictIsoDate(value);
     return date && date >= reportRange.startDate && date <= reportRange.endDate;
   };
+  const eventReportDateValue = (event) => asArray(event.dates)
+    .map((date) => parseStrictIsoDate(date.date))
+    .filter((date) => date && date >= reportRange.startDate && date <= reportRange.endDate)
+    .sort((a, b) => a - b)[0] || eventFirstDateValue(event);
   const monthEvents = asArray(events).filter((event) => asArray(event.dates).some((date) => rangeContains(date.date)));
   const monthPayments = asArray(events).flatMap((event) => asArray(event.payments)
     .filter((payment) => rangeContains(payment.date))
@@ -3336,23 +3354,50 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], range, bus
     doc.fillColor(color).font(fonts.bold).fontSize(13).text(value, x + 8, y + 25, { width: w - 16, ellipsis: true });
     doc.fillColor('#6b7280').font(fonts.regular).fontSize(7).text(note, x + 8, y + 43, { width: w - 16, ellipsis: true });
   }
+  function monthHeader(title) {
+    ensure(22);
+    doc.rect(left, y, width, 18).fill('#e8f3f2');
+    doc.fillColor('#06445d').font(fonts.bold).fontSize(8.5).text(title, left + 6, y + 5, { width: width - 12 });
+    y += 18;
+  }
   function row(cells, widths, opts = {}) {
     const h = opts.header ? 20 : 24;
     ensure(h);
     let x = left;
     if (opts.header) doc.rect(left, y, width, h).fill('#f3f4f6');
+    if (opts.subtotal) doc.rect(left, y, width, h).fill('#f8fafc');
     cells.forEach((cell, index) => {
-      doc.fillColor(opts.color || '#202124').font(opts.header ? fonts.bold : fonts.regular).fontSize(opts.header ? 8 : 7.5)
+      doc.fillColor(opts.color || '#202124').font(opts.header || opts.subtotal ? fonts.bold : fonts.regular).fontSize(opts.header ? 8 : 7.5)
         .text(String(cell ?? ''), x + 4, y + 6, { width: widths[index] - 8, height: h - 8, ellipsis: true, align: opts.align?.[index] || 'left' });
       x += widths[index];
     });
     doc.moveTo(left, y + h).lineTo(right, y + h).strokeColor('#edf0f2').lineWidth(0.4).stroke();
     y += h;
   }
+  function groupedRows(items, dateForItem, drawItem, drawSubtotal) {
+    const groups = new Map();
+    for (const item of items) {
+      const date = dateForItem(item);
+      const key = date ? monthKeyFromDate(date) : 'undated';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(item);
+    }
+    return [...groups.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([key, groupItems]) => {
+        monthHeader(monthLabelFromKey(key));
+        groupItems.forEach(drawItem);
+        drawSubtotal(key, groupItems);
+      });
+  }
 
   addPage();
   const cardGap = 8;
   const cardW = (width - cardGap * 2) / 3;
+  metric(left, cardW, 'DURATION', `${monthSpanCount(reportRange.startDate, reportRange.endDate)} month${monthSpanCount(reportRange.startDate, reportRange.endDate) === 1 ? '' : 's'}`, reportLabel, '#06445d');
+  metric(left + cardW + cardGap, cardW, 'FROM', prettyDate(reportRange.startKey), 'Report start date', '#1c7c8a');
+  metric(left + (cardW + cardGap) * 2, cardW, 'TO', prettyDate(reportRange.endKey), 'Report end date', '#7c3aed');
+  y += 70;
   metric(left, cardW, 'COLLECTED', money(collected), `${monthPayments.length} event payments`, '#0f766e');
   metric(left + cardW + cardGap, cardW, 'BOOKED', money(bookedRevenue), `${monthEvents.length} events`, '#06445d');
   metric(left + (cardW + cardGap) * 2, cardW, 'OUTSTANDING', money(outstanding), `${pendingEvents.length} pending`, '#ba1a1a');
@@ -3364,26 +3409,48 @@ function generateMonthlyReportPdf({ res, events, manualInvoices = [], range, bus
 
   section('Events');
   row(['Date', 'Event', 'Client', 'Members', 'Booked', 'Paid', 'Discount', 'Balance'], [48, 122, 82, 48, 66, 58, 58, 66], { header: true, align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
-  for (const event of monthEvents) {
+  groupedRows(monthEvents, eventReportDateValue, (event) => {
     const totals = eventTotals(event);
-    row([eventFirstDateValue(event)?.toISOString().slice(0, 10) || '-', event.name || 'Event', event.primaryClient || event.mobile || '-', eventMemberTotal(event), money(totals.total), money(totals.paid), money(totals.discount), money(totals.balance)], [48, 122, 82, 48, 66, 58, 58, 66], { align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
-  }
+    row([eventReportDateValue(event)?.toISOString().slice(0, 10) || '-', event.name || 'Event', event.primaryClient || event.mobile || '-', eventMemberTotal(event), money(totals.total), money(totals.paid), money(totals.discount), money(totals.balance)], [48, 122, 82, 48, 66, 58, 58, 66], { align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
+  }, (_key, eventsForMonth) => {
+    const subtotal = eventsForMonth.reduce((sum, event) => {
+      const totals = eventTotals(event);
+      return {
+        members: sum.members + eventMemberTotal(event),
+        booked: sum.booked + totals.total,
+        paid: sum.paid + totals.paid,
+        discount: sum.discount + totals.discount,
+        balance: sum.balance + totals.balance,
+      };
+    }, { members: 0, booked: 0, paid: 0, discount: 0, balance: 0 });
+    row(['', 'Month subtotal', `${eventsForMonth.length} events`, subtotal.members, money(subtotal.booked), money(subtotal.paid), money(subtotal.discount), money(subtotal.balance)], [48, 122, 82, 48, 66, 58, 58, 66], { subtotal: true, align: ['', '', '', 'right', 'right', 'right', 'right', 'right'] });
+  });
   if (!monthEvents.length) row(['No events for this range'], [width]);
 
   section('Payments Collected');
   row(['Date', 'Event', 'Client', 'Mode', 'Reference', 'Amount'], [56, 132, 96, 62, 132, 72], { header: true, align: ['', '', '', '', '', 'right'] });
-  for (const payment of monthPayments) {
+  groupedRows(monthPayments, (payment) => parseStrictIsoDate(payment.date), (payment) => {
     row([payment.date || '-', payment.eventName, payment.client || '-', payment.mode || '-', payment.reference || '-', money(payment.amount)], [56, 132, 96, 62, 132, 72], { align: ['', '', '', '', '', 'right'] });
-  }
+  }, (_key, paymentsForMonth) => {
+    const amount = paymentsForMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    row(['', 'Month subtotal', `${paymentsForMonth.length} payments`, '', '', money(amount)], [56, 132, 96, 62, 132, 72], { subtotal: true, align: ['', '', '', '', '', 'right'] });
+  });
   if (!monthPayments.length) row(['No event payments collected in this range'], [width]);
 
   section('Manual Invoices');
   row(['Date', 'Invoice', 'Client', 'Total', 'Paid', 'Pending'], [58, 120, 148, 76, 76, 76], { header: true, align: ['', '', '', 'right', 'right', 'right'] });
-  for (const invoice of monthManualInvoices) {
+  groupedRows(monthManualInvoices, (invoice) => parseStrictIsoDate(invoice.invoiceDate), (invoice) => {
     const total = asArray(invoice.items).reduce((sum, item) => sum + Number(item.amount || 0), 0);
     const paid = Number(invoice.paidAmount || 0) + Number(invoice.settlementAmount || 0);
     row([invoice.invoiceDate || '-', invoice.invoiceNumber || invoice.id, invoice.clientName || '-', money(total), money(paid), money(Math.max(0, total - paid))], [58, 120, 148, 76, 76, 76], { align: ['', '', '', 'right', 'right', 'right'] });
-  }
+  }, (_key, invoicesForMonth) => {
+    const subtotal = invoicesForMonth.reduce((sum, invoice) => {
+      const total = asArray(invoice.items).reduce((itemSum, item) => itemSum + Number(item.amount || 0), 0);
+      const paid = Number(invoice.paidAmount || 0) + Number(invoice.settlementAmount || 0);
+      return { total: sum.total + total, paid: sum.paid + paid, pending: sum.pending + Math.max(0, total - paid) };
+    }, { total: 0, paid: 0, pending: 0 });
+    row(['', 'Month subtotal', `${invoicesForMonth.length} invoices`, money(subtotal.total), money(subtotal.paid), money(subtotal.pending)], [58, 120, 148, 76, 76, 76], { subtotal: true, align: ['', '', '', 'right', 'right', 'right'] });
+  });
   if (!monthManualInvoices.length) row(['No manual invoices for this range'], [width]);
   doc.end();
 }

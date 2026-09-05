@@ -452,7 +452,10 @@ class _EventsScreenState extends State<EventsScreen> {
       ]),
       children: [
         TextField(
+          scrollPadding: cpTextFieldScrollPadding(context),
           controller: searchController,
+          textCapitalization: cpTextCapitalizationForField(
+              hint: 'Search by event or client name'),
           onChanged: (value) => setState(() => query = value.trim()),
           decoration: InputDecoration(
             hintText: 'Search by event or client name',

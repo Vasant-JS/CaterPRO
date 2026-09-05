@@ -912,6 +912,9 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
             controller: controller,
             autofocus: true,
             textInputAction: TextInputAction.done,
+            textCapitalization:
+                cpTextCapitalizationForField(label: 'Custom menu name'),
+            scrollPadding: cpTextFieldScrollPadding(context),
             decoration: const InputDecoration(labelText: 'Custom menu name'),
             onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
           ),
@@ -1028,6 +1031,10 @@ class _CreateMenuStepState extends State<CreateMenuStep> {
                 const SizedBox(height: 14),
                 Flexible(
                   child: ListView.separated(
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: EdgeInsets.only(
+                        bottom: MediaQuery.of(context).viewInsets.bottom + 12),
                     shrinkWrap: true,
                     itemCount: availableTypes.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -1266,8 +1273,11 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                   style: TextStyle(color: cpOnVariant(context))),
               const SizedBox(height: 16),
               TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 controller: search,
                 textInputAction: TextInputAction.search,
+                textCapitalization:
+                    cpTextCapitalizationForField(label: 'Search services'),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: search.text.isEmpty
@@ -1293,6 +1303,11 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                                 fontWeight: FontWeight.w700)),
                       )
                     : ListView.separated(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.only(
+                            bottom:
+                                MediaQuery.of(context).viewInsets.bottom + 12),
                         shrinkWrap: true,
                         itemCount: services.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -1338,6 +1353,13 @@ class _ServicePickerSheetState extends State<ServicePickerSheet> {
                                         controller:
                                             quantityControllers[service.id],
                                         keyboardType: TextInputType.number,
+                                        textCapitalization:
+                                            cpTextCapitalizationForField(
+                                                label: 'Count',
+                                                keyboardType:
+                                                    TextInputType.number),
+                                        scrollPadding:
+                                            cpTextFieldScrollPadding(context),
                                         decoration: InputDecoration(
                                             labelText: 'Count',
                                             isDense: true,
@@ -1541,14 +1563,20 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
               title: Text('Add ${widget.meal} item'),
               content: Column(mainAxisSize: MainAxisSize.min, children: [
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: english,
                   autofocus: true,
+                  textCapitalization:
+                      cpTextCapitalizationForField(label: 'English'),
                   decoration: const InputDecoration(labelText: 'English'),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 10),
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: kannada,
+                  textCapitalization:
+                      cpTextCapitalizationForField(label: 'Kannada'),
                   decoration: const InputDecoration(labelText: 'Kannada'),
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => savingItem ? null : saveItem(),
@@ -1647,8 +1675,11 @@ class _MenuPickerScreenState extends State<MenuPickerScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           TextField(
+            scrollPadding: cpTextFieldScrollPadding(context),
             controller: searchController,
             textInputAction: TextInputAction.search,
+            textCapitalization:
+                cpTextCapitalizationForField(hint: 'Search menu items'),
             decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: query.isEmpty
@@ -2283,14 +2314,16 @@ Future<Map<String, dynamic>?> showAddOnSheet(BuildContext context,
     backgroundColor: Colors.transparent,
     builder: (context) => SafeArea(
       top: false,
-      child: Padding(
-        padding:
-            EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
-          decoration: BoxDecoration(
-              color: cpSurface(context),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      child: Container(
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        decoration: BoxDecoration(
+            color: cpSurface(context),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2621,6 +2654,9 @@ class _FormFieldBoxState extends State<FormFieldBox> {
               child: TextField(
                 controller: controller,
                 keyboardType: keyboardType,
+                textCapitalization: cpTextCapitalizationForField(
+                    label: widget.label, keyboardType: keyboardType),
+                scrollPadding: cpTextFieldScrollPadding(context),
                 inputFormatters: widget.inputFormatters,
                 onChanged: widget.onChanged,
                 maxLines: multiline ? null : 1,

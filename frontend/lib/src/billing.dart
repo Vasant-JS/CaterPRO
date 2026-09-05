@@ -1130,7 +1130,10 @@ class _BillingScreenState extends State<BillingScreen> {
         const SizedBox(height: 16),
         if (selectedTab == 0) ...[
           TextField(
+            scrollPadding: cpTextFieldScrollPadding(context),
             controller: quotationSearchController,
+            textCapitalization: cpTextCapitalizationForField(
+                hint: 'Search quotations by client, mobile, quote no, date...'),
             onChanged: (value) => setState(() => quotationQuery = value.trim()),
             decoration: InputDecoration(
               hintText:
@@ -1280,7 +1283,10 @@ class _BillingScreenState extends State<BillingScreen> {
           ],
         ] else ...[
           TextField(
+            scrollPadding: cpTextFieldScrollPadding(context),
             controller: invoiceSearchController,
+            textCapitalization: cpTextCapitalizationForField(
+                hint: 'Search invoices by client, mobile, invoice no, date...'),
             onChanged: (value) => setState(() => invoiceQuery = value.trim()),
             decoration: InputDecoration(
               hintText:
@@ -1546,9 +1552,12 @@ class _ClientLookupFieldState extends State<ClientLookupField> {
     final results = matches;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       TextFormField(
+        scrollPadding: cpTextFieldScrollPadding(context),
         controller: widget.controller,
         focusNode: focusNode,
         keyboardType: widget.keyboardType,
+        textCapitalization: cpTextCapitalizationForField(
+            label: widget.label, keyboardType: widget.keyboardType),
         inputFormatters: widget.inputFormatters,
         validator: widget.validator,
         decoration: InputDecoration(
@@ -1823,27 +1832,37 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: clientAddress,
+                    textCapitalization:
+                        cpTextCapitalizationForField(label: 'Client Address'),
                     minLines: 2,
                     maxLines: 3,
                     decoration: fieldDecoration('Client Address',
                         icon: Icons.home_outlined)),
                 const SizedBox(height: 12),
                 TextFormField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: clientGst,
                     textCapitalization: TextCapitalization.characters,
                     decoration: fieldDecoration('Client GST',
                         icon: Icons.badge_outlined)),
                 const SizedBox(height: 12),
                 TextFormField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: eventName,
+                    textCapitalization:
+                        cpTextCapitalizationForField(label: 'Event Name'),
                     decoration:
                         fieldDecoration('Event Name', icon: Icons.celebration),
                     validator: (value) =>
                         requiredTextValidator(value, 'Event name')),
                 const SizedBox(height: 12),
                 TextFormField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: venue,
+                    textCapitalization:
+                        cpTextCapitalizationForField(label: 'Venue'),
                     decoration: fieldDecoration('Venue', icon: Icons.place)),
                 const SizedBox(height: 12),
                 Row(children: [
@@ -1851,6 +1870,9 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                       child: TextFormField(
                           controller: eventDate,
                           readOnly: true,
+                          textCapitalization:
+                              cpTextCapitalizationForField(label: 'Event Date'),
+                          scrollPadding: cpTextFieldScrollPadding(context),
                           onTap: () => pickDate(eventDate),
                           decoration:
                               fieldDecoration('Event Date', icon: Icons.event),
@@ -1861,6 +1883,9 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                       child: TextFormField(
                           controller: invoiceDate,
                           readOnly: true,
+                          textCapitalization: cpTextCapitalizationForField(
+                              label: 'Invoice Date'),
+                          scrollPadding: cpTextFieldScrollPadding(context),
                           onTap: () => pickDate(invoiceDate),
                           decoration: fieldDecoration('Invoice Date',
                               icon: Icons.receipt),
@@ -1895,12 +1920,19 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                           final wide = constraints.maxWidth > 820;
                           Widget titleField() => TextFormField(
                               controller: item.title,
+                              textCapitalization: cpTextCapitalizationForField(
+                                  label: 'Item Title'),
+                              scrollPadding: cpTextFieldScrollPadding(context),
                               decoration: fieldDecoration('Item Title'),
                               validator: (value) =>
                                   requiredTextValidator(value, 'Item title'));
                           Widget quantityField() => TextFormField(
                               controller: item.quantity,
                               keyboardType: TextInputType.number,
+                              textCapitalization: cpTextCapitalizationForField(
+                                  label: 'Members',
+                                  keyboardType: TextInputType.number),
+                              scrollPadding: cpTextFieldScrollPadding(context),
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly
                               ],
@@ -1912,6 +1944,10 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                           Widget priceField() => TextFormField(
                               controller: item.rate,
                               keyboardType: TextInputType.number,
+                              textCapitalization: cpTextCapitalizationForField(
+                                  label: 'Rate',
+                                  keyboardType: TextInputType.number),
+                              scrollPadding: cpTextFieldScrollPadding(context),
                               inputFormatters: [
                                 FilteringTextInputFormatter.digitsOnly
                               ],
@@ -1974,6 +2010,10 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                       child: TextFormField(
                           controller: advance,
                           keyboardType: TextInputType.number,
+                          textCapitalization: cpTextCapitalizationForField(
+                              label: 'Advance Paid',
+                              keyboardType: TextInputType.number),
+                          scrollPadding: cpTextFieldScrollPadding(context),
                           onChanged: (_) => setState(() {}),
                           decoration: fieldDecoration('Advance Paid',
                               icon: Icons.payments),
@@ -1985,6 +2025,10 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                       child: TextFormField(
                           controller: settlement,
                           keyboardType: TextInputType.number,
+                          textCapitalization: cpTextCapitalizationForField(
+                              label: 'Settlement / Discount',
+                              keyboardType: TextInputType.number),
+                          scrollPadding: cpTextFieldScrollPadding(context),
                           onChanged: (_) => setState(() {}),
                           decoration: fieldDecoration('Settlement / Discount',
                               icon: Icons.price_check),
@@ -1994,7 +2038,10 @@ class _ManualInvoiceFormScreenState extends State<ManualInvoiceFormScreen> {
                 ]),
                 const SizedBox(height: 12),
                 TextFormField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: notes,
+                    textCapitalization:
+                        cpTextCapitalizationForField(label: 'Notes'),
                     minLines: 2,
                     maxLines: 4,
                     decoration: fieldDecoration('Notes')),
@@ -3201,136 +3248,141 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         decoration: BoxDecoration(
             color: cpCard(context),
             borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-                child: Container(
-                    width: 48,
-                    height: 6,
-                    margin: const EdgeInsets.only(bottom: 20),
-                    decoration: BoxDecoration(
-                        color: cpOutlineVariant(context),
-                        borderRadius: BorderRadius.circular(99)))),
-            Text('Record Payment',
-                style: TextStyle(
-                    color: cpPrimary(context),
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900)),
-            const SizedBox(height: 4),
-            Text('Update the financial records for this event.',
-                style: TextStyle(color: cpOnVariant(context))),
-            const SizedBox(height: 18),
-            CpCard(
-              color: Cp.surfaceLow,
-              child: Row(
-                children: [
-                  Expanded(
-                      child: _MoneyCell(
-                          label: 'Total', value: money(totalAmount))),
-                  Expanded(
-                      child: _MoneyCell(
-                          label: 'Paid',
-                          value: money(paidAmount),
-                          color: Cp.tertiaryContainer)),
-                  Expanded(
-                      child: _MoneyCell(
-                          label: 'Balance',
-                          value: money(balanceAmount),
-                          color: Cp.error)),
-                ],
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                  child: Container(
+                      width: 48,
+                      height: 6,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                          color: cpOutlineVariant(context),
+                          borderRadius: BorderRadius.circular(99)))),
+              Text('Record Payment',
+                  style: TextStyle(
+                      color: cpPrimary(context),
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900)),
+              const SizedBox(height: 4),
+              Text('Update the financial records for this event.',
+                  style: TextStyle(color: cpOnVariant(context))),
+              const SizedBox(height: 18),
+              CpCard(
+                color: Cp.surfaceLow,
+                child: Row(
+                  children: [
+                    Expanded(
+                        child: _MoneyCell(
+                            label: 'Total', value: money(totalAmount))),
+                    Expanded(
+                        child: _MoneyCell(
+                            label: 'Paid',
+                            value: money(paidAmount),
+                            color: Cp.tertiaryContainer)),
+                    Expanded(
+                        child: _MoneyCell(
+                            label: 'Balance',
+                            value: money(balanceAmount),
+                            color: Cp.error)),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 18),
-            PaymentInputBox(
-                label: 'Payment Amount',
-                controller: paymentController,
-                icon: Icons.currency_rupee,
-                keyboardType: TextInputType.number,
-                onChanged: (_) => validate()),
-            if (errorText != null)
-              Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(errorText!,
-                      style: const TextStyle(
-                          color: Cp.error, fontWeight: FontWeight.w800))),
-            Row(children: [
-              Expanded(
-                  child: PaymentInputBox(
-                      label: 'Date',
-                      controller: dateController,
-                      icon: Icons.calendar_today)),
-              const SizedBox(width: 12),
-              Expanded(
-                  child: PaymentInputBox(
-                      label: 'Ref No.',
-                      controller: refController,
-                      icon: Icons.confirmation_number))
-            ]),
-            const Text('Payment Mode',
-                style: TextStyle(fontWeight: FontWeight.w900)),
-            const SizedBox(height: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: List.generate(paymentModes.length, (i) {
-                  final selected = i == selectedMode;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(999),
-                      onTap: () => setState(() => selectedMode = i),
-                      child: Pill(paymentModes[i],
-                          color:
-                              selected ? Cp.primaryContainer : Cp.surfaceHigh,
-                          textColor: selected
-                              ? scheme.onPrimaryContainer
-                              : cpOnVariant(context),
-                          icon: selected ? Icons.check : null),
-                    ),
-                  );
-                }),
-              ),
-            ),
-            const SizedBox(height: 10),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: settled,
-              activeColor: scheme.primary,
-              onChanged: (value) => setState(() => settled = value ?? false),
-              title: const Text('Mark balance as settled',
+              const SizedBox(height: 18),
+              PaymentInputBox(
+                  label: 'Payment Amount',
+                  controller: paymentController,
+                  icon: Icons.currency_rupee,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => validate()),
+              if (errorText != null)
+                Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(errorText!,
+                        style: const TextStyle(
+                            color: Cp.error, fontWeight: FontWeight.w800))),
+              Row(children: [
+                Expanded(
+                    child: PaymentInputBox(
+                        label: 'Date',
+                        controller: dateController,
+                        icon: Icons.calendar_today)),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: PaymentInputBox(
+                        label: 'Ref No.',
+                        controller: refController,
+                        icon: Icons.confirmation_number))
+              ]),
+              const Text('Payment Mode',
                   style: TextStyle(fontWeight: FontWeight.w900)),
-              subtitle: Text(settled
-                  ? '${money(settledDiscount)} will be treated as discount/settlement. Final balance: ${money(finalBalance)}'
-                  : 'Unchecked keeps ${money(remainingAfterPayment)} as pending balance.'),
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton.icon(
-                    onPressed: savePayment,
-                    style: FilledButton.styleFrom(
-                        backgroundColor: scheme.primary,
-                        foregroundColor: scheme.onPrimary),
-                    icon: const Icon(Icons.save),
-                    label: const Text('Save Payment',
-                        style: TextStyle(fontWeight: FontWeight.w900)))),
-            Center(
-                child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel',
-                        style: TextStyle(
-                            color: cpPrimary(context),
-                            fontWeight: FontWeight.w800)))),
-          ],
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: List.generate(paymentModes.length, (i) {
+                    final selected = i == selectedMode;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => setState(() => selectedMode = i),
+                        child: Pill(paymentModes[i],
+                            color:
+                                selected ? Cp.primaryContainer : Cp.surfaceHigh,
+                            textColor: selected
+                                ? scheme.onPrimaryContainer
+                                : cpOnVariant(context),
+                            icon: selected ? Icons.check : null),
+                      ),
+                    );
+                  }),
+                ),
+              ),
+              const SizedBox(height: 10),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: settled,
+                activeColor: scheme.primary,
+                onChanged: (value) => setState(() => settled = value ?? false),
+                title: const Text('Mark balance as settled',
+                    style: TextStyle(fontWeight: FontWeight.w900)),
+                subtitle: Text(settled
+                    ? '${money(settledDiscount)} will be treated as discount/settlement. Final balance: ${money(finalBalance)}'
+                    : 'Unchecked keeps ${money(remainingAfterPayment)} as pending balance.'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: FilledButton.icon(
+                      onPressed: savePayment,
+                      style: FilledButton.styleFrom(
+                          backgroundColor: scheme.primary,
+                          foregroundColor: scheme.onPrimary),
+                      icon: const Icon(Icons.save),
+                      label: const Text('Save Payment',
+                          style: TextStyle(fontWeight: FontWeight.w900)))),
+              Center(
+                  child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text('Cancel',
+                          style: TextStyle(
+                              color: cpPrimary(context),
+                              fontWeight: FontWeight.w800)))),
+            ],
+          ),
         ),
       ),
     );
@@ -3367,6 +3419,9 @@ class PaymentInputBox extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 keyboardType: keyboardType,
+                textCapitalization: cpTextCapitalizationForField(
+                    label: label, keyboardType: keyboardType),
+                scrollPadding: cpTextFieldScrollPadding(context),
                 onChanged: onChanged,
                 style: TextStyle(
                     color: cpOnSurface(context),

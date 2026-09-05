@@ -294,7 +294,10 @@ class _ClientsScreenState extends State<ClientsScreen> {
       ]),
       children: [
         TextField(
+          scrollPadding: cpTextFieldScrollPadding(context),
           controller: search,
+          textCapitalization: cpTextCapitalizationForField(
+              hint: 'Search clients by name, city, or phone...'),
           onChanged: (value) => setState(() => query = value.trim()),
           decoration: InputDecoration(
             hintText: 'Search clients by name, city, or phone...',
@@ -520,12 +523,15 @@ Future<void> showClientEditor(BuildContext context,
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) => Container(
-          padding: EdgeInsets.fromLTRB(
-              20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+          constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
           decoration: BoxDecoration(
               color: cpSurface(context),
               borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 12),
             child: Form(
               key: formKey,
               child: Column(
@@ -547,7 +553,10 @@ Future<void> showClientEditor(BuildContext context,
                             fontWeight: FontWeight.w900)),
                     const SizedBox(height: 16),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: name,
+                        textCapitalization:
+                            cpTextCapitalizationForField(label: 'Client Name'),
                         validator: (value) =>
                             requiredTextValidator(value, 'Client name'),
                         decoration: InputDecoration(
@@ -556,8 +565,12 @@ Future<void> showClientEditor(BuildContext context,
                                 borderRadius: BorderRadius.circular(12)))),
                     const SizedBox(height: 12),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: mobile,
                         keyboardType: TextInputType.phone,
+                        textCapitalization: cpTextCapitalizationForField(
+                            label: 'Mobile Number',
+                            keyboardType: TextInputType.phone),
                         inputFormatters: mobileInputFormatters,
                         validator: mobileValidator,
                         decoration: InputDecoration(
@@ -566,14 +579,20 @@ Future<void> showClientEditor(BuildContext context,
                                 borderRadius: BorderRadius.circular(12)))),
                     const SizedBox(height: 12),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: city,
+                        textCapitalization:
+                            cpTextCapitalizationForField(label: 'City / Area'),
                         decoration: InputDecoration(
                             labelText: 'City / Area',
                             border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(12)))),
                     const SizedBox(height: 12),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: address,
+                        textCapitalization: cpTextCapitalizationForField(
+                            label: 'Client Address'),
                         minLines: 2,
                         maxLines: 3,
                         decoration: InputDecoration(
@@ -582,6 +601,7 @@ Future<void> showClientEditor(BuildContext context,
                                 borderRadius: BorderRadius.circular(12)))),
                     const SizedBox(height: 12),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: gst,
                         textCapitalization: TextCapitalization.characters,
                         decoration: InputDecoration(
@@ -590,7 +610,10 @@ Future<void> showClientEditor(BuildContext context,
                                 borderRadius: BorderRadius.circular(12)))),
                     const SizedBox(height: 12),
                     TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: notes,
+                        textCapitalization:
+                            cpTextCapitalizationForField(label: 'Notes'),
                         minLines: 2,
                         maxLines: 4,
                         decoration: InputDecoration(

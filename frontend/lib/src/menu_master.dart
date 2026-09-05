@@ -231,8 +231,7 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                 child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.event_note,
-                          size: 18, color: Cp.primary),
+                      const Icon(Icons.event_note, size: 18, color: Cp.primary),
                       const SizedBox(width: 8),
                       Expanded(
                           child: Column(
@@ -432,8 +431,11 @@ class _MenuMasterScreenState extends State<MenuMasterScreen> {
                 ])),
             const SizedBox(height: 12),
             TextField(
+              scrollPadding: cpTextFieldScrollPadding(context),
               controller: searchController,
               textInputAction: TextInputAction.search,
+              textCapitalization:
+                  cpTextCapitalizationForField(hint: 'Search menu items'),
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: query.isEmpty
@@ -715,13 +717,16 @@ class _MenuItemEditorSheetState extends State<MenuItemEditorSheet> {
   Widget build(BuildContext context) => SafeArea(
         top: false,
         child: Container(
-          padding: EdgeInsets.fromLTRB(
-              20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+          constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           decoration: BoxDecoration(
               color: cpCard(context),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28))),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 12),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1142,10 +1147,8 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        constraints:
-            BoxConstraints(maxHeight: MediaQuery.of(context).size.height * .9),
-        padding: EdgeInsets.fromLTRB(
-            20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context, .9)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         decoration: BoxDecoration(
             color: cpSurface(context),
             borderRadius:
@@ -1175,7 +1178,10 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
               const SizedBox(height: 14),
               EditableInlineField(label: 'Menu Name', controller: name),
               TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 textInputAction: TextInputAction.search,
+                textCapitalization: cpTextCapitalizationForField(
+                    hint: 'Search ${widget.type} items'),
                 decoration: InputDecoration(
                     prefixIcon: Icon(Icons.search, color: cpOnVariant(context)),
                     hintText: 'Search ${widget.type} items',
@@ -1197,6 +1203,10 @@ class _CustomMenuEditorSheetState extends State<CustomMenuEditorSheet> {
               const SizedBox(height: 12),
               Flexible(
                 child: ListView.separated(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  padding: EdgeInsets.only(
+                      bottom: MediaQuery.of(context).viewInsets.bottom + 12),
                   shrinkWrap: true,
                   itemCount: visibleItems.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 8),

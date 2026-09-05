@@ -471,14 +471,20 @@ class _ListEditorScreenState extends State<ListEditorScreen> {
               title: const Text('Add menu item'),
               content: Column(mainAxisSize: MainAxisSize.min, children: [
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: english,
                   autofocus: true,
+                  textCapitalization:
+                      cpTextCapitalizationForField(label: 'English'),
                   decoration: const InputDecoration(labelText: 'English'),
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 10),
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: kannada,
+                  textCapitalization:
+                      cpTextCapitalizationForField(label: 'Kannada'),
                   decoration: const InputDecoration(labelText: 'Kannada'),
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => savingItem ? null : saveItem(),
@@ -694,7 +700,10 @@ class _ListEditorScreenState extends State<ListEditorScreen> {
             }),
             const SizedBox(height: 12),
             TextField(
+              scrollPadding: cpTextFieldScrollPadding(context),
               controller: searchController,
+              textCapitalization:
+                  cpTextCapitalizationForField(hint: 'Search items'),
               decoration: InputDecoration(
                   prefixIcon: const Icon(Icons.search),
                   hintText: 'Search items',
@@ -773,6 +782,11 @@ class _ListEditorScreenState extends State<ListEditorScreen> {
                                 flex: 30,
                                 child: TextField(
                                     controller: quantityControllers[item.id],
+                                    textCapitalization:
+                                        cpTextCapitalizationForField(
+                                            label: 'Qty / Unit'),
+                                    scrollPadding:
+                                        cpTextFieldScrollPadding(context),
                                     decoration: const InputDecoration(
                                         labelText: 'Qty / Unit', isDense: true),
                                     onChanged: (_) =>
@@ -931,8 +945,11 @@ class _RawMaterialScreenState extends State<RawMaterialScreen> {
                   ])),
               const SizedBox(height: 12),
               TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 controller: searchController,
                 textInputAction: TextInputAction.search,
+                textCapitalization:
+                    cpTextCapitalizationForField(hint: 'Search raw materials'),
                 decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: query.isEmpty
@@ -1157,8 +1174,11 @@ class _ProduceItemScreenState extends State<ProduceItemScreen> {
                   ])),
               const SizedBox(height: 12),
               TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 controller: searchController,
                 textInputAction: TextInputAction.search,
+                textCapitalization: cpTextCapitalizationForField(
+                    hint: 'Search vegetables and fruits'),
                 decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: query.isEmpty
@@ -1385,8 +1405,11 @@ class _VesselItemScreenState extends State<VesselItemScreen> {
                   ])),
               const SizedBox(height: 12),
               TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 controller: searchController,
                 textInputAction: TextInputAction.search,
+                textCapitalization: cpTextCapitalizationForField(
+                    hint: 'Search vessels and utensils'),
                 decoration: InputDecoration(
                     prefixIcon: const Icon(Icons.search),
                     suffixIcon: query.isEmpty
@@ -1647,13 +1670,16 @@ class _RawMaterialEditorSheetState extends State<RawMaterialEditorSheet> {
   Widget build(BuildContext context) => SafeArea(
         top: false,
         child: Container(
-          padding: EdgeInsets.fromLTRB(
-              20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+          constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
           decoration: BoxDecoration(
               color: cpSurface(context),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(28))),
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 12),
             child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,

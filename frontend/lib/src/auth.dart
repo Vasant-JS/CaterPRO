@@ -47,7 +47,8 @@ class _LoginScreenState extends State<LoginScreen> {
       error = null;
     });
     try {
-      await authService.login(email: emailText, password: passwordText);
+      await authService.login(
+          email: emailText, password: passwordText, remember: rememberMe);
       await setupFingerprintAfterFirstLogin();
       if (!mounted) return;
       Navigator.of(context)
@@ -194,8 +195,12 @@ class _LoginScreenState extends State<LoginScreen> {
                               fontWeight: FontWeight.w900)),
                       const SizedBox(height: 18),
                       TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: email,
                         keyboardType: TextInputType.emailAddress,
+                        textCapitalization: cpTextCapitalizationForField(
+                            label: 'Email',
+                            keyboardType: TextInputType.emailAddress),
                         validator: emailValidator,
                         decoration: InputDecoration(
                             prefixIcon: const Icon(Icons.email_outlined),
@@ -205,8 +210,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: 14),
                       TextFormField(
+                        scrollPadding: cpTextFieldScrollPadding(context),
                         controller: password,
                         obscureText: obscurePassword,
+                        textCapitalization: cpTextCapitalizationForField(
+                            label: 'Password', obscureText: true),
                         validator: (value) => (value ?? '').length < 4
                             ? 'Password must be at least 4 characters'
                             : null,

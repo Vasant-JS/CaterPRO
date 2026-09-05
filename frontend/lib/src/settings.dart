@@ -131,8 +131,11 @@ class SettingsScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: oldPassword,
                   obscureText: !showOldPassword,
+                  textCapitalization: cpTextCapitalizationForField(
+                      label: 'Old Password', obscureText: true),
                   decoration: InputDecoration(
                       labelText: 'Old Password',
                       prefixIcon: const Icon(Icons.lock_outline),
@@ -148,8 +151,11 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: newPassword,
                   obscureText: !showNewPassword,
+                  textCapitalization: cpTextCapitalizationForField(
+                      label: 'New Password', obscureText: true),
                   decoration: InputDecoration(
                       labelText: 'New Password',
                       prefixIcon: const Icon(Icons.password),
@@ -165,8 +171,11 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 TextField(
+                  scrollPadding: cpTextFieldScrollPadding(context),
                   controller: confirmPassword,
                   obscureText: !showConfirmPassword,
+                  textCapitalization: cpTextCapitalizationForField(
+                      label: 'Confirm New Password', obscureText: true),
                   decoration: InputDecoration(
                       labelText: 'Confirm New Password',
                       prefixIcon: const Icon(Icons.verified_user_outlined),
@@ -2226,13 +2235,16 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 10, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
         decoration: BoxDecoration(
             color: cpSurface(context),
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28))),
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12),
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
@@ -2511,86 +2523,92 @@ class _ServiceEditorSheetState extends State<ServiceEditorSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         decoration: BoxDecoration(
             color: cpSurface(context),
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28))),
-        child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                  child: Container(
-                      width: 48,
-                      height: 6,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                          color: cpOutlineVariant(context),
-                          borderRadius: BorderRadius.circular(99)))),
-              Text(widget.service == null ? 'Add Service' : 'Update Service',
-                  style: TextStyle(
-                      color: cpPrimary(context),
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900)),
-              const SizedBox(height: 16),
-              EditableInlineField(label: 'Service ID', controller: id),
-              EditableInlineField(label: 'Service Name', controller: name),
-              Row(children: [
-                Expanded(
-                    child: EditableInlineField(
-                        label: 'Quantity',
-                        controller: quantity,
-                        keyboardType: TextInputType.number)),
-                const SizedBox(width: 12),
-                Expanded(
-                    child: EditableInlineField(label: 'Unit', controller: unit))
-              ]),
-              EditableInlineField(
-                  label: 'Price',
-                  controller: price,
-                  keyboardType: TextInputType.number),
-              if (error != null)
-                Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: Text(error!,
-                        style: const TextStyle(
-                            color: Cp.error, fontWeight: FontWeight.w800))),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: Cp.primaryContainer),
-                  onPressed: () {
-                    final parsedQuantity = int.tryParse(quantity.text.trim());
-                    final parsedPrice = int.tryParse(price.text.trim());
-                    if (id.text.trim().isEmpty ||
-                        name.text.trim().isEmpty ||
-                        unit.text.trim().isEmpty ||
-                        parsedQuantity == null ||
-                        parsedQuantity < 0 ||
-                        parsedPrice == null ||
-                        parsedPrice < 0) {
-                      setState(() => error =
-                          'Enter service ID, name, unit, and valid quantity/price.');
-                      return;
-                    }
-                    widget.onSave(AdditionalServiceItem(
-                        id: id.text.trim(),
-                        name: name.text.trim(),
-                        unit: unit.text.trim(),
-                        quantity: parsedQuantity,
-                        price: parsedPrice));
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Save Service',
-                      style: TextStyle(fontWeight: FontWeight.w900)),
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12),
+          child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                    child: Container(
+                        width: 48,
+                        height: 6,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        decoration: BoxDecoration(
+                            color: cpOutlineVariant(context),
+                            borderRadius: BorderRadius.circular(99)))),
+                Text(widget.service == null ? 'Add Service' : 'Update Service',
+                    style: TextStyle(
+                        color: cpPrimary(context),
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 16),
+                EditableInlineField(label: 'Service ID', controller: id),
+                EditableInlineField(label: 'Service Name', controller: name),
+                Row(children: [
+                  Expanded(
+                      child: EditableInlineField(
+                          label: 'Quantity',
+                          controller: quantity,
+                          keyboardType: TextInputType.number)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                      child:
+                          EditableInlineField(label: 'Unit', controller: unit))
+                ]),
+                EditableInlineField(
+                    label: 'Price',
+                    controller: price,
+                    keyboardType: TextInputType.number),
+                if (error != null)
+                  Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(error!,
+                          style: const TextStyle(
+                              color: Cp.error, fontWeight: FontWeight.w800))),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: Cp.primaryContainer),
+                    onPressed: () {
+                      final parsedQuantity = int.tryParse(quantity.text.trim());
+                      final parsedPrice = int.tryParse(price.text.trim());
+                      if (id.text.trim().isEmpty ||
+                          name.text.trim().isEmpty ||
+                          unit.text.trim().isEmpty ||
+                          parsedQuantity == null ||
+                          parsedQuantity < 0 ||
+                          parsedPrice == null ||
+                          parsedPrice < 0) {
+                        setState(() => error =
+                            'Enter service ID, name, unit, and valid quantity/price.');
+                        return;
+                      }
+                      widget.onSave(AdditionalServiceItem(
+                          id: id.text.trim(),
+                          name: name.text.trim(),
+                          unit: unit.text.trim(),
+                          quantity: parsedQuantity,
+                          price: parsedPrice));
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Save Service',
+                        style: TextStyle(fontWeight: FontWeight.w900)),
+                  ),
                 ),
-              ),
-            ]),
+              ]),
+        ),
       ),
     );
   }
@@ -2617,6 +2635,9 @@ class EditableInlineField extends StatelessWidget {
           controller: controller,
           enabled: enabled,
           keyboardType: keyboardType,
+          textCapitalization: cpTextCapitalizationForField(
+              label: label, keyboardType: keyboardType),
+          scrollPadding: cpTextFieldScrollPadding(context),
           inputFormatters: inputFormatters,
           decoration: InputDecoration(
               labelText: label,

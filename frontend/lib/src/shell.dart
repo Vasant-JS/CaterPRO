@@ -2604,6 +2604,8 @@ class ScreenFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final keyboardOpen = media.viewInsets.bottom > 0;
     return ColoredBox(
       color: cpSurface(context),
       child: Column(
@@ -2611,7 +2613,14 @@ class ScreenFrame extends StatelessWidget {
           topBar,
           Expanded(
             child: ListView(
-              padding: EdgeInsets.fromLTRB(16, 16, 16, bottomPadding),
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: EdgeInsets.fromLTRB(
+                  16,
+                  16,
+                  16,
+                  bottomPadding +
+                      media.viewInsets.bottom +
+                      (keyboardOpen ? media.size.height * .24 : 0)),
               children: children,
             ),
           ),

@@ -93,7 +93,10 @@ class _EmployeeScreenState extends State<EmployeeScreen> {
           ),
           children: [
             TextField(
+              scrollPadding: cpTextFieldScrollPadding(context),
               controller: search,
+              textCapitalization:
+                  cpTextCapitalizationForField(hint: 'Search employees'),
               onChanged: (value) => setState(() => query = value),
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search, color: Cp.primary),
@@ -349,13 +352,16 @@ class _EmployeeEditorSheetState extends State<EmployeeEditorSheet> {
     return SafeArea(
       top: false,
       child: Container(
-        padding: EdgeInsets.fromLTRB(
-            20, 10, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+        constraints: BoxConstraints(maxHeight: cpSheetMaxHeight(context)),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
         decoration: BoxDecoration(
             color: cpSurface(context),
             borderRadius:
                 const BorderRadius.vertical(top: Radius.circular(28))),
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom + 12),
           child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,

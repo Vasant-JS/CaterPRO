@@ -846,6 +846,9 @@ class EventDetailsTabContent extends StatelessWidget {
             controller: controller,
             autofocus: true,
             textInputAction: TextInputAction.done,
+            textCapitalization:
+                cpTextCapitalizationForField(label: 'Ready-made menu name'),
+            scrollPadding: cpTextFieldScrollPadding(context),
             decoration:
                 const InputDecoration(labelText: 'Ready-made menu name'),
             onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
@@ -1426,8 +1429,11 @@ class _AttendanceEditorDialogState extends State<AttendanceEditorDialog> {
           if (status == 'partial') ...[
             const SizedBox(height: 12),
             TextField(
+                scrollPadding: cpTextFieldScrollPadding(context),
                 controller: hours,
                 keyboardType: TextInputType.number,
+                textCapitalization: cpTextCapitalizationForField(
+                    label: 'Hours worked', keyboardType: TextInputType.number),
                 decoration: const InputDecoration(labelText: 'Hours worked')),
           ],
         ]),
@@ -1765,7 +1771,10 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
                   EditableInlineField(
                       label: 'Document Title', controller: titleController),
                   TextField(
+                    scrollPadding: cpTextFieldScrollPadding(context),
                     controller: queryController,
+                    textCapitalization:
+                        cpTextCapitalizationForField(hint: 'Search items'),
                     decoration: InputDecoration(
                         prefixIcon: const Icon(Icons.search),
                         hintText: 'Search items',
@@ -1856,6 +1865,8 @@ class _MaterialDocumentDialogState extends State<MaterialDocumentDialog> {
               child: TextField(
                 controller: quantityControllers[item.id],
                 textInputAction: TextInputAction.next,
+                textCapitalization: cpTextCapitalizationForField(label: 'Qty'),
+                scrollPadding: cpTextFieldScrollPadding(context),
                 decoration: InputDecoration(
                   labelText: isVessels ? 'Qty' : 'Qty',
                   hintText: isVessels ? '10' : '1kg',
@@ -1951,7 +1962,8 @@ class EventDateMenuCard extends StatelessWidget {
               PopupMenuButton<AppMenuSlot>(
                 tooltip: 'Menu actions',
                 icon: Icon(Icons.more_vert, color: cpOnVariant(context)),
-                enabled: visibleSlots.any((slot) => slot.menuItemIds.isNotEmpty),
+                enabled:
+                    visibleSlots.any((slot) => slot.menuItemIds.isNotEmpty),
                 onSelected: onSaveReadyMade,
                 itemBuilder: (context) => [
                   for (final slot in visibleSlots)
