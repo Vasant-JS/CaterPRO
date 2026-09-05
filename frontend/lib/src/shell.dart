@@ -93,9 +93,7 @@ class _AppShellState extends State<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future<void>.delayed(const Duration(milliseconds: 900), () {
-        if (mounted) unawaited(startupRefresh());
-      });
+      if (mounted) unawaited(startupRefresh());
     });
     autoSyncTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       if (!loading) unawaited(refreshEvents(silent: true));
@@ -822,22 +820,33 @@ class _AppShellState extends State<AppShell> {
   Future<Map<String, dynamic>> hydrateMissingServerDataFromEndpoints(
       Map<String, dynamic> userData) async {
     final hydrated = <String, dynamic>{...userData};
-    if (jsonMapList(hydrated['events']).isEmpty) {
-      final remoteEvents = await api.getEvents();
+    final needsEvents = jsonMapList(hydrated['events']).isEmpty;
+    final needsClients = jsonMapList(hydrated['clients']).isEmpty;
+    final needsEmployees = jsonMapList(hydrated['employees']).isEmpty;
+    final needsInvoices = jsonMapList(hydrated['manualInvoices']).isEmpty;
+    final results = await Future.wait<Object>([
+      if (needsEvents) api.getEvents(),
+      if (needsClients) api.getClients(),
+      if (needsEmployees) api.getEmployees(),
+      if (needsInvoices) api.getManualInvoices(),
+    ]);
+    var index = 0;
+    if (needsEvents) {
+      final remoteEvents = results[index++] as List<AppEvent>;
       hydrated['events'] = remoteEvents.map((event) => event.toJson()).toList();
     }
-    if (jsonMapList(hydrated['clients']).isEmpty) {
-      final remoteClients = await api.getClients();
+    if (needsClients) {
+      final remoteClients = results[index++] as List<AppClient>;
       hydrated['clients'] =
           remoteClients.map((client) => client.toJson()).toList();
     }
-    if (jsonMapList(hydrated['employees']).isEmpty) {
-      final remoteEmployees = await api.getEmployees();
+    if (needsEmployees) {
+      final remoteEmployees = results[index++] as List<Employee>;
       hydrated['employees'] =
           remoteEmployees.map((employee) => employee.toJson()).toList();
     }
-    if (jsonMapList(hydrated['manualInvoices']).isEmpty) {
-      final remoteInvoices = await api.getManualInvoices();
+    if (needsInvoices) {
+      final remoteInvoices = results[index++] as List<ManualInvoice>;
       hydrated['manualInvoices'] =
           remoteInvoices.map((invoice) => invoice.toJson()).toList();
     }
