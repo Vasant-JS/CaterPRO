@@ -98,8 +98,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Iterable<AppEvent> monthlyEvents(DateTime month) =>
       widget.events.where((event) {
-        final firstDate = eventFirstDate(event);
-        return firstDate != null && isSameMonth(firstDate, month);
+        return event.dates
+            .map((date) => parseIsoDate(date.date))
+            .whereType<DateTime>()
+            .any((date) => isSameMonth(date, month));
       });
 
   int monthlyRevenue(DateTime month) =>

@@ -3400,7 +3400,7 @@ int eventServiceTotal(AppEvent event) => event.dates.fold(
 int eventAddOnTotal(AppEvent event) => event.addOns
     .fold(0, (sum, addOn) => sum + ((addOn['cost'] as num?)?.toInt() ?? 0));
 int eventTotal(AppEvent event) =>
-    eventMenuTotal(event) + eventAddOnTotal(event);
+    eventMenuTotal(event) + eventServiceTotal(event) + eventAddOnTotal(event);
 int eventPaid(AppEvent event) =>
     event.payments.fold(0, (sum, payment) => sum + payment.amount);
 int eventSettledDiscount(AppEvent event) =>

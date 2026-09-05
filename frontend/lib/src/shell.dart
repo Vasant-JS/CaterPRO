@@ -199,6 +199,69 @@ class _AppShellState extends State<AppShell> {
     return total;
   }
 
+  bool userDataHasMissingRecords(
+      Map<String, dynamic> local, Map<String, dynamic> server) {
+    final localSignature = userDataRecordSignature(local);
+    final serverSignature = userDataRecordSignature(server);
+    if (localSignature.length != serverSignature.length) return true;
+    for (final key in localSignature) {
+      if (!serverSignature.contains(key)) return true;
+    }
+    return false;
+  }
+
+  Set<String> userDataRecordSignature(Map<String, dynamic> userData) {
+    final signature = <String>{};
+    for (final key in const [
+      'clients',
+      'employees',
+      'attendance',
+      'additionalServices',
+      'menuItems',
+      'rawMaterials',
+      'produceItems',
+      'vesselItems',
+      'customMenus',
+      'requirementLists',
+      'payments',
+      'manualInvoices',
+      'auditLogs',
+    ]) {
+      for (final item in jsonMapList(userData[key])) {
+        signature.add('$key:${recordKey(item, key)}');
+      }
+    }
+    for (final event in jsonMapList(userData['events'])) {
+      final eventId = recordKey(event, 'events');
+      signature.add('events:$eventId');
+      for (final date in jsonMapList(event['dates'])) {
+        final dateId = recordKey(date, 'eventDates');
+        signature.add('eventDates:$eventId:$dateId');
+        for (final slot in jsonMapList(date['menuSlots'])) {
+          signature.add(
+              'menuSlots:$eventId:$dateId:${recordKey(slot, 'menuSlots')}');
+        }
+        for (final service in jsonMapList(date['additionalServices'])) {
+          signature.add(
+              'eventServices:$eventId:$dateId:${recordKey(service, 'selectedServices')}');
+        }
+      }
+      for (final payment in jsonMapList(event['payments'])) {
+        signature
+            .add('eventPayments:$eventId:${recordKey(payment, 'payments')}');
+      }
+      for (final document in jsonMapList(event['materialDocuments'])) {
+        signature.add(
+            'materialDocuments:$eventId:${recordKey(document, 'materialDocuments')}');
+      }
+      for (final assignment in jsonMapList(event['employeeAssignments'])) {
+        signature.add(
+            'eventAssignments:$eventId:${recordKey(assignment, 'employeeAssignments')}');
+      }
+    }
+    return signature;
+  }
+
   AppEvent localEventFromDraft(EventDraft draft) {
     final eventId =
         (draft.id ?? '').trim().isEmpty ? localId('evt') : draft.id!.trim();
@@ -460,9 +523,10 @@ class _AppShellState extends State<AppShell> {
       'manualInvoices',
       'auditLogs',
     ];
-    merged['events'] = mergeServerEventsWithLocalDrafts(
-      server['events'],
+    merged['events'] = mergeRecordLists(
       cached['events'],
+      server['events'],
+      key: 'events',
     );
     for (final key in userLists) {
       merged[key] = mergeRecordLists(cached[key], server[key], key: key);
@@ -977,8 +1041,12 @@ class _AppShellState extends State<AppShell> {
       final shouldUploadLocal = localDirty ||
           (localHasData && serverHasNoUserData) ||
           localHasOnlyBusinessProfile;
-      final shouldSaveServerToSqlite =
-          !localDirty && !localHasOnlyBusinessProfile;
+      final shouldRepairMissingRecords = localUserData != null &&
+          !shouldUploadLocal &&
+          userDataHasMissingRecords(localUserData, serverUserData);
+      final shouldSaveServerToSqlite = !localDirty &&
+          !localHasOnlyBusinessProfile &&
+          !shouldRepairMissingRecords;
       if (shouldSaveServerToSqlite) {
         if (!silent) updateSyncProgress(65, 'Saving server data to SQLite');
         await saveServerSnapshotToSqlite(
@@ -994,6 +1062,34 @@ class _AppShellState extends State<AppShell> {
           synced: true,
           updateLastSynced: true,
           persist: !shouldSaveServerToSqlite,
+        );
+        if (!silent) {
+          updateSyncProgress(100, 'Sync complete', active: false);
+        }
+        return;
+      }
+      if (shouldRepairMissingRecords) {
+        if (!silent) updateSyncProgress(65, 'Repairing missing records');
+        final repairedUserData =
+            normalizeUserData(mergeUserData(serverUserData, localUserData));
+        final repairedUniversal = mergeUniversalData(
+          serverUniversal,
+          localUniversal,
+          preferLocal: false,
+        );
+        if (!silent) updateSyncProgress(80, 'Uploading repaired data');
+        final pushed = await api.pushSyncSnapshot(
+          userData: repairedUserData,
+          universal: repairedUniversal,
+          includeMirrorSync: false,
+        );
+        await applySnapshot(
+          userData: Map<String, dynamic>.from(
+              (pushed['userData'] as Map?) ?? const {}),
+          universal: Map<String, dynamic>.from(
+              (pushed['universal'] as Map?) ?? const {}),
+          synced: true,
+          updateLastSynced: true,
         );
         if (!silent) {
           updateSyncProgress(100, 'Sync complete', active: false);
