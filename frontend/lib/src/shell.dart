@@ -1664,6 +1664,21 @@ class _AppShellState extends State<AppShell> {
     backupCurrentSnapshotQuietly();
   }
 
+  Future<AppEvent> autosaveEventDraftLocally(EventDraft draft) async {
+    final event = localEventFromDraft(draft);
+    setState(() {
+      final index = events.indexWhere((item) => item.id == event.id);
+      if (index == -1) {
+        events.add(event);
+      } else {
+        events[index] = event;
+      }
+      selectedEventId = event.id;
+    });
+    await cacheCurrentUserData();
+    return event;
+  }
+
   void removeSelectedEvent(String eventId) {
     setState(() {
       final event = events.where((item) => item.id == eventId).firstOrNull;
@@ -2158,7 +2173,7 @@ class _AppShellState extends State<AppShell> {
                 'create-$createSession-${editingEvent?.id ?? 'new'}-$createInitialStep'),
             initialEvent: editingEvent,
             initialStep: createInitialStep,
-            onDraftSaved: updateSelectedEvent,
+            onAutosaveDraft: autosaveEventDraftLocally,
             onClose: closeToParent,
             onCreate: createEvent,
             services: services,

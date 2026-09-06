@@ -4,7 +4,7 @@ class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen(
       {super.key,
       this.initialEvent,
-      required this.onDraftSaved,
+      required this.onAutosaveDraft,
       required this.onClose,
       required this.onCreate,
       required this.services,
@@ -17,7 +17,7 @@ class CreateEventScreen extends StatefulWidget {
       this.initialStep = 0});
   final AppEvent? initialEvent;
   final int initialStep;
-  final ValueChanged<AppEvent> onDraftSaved;
+  final Future<AppEvent> Function(EventDraft draft) onAutosaveDraft;
   final VoidCallback onClose;
   final Future<void> Function(EventDraft draft) onCreate;
   final List<AdditionalServiceItem> services;
@@ -33,7 +33,6 @@ class CreateEventScreen extends StatefulWidget {
 }
 
 class _CreateEventScreenState extends State<CreateEventScreen> {
-  final api = ApiService();
   int step = 0;
   bool saving = false;
   bool autosaving = false;
@@ -135,9 +134,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       error = null;
     });
     try {
-      final saved = await api.saveEventDraft(draft, eventId: draft.id);
+      final saved = await widget.onAutosaveDraft(draft);
       draft.id = saved.id;
-      widget.onDraftSaved(saved);
       if (mounted) setState(() => hasUnsavedChanges = false);
       return true;
     } catch (e) {
