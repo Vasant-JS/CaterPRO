@@ -76,6 +76,16 @@ async function supabaseRequest(builder) {
   return { data, count };
 }
 
+function missingSupabaseColumnName(error) {
+  const message = String(error?.message || '');
+  const match = message.match(/Could not find the '([^']+)' column/);
+  return match?.[1] || '';
+}
+
+function isMissingSupabaseColumnError(error) {
+  return Boolean(missingSupabaseColumnName(error));
+}
+
 async function loadSupabaseDb() {
   if (!supabase) return null;
   return loadSupabaseTableState();
@@ -137,6 +147,10 @@ function businessProfileFromSupabaseRow(row = {}) {
     gstin: row.gstin || raw.gstin || '',
     gstType: row.gst_type || raw.gstType || 'cgst_sgst',
     gstRate: Number(row.gst_rate ?? raw.gstRate ?? 5) || 5,
+    accountHolderName: row.account_holder_name || raw.accountHolderName || '',
+    bankName: row.bank_name || raw.bankName || '',
+    branchName: row.branch_name || raw.branchName || '',
+    accountNumber: row.account_number || raw.accountNumber || '',
     ifsc: row.ifsc || raw.ifsc || '',
     phone: row.phone || raw.phone || '',
     email: row.email || raw.email || '',
@@ -145,24 +159,52 @@ function businessProfileFromSupabaseRow(row = {}) {
 
 async function loadSupabaseBusinessProfile(userId) {
   if (!supabase) return null;
-  const exact = await supabaseRequest(
-    supabase
-      .from('cp_business_profiles')
-      .select('business_name,service_type,gstin,gst_type,gst_rate,ifsc,phone,email,raw')
-      .eq('state_id', supabaseStateId)
-      .eq('user_id', userId)
-      .maybeSingle(),
-  );
+  const profileColumns = 'business_name,service_type,gstin,gst_type,gst_rate,account_holder_name,bank_name,branch_name,account_number,ifsc,phone,email,raw';
+  const fallbackColumns = 'business_name,service_type,gstin,gst_type,gst_rate,phone,email,raw';
+  let exact;
+  try {
+    exact = await supabaseRequest(
+      supabase
+        .from('cp_business_profiles')
+        .select(profileColumns)
+        .eq('state_id', supabaseStateId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+    );
+  } catch (error) {
+    if (!isMissingSupabaseColumnError(error)) throw error;
+    exact = await supabaseRequest(
+      supabase
+        .from('cp_business_profiles')
+        .select(fallbackColumns)
+        .eq('state_id', supabaseStateId)
+        .eq('user_id', userId)
+        .maybeSingle(),
+    );
+  }
   const exactProfile = businessProfileFromSupabaseRow(exact.data || {});
   if (hasBusinessProfileDetails(exactProfile)) return exactProfile;
 
-  const { data: stateProfiles } = await supabaseRequest(
-    supabase
-      .from('cp_business_profiles')
-      .select('business_name,service_type,gstin,gst_type,gst_rate,ifsc,phone,email,raw')
-      .eq('state_id', supabaseStateId)
-      .limit(2),
-  );
+  let stateProfilesResult;
+  try {
+    stateProfilesResult = await supabaseRequest(
+      supabase
+        .from('cp_business_profiles')
+        .select(profileColumns)
+        .eq('state_id', supabaseStateId)
+        .limit(2),
+    );
+  } catch (error) {
+    if (!isMissingSupabaseColumnError(error)) throw error;
+    stateProfilesResult = await supabaseRequest(
+      supabase
+        .from('cp_business_profiles')
+        .select(fallbackColumns)
+        .eq('state_id', supabaseStateId)
+        .limit(2),
+    );
+  }
+  const { data: stateProfiles } = stateProfilesResult;
   const usefulProfiles = asArray(stateProfiles)
     .map(businessProfileFromSupabaseRow)
     .filter(hasBusinessProfileDetails);
@@ -596,6 +638,10 @@ function buildSupabaseRows(db) {
       gstin: profile.gstin || '',
       gst_type: profile.gstType || '',
       gst_rate: Number(profile.gstRate || 0),
+      account_holder_name: profile.accountHolderName || '',
+      bank_name: profile.bankName || '',
+      branch_name: profile.branchName || '',
+      account_number: profile.accountNumber || '',
       ifsc: profile.ifsc || '',
       phone: profile.phone || '',
       email: profile.email || '',
@@ -673,11 +719,31 @@ function buildSupabaseRows(db) {
 
 async function upsertSupabaseRows(table, rows) {
   if (rows.length === 0) return;
-  for (let index = 0; index < rows.length; index += 500) {
-    await supabaseRequest(
-      supabase.from(table).upsert(rows.slice(index, index + 500), { onConflict: supabaseTableConflicts[table] }),
-    );
+  let pendingRows = rows;
+  const omittedColumns = [];
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      for (let index = 0; index < pendingRows.length; index += 500) {
+        await supabaseRequest(
+          supabase.from(table).upsert(pendingRows.slice(index, index + 500), { onConflict: supabaseTableConflicts[table] }),
+        );
+      }
+      if (omittedColumns.length) {
+        console.warn(`Supabase ${table} column sync skipped for missing columns: ${omittedColumns.join(', ')}`);
+      }
+      return;
+    } catch (error) {
+      const missingColumn = missingSupabaseColumnName(error);
+      if (!missingColumn || omittedColumns.includes(missingColumn)) throw error;
+      omittedColumns.push(missingColumn);
+      pendingRows = pendingRows.map((row) => {
+        const next = { ...row };
+        delete next[missingColumn];
+        return next;
+      });
+    }
   }
+  throw new Error(`Unable to upsert ${table}; missing columns: ${omittedColumns.join(', ')}`);
 }
 
 function isMissingSupabaseTableError(error) {
@@ -5293,6 +5359,38 @@ app.post('/api/sync/snapshot', (req, res) => {
       .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
       .catch((error) => {
         console.warn('Supabase sync skipped after local merge:', error.message);
+        res.json({
+          ...syncSnapshotForUser(db, user.id),
+          mirrorSync: {
+            status: 'failed',
+            error: error.message,
+            failedTables: ['supabase_tables'],
+          },
+        });
+      });
+    return;
+  }
+  writeDb(db, { userId: user.id, includeUniversal });
+  res.json(syncSnapshotForUser(db, user.id));
+});
+
+app.post('/api/sync/delta', (req, res) => {
+  const db = readDb();
+  const user = requireUser(req, res, db);
+  if (!user) return;
+  const incomingUserData = req.body?.userData && typeof req.body.userData === 'object' ? req.body.userData : {};
+  const incomingUniversal = req.body?.universal && typeof req.body.universal === 'object' ? req.body.universal : {};
+  const isAdminSync = String(user.email || '').toLowerCase() === 'admin@caterpro.in';
+  const includeUniversal = isAdminSync && Object.keys(incomingUniversal).length > 0;
+  db.userData[user.id] = mergeUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
+  if (includeUniversal) db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
+  ensureUniversal(db);
+  if (req.body?.includeMirrorSync === true) {
+    runtimeDb = db;
+    saveSupabaseDb(db, { userId: user.id, includeUniversal })
+      .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
+      .catch((error) => {
+        console.warn('Supabase delta sync skipped after local merge:', error.message);
         res.json({
           ...syncSnapshotForUser(db, user.id),
           mirrorSync: {

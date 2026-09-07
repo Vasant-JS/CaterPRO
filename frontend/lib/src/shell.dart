@@ -360,9 +360,7 @@ class _AppShellState extends State<AppShell> {
   }
 
   void backupCurrentSnapshotQuietly() {
-    unawaited(cacheCurrentUserData()
-        .then((_) => refreshEvents(silent: true))
-        .catchError((_) {}));
+    unawaited(cacheCurrentUserData().catchError((_) {}));
   }
 
   Future<void> startupRefresh() async {
@@ -956,12 +954,36 @@ class _AppShellState extends State<AppShell> {
     syncInProgress = true;
     updateSyncProgress(10, 'Preparing sync');
     try {
-      updateSyncProgress(35, 'Uploading local changes');
-      final response = await api.pushSyncSnapshot(
-        userData: currentUserDataJson(),
-        universal: currentUniversalJson(),
-        includeMirrorSync: false,
-      );
+      Map<String, dynamic>? dirtySnapshot;
+      try {
+        dirtySnapshot = await LocalCaterProDb.instance
+            .loadUnsyncedSnapshot()
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        dirtySnapshot = null;
+      }
+      Map<String, dynamic> response;
+      if (dirtySnapshot == null && !kIsWeb) {
+        updateSyncProgress(35, 'Downloading server snapshot');
+        response =
+            await api.getSyncSnapshot().timeout(const Duration(seconds: 30));
+      } else if (dirtySnapshot != null) {
+        updateSyncProgress(35, 'Uploading local changes');
+        response = await api.pushSyncDelta(
+          userData: normalizeUserData(Map<String, dynamic>.from(
+              (dirtySnapshot['userData'] as Map?) ?? const {})),
+          universal: Map<String, dynamic>.from(
+              (dirtySnapshot['universal'] as Map?) ?? const {}),
+          includeMirrorSync: false,
+        );
+      } else {
+        updateSyncProgress(35, 'Uploading local snapshot');
+        response = await api.pushSyncSnapshot(
+          userData: currentUserDataJson(),
+          universal: currentUniversalJson(),
+          includeMirrorSync: false,
+        );
+      }
       updateSyncProgress(80, 'Refreshing app data');
       final universal = Map<String, dynamic>.from(
           (response['universal'] as Map?) ?? const {});
@@ -1034,6 +1056,33 @@ class _AppShellState extends State<AppShell> {
       );
     }
     try {
+      if (localDirty) {
+        if (!silent) updateSyncProgress(40, 'Uploading local changes');
+        final dirtySnapshot = await LocalCaterProDb.instance
+            .loadUnsyncedSnapshot()
+            .timeout(const Duration(seconds: 5));
+        if (dirtySnapshot != null) {
+          final pushed = await api.pushSyncDelta(
+            userData: normalizeUserData(Map<String, dynamic>.from(
+                (dirtySnapshot['userData'] as Map?) ?? const {})),
+            universal: Map<String, dynamic>.from(
+                (dirtySnapshot['universal'] as Map?) ?? const {}),
+            includeMirrorSync: false,
+          );
+          await applySnapshot(
+            userData: Map<String, dynamic>.from(
+                (pushed['userData'] as Map?) ?? const {}),
+            universal: Map<String, dynamic>.from(
+                (pushed['universal'] as Map?) ?? const {}),
+            synced: true,
+            updateLastSynced: true,
+          );
+          if (!silent) {
+            updateSyncProgress(100, 'Sync complete', active: false);
+          }
+          return;
+        }
+      }
       if (!silent) updateSyncProgress(40, 'Downloading server snapshot');
       final snapshot =
           await api.getSyncSnapshot().timeout(const Duration(seconds: 30));

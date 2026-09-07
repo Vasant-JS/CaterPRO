@@ -2202,9 +2202,19 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
     validate();
     if (errorText != null || saving) return;
     setState(() => saving = true);
+    final payment = AppPayment(
+      id: 'pay_${DateTime.now().microsecondsSinceEpoch}',
+      amount: paymentAmount,
+      date: dateController.text.trim(),
+      mode: paymentModes[selectedMode],
+      reference: refController.text.trim(),
+      settled: settled,
+      settledDiscount: settledDiscount,
+    );
     try {
       final updated = await widget.api.recordPayment(
         widget.event.id,
+        id: payment.id,
         amount: paymentAmount,
         date: dateController.text.trim(),
         mode: paymentModes[selectedMode],
@@ -2221,10 +2231,16 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
               ? 'Payment saved. ${money(settledDiscount)} marked as settlement discount.'
               : 'Payment saved.');
     } catch (e) {
-      if (mounted) {
-        setState(
-            () => errorText = e.toString().replaceFirst('Exception: ', ''));
-      }
+      final eventJson = widget.event.toJson();
+      eventJson['payments'] = [
+        ...widget.event.payments.map((item) => item.toJson()),
+        payment.toJson(),
+      ];
+      widget.onSaved(AppEvent.fromJson(eventJson));
+      if (!mounted) return;
+      Navigator.pop(context);
+      showCpSnack(
+          context, 'Payment saved locally. It will sync when server is back.');
     } finally {
       if (mounted) setState(() => saving = false);
     }

@@ -169,7 +169,10 @@ class _EventsScreenState extends State<EventsScreen> {
   List<DateTime> get dateChipDates {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    return List.generate(15, (index) => today.add(Duration(days: index)));
+    return List.generate(
+        15,
+        (index) =>
+            today.subtract(const Duration(days: 7)).add(Duration(days: index)));
   }
 
   void toggleDateFilter(DateTime date) {

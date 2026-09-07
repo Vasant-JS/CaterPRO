@@ -2199,6 +2199,28 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> pushSyncDelta({
+    required Map<String, dynamic> userData,
+    required Map<String, dynamic> universal,
+    bool includeMirrorSync = false,
+  }) async {
+    final response = await http
+        .post(
+          Uri.parse('${ApiConfig.baseUrl}/sync/delta'),
+          headers: await authHeaders(),
+          body: jsonEncode({
+            'userData': userData,
+            'universal': universal,
+            if (includeMirrorSync) 'includeMirrorSync': true,
+          }),
+        )
+        .timeout(const Duration(seconds: 45));
+    if (response.statusCode != 200) {
+      throw Exception('Unable to push local CaterPro changes');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
   Future<List<AppEvent>> getEvents() async {
     final response = await http.get(Uri.parse('${ApiConfig.baseUrl}/events'),
         headers: await authHeaders());
@@ -2778,7 +2800,8 @@ class ApiService {
   }
 
   Future<AppEvent> recordPayment(String eventId,
-      {required int amount,
+      {String? id,
+      required int amount,
       required String date,
       required String mode,
       required String reference,
@@ -2788,6 +2811,7 @@ class ApiService {
       Uri.parse('${ApiConfig.baseUrl}/events/$eventId/payments'),
       headers: await authHeaders(),
       body: jsonEncode({
+        if (id != null && id.isNotEmpty) 'id': id,
         'amount': amount,
         'date': date,
         'mode': mode,
@@ -3077,6 +3101,7 @@ Future<ReportDateRangeSelection?> showReportDateRangePickerDialog(
     case 'current_year':
       return selection('Annual', yearStart, today);
     case 'custom':
+      if (!context.mounted) return null;
       final firstDate = DateTime(today.year - 1, today.month, today.day);
       final picked = await showDateRangePicker(
           context: context,

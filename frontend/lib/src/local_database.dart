@@ -1,10 +1,23 @@
 part of '../main.dart';
 
+class _LocalSyncRow {
+  const _LocalSyncRow({
+    required this.raw,
+    required this.synced,
+    required this.updatedAt,
+  });
+
+  final String raw;
+  final int synced;
+  final String updatedAt;
+}
+
 class LocalCaterProDb {
   LocalCaterProDb._();
   static final instance = LocalCaterProDb._();
   Database? _db;
   Future<void>? _dailyBackupRun;
+  Map<String, Map<String, _LocalSyncRow>>? _previousRowsForSave;
 
   static const stateId = 'default';
   static const databaseFileName = 'caterpro_local.db';
@@ -20,7 +33,7 @@ class LocalCaterProDb {
     final dbPath = path_package.join(basePath, databaseFileName);
     return _db = await openDatabase(
       dbPath,
-      version: 6,
+      version: 7,
       onCreate: (db, version) async => createSchema(db),
       onUpgrade: (db, oldVersion, newVersion) async {
         await createSchema(db);
@@ -34,9 +47,19 @@ class LocalCaterProDb {
               db, 'cp_business_profiles', 'branch_name', 'text');
         }
         if (oldVersion < 5) {
-          await createSchema(db);
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'bank_name', 'text');
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'account_number', 'text');
         }
         if (oldVersion < 6) {
+          await createSchema(db);
+        }
+        if (oldVersion < 7) {
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'bank_name', 'text');
+          await addColumnIfMissing(
+              db, 'cp_business_profiles', 'account_number', 'text');
           await createSchema(db);
         }
       },
@@ -146,9 +169,11 @@ class LocalCaterProDb {
           gstin text,
           gst_type text,
           gst_rate real,
-          ifsc text,
           account_holder_name text,
+          bank_name text,
           branch_name text,
+          account_number text,
+          ifsc text,
           phone text,
           email text,
           raw text not null,
@@ -509,51 +534,56 @@ class LocalCaterProDb {
     final userId = await currentUserId();
     final updatedAt = DateTime.now().toIso8601String();
     final syncedValue = synced ? 1 : 0;
-    await db.transaction((txn) async {
-      final batch = txn.batch();
-      for (final table in userTables) {
-        batch.delete(table, where: 'state_id = ?', whereArgs: [stateId]);
-      }
-      if (userData.containsKey('menuItems')) {
-        batch.delete('cp_user_menu_items',
-            where: 'state_id = ? and user_id = ?',
-            whereArgs: [stateId, userId]);
-      }
-      if (userData.containsKey('rawMaterials')) {
-        batch.delete('cp_user_raw_materials',
-            where: 'state_id = ? and user_id = ?',
-            whereArgs: [stateId, userId]);
-      }
-      if (userData.containsKey('produceItems')) {
-        batch.delete('cp_user_produce_items',
-            where: 'state_id = ? and user_id = ?',
-            whereArgs: [stateId, userId]);
-      }
-      if (userData.containsKey('vesselItems')) {
-        batch.delete('cp_user_vessel_items',
-            where: 'state_id = ? and user_id = ?',
-            whereArgs: [stateId, userId]);
-      }
-      if (universal.containsKey('menuItems')) {
-        batch.delete('cp_menu_items',
-            where: 'state_id = ?', whereArgs: [stateId]);
-      }
-      if (universal.containsKey('rawMaterials')) {
-        batch.delete('cp_raw_materials',
-            where: 'state_id = ?', whereArgs: [stateId]);
-      }
-      if (universal.containsKey('produceItems')) {
-        batch.delete('cp_produce_items',
-            where: 'state_id = ?', whereArgs: [stateId]);
-      }
-      if (universal.containsKey('vesselItems')) {
-        batch.delete('cp_vessel_items',
-            where: 'state_id = ?', whereArgs: [stateId]);
-      }
-      upsertUserRows(batch, userId, userData, updatedAt, syncedValue);
-      upsertUniversalRows(batch, universal, updatedAt, syncedValue);
-      await batch.commit(noResult: true);
-    });
+    _previousRowsForSave = synced ? null : await _localSyncRows(db);
+    try {
+      await db.transaction((txn) async {
+        final batch = txn.batch();
+        for (final table in userTables) {
+          batch.delete(table, where: 'state_id = ?', whereArgs: [stateId]);
+        }
+        if (userData.containsKey('menuItems')) {
+          batch.delete('cp_user_menu_items',
+              where: 'state_id = ? and user_id = ?',
+              whereArgs: [stateId, userId]);
+        }
+        if (userData.containsKey('rawMaterials')) {
+          batch.delete('cp_user_raw_materials',
+              where: 'state_id = ? and user_id = ?',
+              whereArgs: [stateId, userId]);
+        }
+        if (userData.containsKey('produceItems')) {
+          batch.delete('cp_user_produce_items',
+              where: 'state_id = ? and user_id = ?',
+              whereArgs: [stateId, userId]);
+        }
+        if (userData.containsKey('vesselItems')) {
+          batch.delete('cp_user_vessel_items',
+              where: 'state_id = ? and user_id = ?',
+              whereArgs: [stateId, userId]);
+        }
+        if (universal.containsKey('menuItems')) {
+          batch.delete('cp_menu_items',
+              where: 'state_id = ?', whereArgs: [stateId]);
+        }
+        if (universal.containsKey('rawMaterials')) {
+          batch.delete('cp_raw_materials',
+              where: 'state_id = ?', whereArgs: [stateId]);
+        }
+        if (universal.containsKey('produceItems')) {
+          batch.delete('cp_produce_items',
+              where: 'state_id = ?', whereArgs: [stateId]);
+        }
+        if (universal.containsKey('vesselItems')) {
+          batch.delete('cp_vessel_items',
+              where: 'state_id = ?', whereArgs: [stateId]);
+        }
+        upsertUserRows(batch, userId, userData, updatedAt, syncedValue);
+        upsertUniversalRows(batch, universal, updatedAt, syncedValue);
+        await batch.commit(noResult: true);
+      });
+    } finally {
+      _previousRowsForSave = null;
+    }
   }
 
   Future<bool> hasMasterData() async {
@@ -658,6 +688,10 @@ class LocalCaterProDb {
         'cp_clients',
         'cp_business_profiles',
         'cp_users',
+        'cp_user_menu_items',
+        'cp_user_raw_materials',
+        'cp_user_produce_items',
+        'cp_user_vessel_items',
         'cp_menu_items',
         'cp_raw_materials',
         'cp_produce_items',
@@ -665,7 +699,26 @@ class LocalCaterProDb {
       ];
 
   void insert(Batch batch, String table, Map<String, Object?> values) {
-    batch.insert(table, values, conflictAlgorithm: ConflictAlgorithm.replace);
+    batch.insert(table, valuesForLocalSave(table, values),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Map<String, Object?> valuesForLocalSave(
+      String table, Map<String, Object?> values) {
+    final previousRows = _previousRowsForSave;
+    if (previousRows == null || values['synced'] != 0) return values;
+    final key = _localRowKey(table, values);
+    final previous = key == null ? null : previousRows[table]?[key];
+    if (previous == null ||
+        previous.synced != 1 ||
+        previous.raw != values['raw']?.toString()) {
+      return values;
+    }
+    return {
+      ...values,
+      'synced': 1,
+      'updated_at': previous.updatedAt,
+    };
   }
 
   void upsertUserRows(Batch batch, String userId, Map<String, dynamic> userData,
@@ -690,9 +743,11 @@ class LocalCaterProDb {
       'gstin': profile['gstin']?.toString() ?? '',
       'gst_type': profile['gstType']?.toString() ?? '',
       'gst_rate': double.tryParse(profile['gstRate']?.toString() ?? '') ?? 0,
-      'ifsc': profile['ifsc']?.toString() ?? '',
       'account_holder_name': profile['accountHolderName']?.toString() ?? '',
+      'bank_name': profile['bankName']?.toString() ?? '',
       'branch_name': profile['branchName']?.toString() ?? '',
+      'account_number': profile['accountNumber']?.toString() ?? '',
+      'ifsc': profile['ifsc']?.toString() ?? '',
       'phone': profile['phone']?.toString() ?? '',
       'email': profile['email']?.toString() ?? '',
       'raw': encode(profile),
@@ -1078,12 +1133,133 @@ class LocalCaterProDb {
     };
   }
 
+  Future<Map<String, dynamic>?> loadUnsyncedSnapshot() async {
+    if (kIsWeb) return null;
+    final db = await database;
+    final userId = await currentUserId();
+    if (!await hasUnsyncedChanges()) return null;
+    return {
+      'userData': {
+        'events': await rawRows(
+            db, 'cp_events', 'user_id = ? and synced = 0', [userId]),
+        'clients': await rawRows(
+            db, 'cp_clients', 'user_id = ? and synced = 0', [userId]),
+        'employees': await rawRows(
+            db, 'cp_employees', 'user_id = ? and synced = 0', [userId]),
+        'attendance': await rawRows(
+            db, 'cp_attendance', 'user_id = ? and synced = 0', [userId]),
+        'additionalServices': await rawRows(db, 'cp_additional_services',
+            'user_id = ? and synced = 0', [userId]),
+        'menuItems': await rawRows(
+            db, 'cp_user_menu_items', 'user_id = ? and synced = 0', [userId]),
+        'rawMaterials': await rawRows(db, 'cp_user_raw_materials',
+            'user_id = ? and synced = 0', [userId]),
+        'produceItems': await rawRows(db, 'cp_user_produce_items',
+            'user_id = ? and synced = 0', [userId]),
+        'vesselItems': await rawRows(
+            db, 'cp_user_vessel_items', 'user_id = ? and synced = 0', [userId]),
+        'customMenus': await rawRows(
+            db, 'cp_custom_menus', 'user_id = ? and synced = 0', [userId]),
+        'manualInvoices': await rawRows(
+            db, 'cp_manual_invoices', 'user_id = ? and synced = 0', [userId]),
+        'auditLogs': await rawRows(
+            db, 'cp_audit_logs', 'user_id = ? and synced = 0', [userId]),
+        'businessProfile': await firstRaw(
+              db,
+              'cp_business_profiles',
+              'user_id = ? and synced = 0',
+              [userId],
+            ) ??
+            {},
+      },
+      'universal': {
+        'menuItems': await rawRows(db, 'cp_menu_items', 'synced = 0', const []),
+        'rawMaterials':
+            await rawRows(db, 'cp_raw_materials', 'synced = 0', const []),
+        'produceItems':
+            await rawRows(db, 'cp_produce_items', 'synced = 0', const []),
+        'vesselItems':
+            await rawRows(db, 'cp_vessel_items', 'synced = 0', const []),
+      },
+    };
+  }
+
   Future<List<Map<String, dynamic>>> rawRows(
       Database db, String table, String? where, List<Object?> whereArgs) async {
     final rows = await db.query(table,
         where: where == null ? 'state_id = ?' : 'state_id = ? and $where',
         whereArgs: [stateId, ...whereArgs]);
     return rows.map(decodeRaw).toList();
+  }
+
+  Future<Map<String, Map<String, _LocalSyncRow>>> _localSyncRows(
+      Database db) async {
+    final previous = <String, Map<String, _LocalSyncRow>>{};
+    for (final table in localTables) {
+      final rows =
+          await db.query(table, where: 'state_id = ?', whereArgs: [stateId]);
+      final keyed = <String, _LocalSyncRow>{};
+      for (final row in rows) {
+        final key = _localRowKey(table, row);
+        if (key == null) continue;
+        keyed[key] = _LocalSyncRow(
+          raw: row['raw']?.toString() ?? '',
+          synced: (row['synced'] as int?) ?? 0,
+          updatedAt: row['updated_at']?.toString() ?? '',
+        );
+      }
+      previous[table] = keyed;
+    }
+    return previous;
+  }
+
+  String? _localRowKey(String table, Map<String, Object?> row) {
+    final userId = row['user_id']?.toString() ?? '';
+    final id = row['id']?.toString() ?? '';
+    final eventId = row['event_id']?.toString() ?? '';
+    final dateId = row['date_id']?.toString() ?? '';
+    final invoiceId = row['invoice_id']?.toString() ?? '';
+    final employeeId = row['employee_id']?.toString() ?? '';
+    final attendanceDate = row['attendance_date']?.toString() ?? '';
+    switch (table) {
+      case 'cp_users':
+      case 'cp_menu_items':
+      case 'cp_raw_materials':
+      case 'cp_produce_items':
+      case 'cp_vessel_items':
+        return id.isEmpty ? null : id;
+      case 'cp_business_profiles':
+        return userId.isEmpty ? null : userId;
+      case 'cp_event_dates':
+        return userId.isEmpty || eventId.isEmpty || id.isEmpty
+            ? null
+            : '$userId\n$eventId\n$id';
+      case 'cp_menu_slots':
+        return userId.isEmpty || eventId.isEmpty || dateId.isEmpty || id.isEmpty
+            ? null
+            : '$userId\n$eventId\n$dateId\n$id';
+      case 'cp_event_payments':
+        return userId.isEmpty || eventId.isEmpty || id.isEmpty
+            ? null
+            : '$userId\n$eventId\n$id';
+      case 'cp_event_assignments':
+        return userId.isEmpty || eventId.isEmpty || employeeId.isEmpty
+            ? null
+            : '$userId\n$eventId\n$employeeId';
+      case 'cp_attendance':
+        return userId.isEmpty ||
+                eventId.isEmpty ||
+                employeeId.isEmpty ||
+                attendanceDate.isEmpty
+            ? null
+            : '$userId\n$eventId\n$employeeId\n$attendanceDate';
+      case 'cp_manual_invoice_items':
+        return userId.isEmpty || invoiceId.isEmpty || id.isEmpty
+            ? null
+            : '$userId\n$invoiceId\n$id';
+      default:
+        return userId.isEmpty || id.isEmpty ? null : '$userId\n$id';
+    }
   }
 
   Future<bool> hasSnapshotRows(Database db, String userId) async {
