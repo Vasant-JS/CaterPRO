@@ -44,7 +44,7 @@ SUPABASE_STATE_ID=default
 After deploy, open:
 
 ```text
-https://YOUR-RENDER-SERVICE.onrender.com/api/docs
+https://api.caterpro.in/api/docs
 ```
 
 The backend requires an existing `caterpro_state/default` row. It does not seed from or fall back to local JSON files.
@@ -73,10 +73,10 @@ C:\flutter\bin\flutter.bat run -d chrome --web-hostname 127.0.0.1 --web-port 532
 For hosted API:
 
 ```powershell
-C:\flutter\bin\flutter.bat run -d chrome --dart-define=CATERPRO_API_URL=https://YOUR-RENDER-SERVICE.onrender.com/api
+C:\flutter\bin\flutter.bat run -d chrome --dart-define=CATERPRO_API_URL=https://api.caterpro.in/api
 ```
 
-For Android emulator, use your computer IP instead of `127.0.0.1`, or use the hosted Render URL.
+For Android emulator, use your computer IP instead of `127.0.0.1`, or use the hosted API URL.
 
 ## 5. Verify Storage
 

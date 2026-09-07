@@ -285,13 +285,13 @@
     const saved = localStorage.getItem("caterpro.admin.apiBase");
     if (saved) return saved.replace(/\/$/, "");
     if (location.pathname.startsWith("/admin/") || location.port === "8787") return `${location.origin}/api`;
-    return "http://localhost:8787/api";
+    return "https://api.caterpro.in/api";
   }
 
   function networkLoginMessage(error) {
     const message = error?.message || "Unable to login";
     if (!message.toLowerCase().includes("fetch")) return message;
-    return "API is not reachable. Start the CaterPro backend and open http://localhost:8787/admin";
+    return "API is not reachable. Check https://api.caterpro.in/api or update the admin API base in this browser.";
   }
 
   function authHeaders() {
