@@ -4569,6 +4569,7 @@ function adminEventDto(event) {
   const normalized = normalizeEventShape(event);
   const totals = eventTotals(normalized);
   return {
+    ...normalized,
     id: normalized.id,
     name: normalized.name || '',
     primaryClient: normalized.primaryClient || normalized.clientName || '',
@@ -4580,8 +4581,14 @@ function adminEventDto(event) {
     paid: totals.paid,
     balance: totals.balance,
     dates: asArray(normalized.dates),
+    payments: asArray(normalized.payments),
+    addOns: asArray(normalized.addOns),
+    employeeAssignments: asArray(normalized.employeeAssignments),
     materialDocuments: asArray(normalized.materialDocuments),
     menuTypes: asArray(normalized.dates).flatMap((date) => asArray(date.menuSlots).map((slot) => slot.type).filter(Boolean)),
+    notes: normalized.notes || '',
+    createdAt: normalized.createdAt || '',
+    updatedAt: normalized.updatedAt || '',
   };
 }
 
@@ -4970,6 +4977,45 @@ app.get('/api/admin/users/:userId/reports/monthly.pdf', (req, res) => {
   });
 });
 
+app.put('/api/admin/users/:userId/events/:eventId', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const userData = db.userData[targetUser.id];
+  const index = asArray(userData.events).findIndex((event) => event.id === req.params.eventId);
+  if (index === -1) return res.status(404).json({ message: 'Event not found' });
+  const existing = userData.events[index];
+  const next = eventFromBody({ ...req.body, id: req.params.eventId }, existing);
+  userData.events[index] = next;
+  await writeDbAndFlush(db);
+  res.json(adminEventDto(next));
+});
+
+app.post('/api/admin/users/:userId/events/:eventId/payments', async (req, res) => {
+  const db = readDb();
+  const targetUser = requireAdminTargetUser(req, res, db);
+  if (!targetUser) return;
+  const userData = db.userData[targetUser.id];
+  const event = findUserEvent(db, targetUser.id, req.params.eventId);
+  if (!event) return res.status(404).json({ message: 'Event not found' });
+  const payment = {
+    id: req.body.id || makeId('pay'),
+    amount: Number(req.body.amount || 0),
+    date: req.body.date || new Date().toISOString().slice(0, 10),
+    mode: String(req.body.mode || '').trim(),
+    reference: String(req.body.reference || '').trim(),
+    settled: Boolean(req.body.settled),
+    settledDiscount: Number(req.body.settledDiscount || 0),
+  };
+  event.payments = asArray(event.payments);
+  event.payments.push(payment);
+  userData.payments = asArray(userData.payments);
+  userData.payments.push({ ...payment, eventId: event.id });
+  event.updatedAt = new Date().toISOString();
+  await writeDbAndFlush(db);
+  res.status(201).json(payment);
+});
+
 app.put('/api/admin/users/:userId/events/:eventId/documents/:type', async (req, res) => {
   const db = readDb();
   const targetUser = requireAdminTargetUser(req, res, db);
@@ -5231,7 +5277,8 @@ function mergeSyncRecord(existing = {}, incoming = {}, listKey = '') {
     base.menuSlots = mergeSyncRecordList(existing.menuSlots, incoming.menuSlots, 'menuSlots');
     base.additionalServices = mergeSyncRecordList(existing.additionalServices, incoming.additionalServices, 'selectedServices');
   } else if (listKey === 'menuSlots') {
-    base.menuItemIds = [...new Set([...asArray(existing.menuItemIds), ...asArray(incoming.menuItemIds)].map(String).filter(Boolean))];
+    const authoritative = incomingUpdatedAt >= existingUpdatedAt ? incoming : existing;
+    base.menuItemIds = asArray(authoritative.menuItemIds).map(String).filter(Boolean);
     base.additionalServices = mergeSyncRecordList(existing.additionalServices, incoming.additionalServices, 'selectedServices');
   } else if (listKey === 'materialDocuments') {
     base.items = mergeSyncRecordList(existing.items, incoming.items, 'materialItems');

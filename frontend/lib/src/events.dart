@@ -73,7 +73,7 @@ class _EventsScreenState extends State<EventsScreen> {
   void scrollChipsToToday() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final context = dateChipKeys[0].currentContext;
+      final context = dateChipKeys[7].currentContext;
       if (context != null) {
         Scrollable.ensureVisible(
           context,

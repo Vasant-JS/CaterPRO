@@ -997,7 +997,10 @@ class EventDetailsTabContent extends StatelessWidget {
             onEventUpdated: onEventUpdated);
       default:
         return MaterialDocumentsSection(
-            event: event, api: api, onEventUpdated: onEventUpdated);
+            event: event,
+            api: api,
+            onEventUpdated: onEventUpdated,
+            onEditStep: onEditStep);
     }
   }
 }
@@ -1453,10 +1456,12 @@ class MaterialDocumentsSection extends StatelessWidget {
       {super.key,
       required this.event,
       required this.api,
-      required this.onEventUpdated});
+      required this.onEventUpdated,
+      required this.onEditStep});
   final AppEvent event;
   final ApiService api;
   final ValueChanged<AppEvent> onEventUpdated;
+  final void Function(AppEvent event, int step) onEditStep;
 
   Future<void> openEditor(BuildContext context, String type,
       {EventMaterialDocument? document}) async {
@@ -1500,6 +1505,8 @@ class MaterialDocumentsSection extends StatelessWidget {
                   color: scheme.onPrimaryContainer,
                   height: 1.45,
                   fontWeight: FontWeight.w700))),
+      const SizedBox(height: 14),
+      EventAddOnsOverview(event: event, onEdit: () => onEditStep(event, 3)),
       const SizedBox(height: 14),
       Row(children: [
         Expanded(
@@ -1584,6 +1591,109 @@ class MaterialDocumentsSection extends StatelessWidget {
                 ]),
               ),
             )),
+    ]);
+  }
+}
+
+class EventAddOnsOverview extends StatelessWidget {
+  const EventAddOnsOverview(
+      {super.key, required this.event, required this.onEdit});
+
+  final AppEvent event;
+  final VoidCallback onEdit;
+
+  int addOnCost(Map<String, dynamic> addOn) {
+    final value = addOn['cost'] ?? addOn['price'];
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String addOnTitle(Map<String, dynamic> addOn) {
+    final title = addOn['title'] ?? addOn['name'];
+    final clean = title?.toString().trim() ?? '';
+    return clean.isEmpty ? 'Add-on' : clean;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = cpPrimary(context);
+    final onVariant = cpOnVariant(context);
+    final addOns = event.addOns;
+    final total =
+        addOns.fold<int>(0, (sum, addOn) => sum + addOnCost(addOn));
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Expanded(
+            child: Text('Event Add-ons',
+                style: TextStyle(
+                    color: primary, fontSize: 20, fontWeight: FontWeight.w900))),
+        Pill('${addOns.length} items'),
+        const SizedBox(width: 8),
+        IconButton(
+            tooltip: 'Edit add-ons',
+            onPressed: onEdit,
+            icon: const Icon(Icons.edit, color: Cp.toolbarIcon)),
+      ]),
+      const SizedBox(height: 10),
+      if (addOns.isEmpty)
+        CpCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.add_shopping_cart, color: onVariant),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('No add-ons added',
+                    style: TextStyle(
+                        color: primary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900)),
+                const SizedBox(height: 4),
+                Text('Sweet boxes, packed items, or extra charges appear here.',
+                    style: TextStyle(
+                        color: onVariant, fontWeight: FontWeight.w700)),
+              ])),
+        ]))
+      else
+        CpCard(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ...addOns.map((addOn) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                        color: Cp.secondaryContainer,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Icon(Icons.add_business,
+                        color: Color(0xff694000), size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                      child: Text(addOnTitle(addOn),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w900, height: 1.25))),
+                  const SizedBox(width: 10),
+                  Text(money(addOnCost(addOn)),
+                      style: TextStyle(
+                          color: primary, fontWeight: FontWeight.w900)),
+                ]),
+              )),
+          const Divider(height: 12),
+          Row(children: [
+            Expanded(
+                child: Text('Add-ons Total',
+                    style: TextStyle(
+                        color: onVariant, fontWeight: FontWeight.w800))),
+            Text(money(total),
+                style: TextStyle(
+                    color: primary, fontSize: 18, fontWeight: FontWeight.w900)),
+          ]),
+        ])),
     ]);
   }
 }

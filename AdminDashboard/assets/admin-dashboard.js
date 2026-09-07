@@ -13,6 +13,7 @@
   const detailPages = [
     "client-detail.html",
     "client-events.html",
+    "client-event-info.html",
     "client-billing.html",
     "client-menu.html",
     "client-custom-menus.html",
@@ -226,10 +227,11 @@
         node.addEventListener("click", () => goToPage("audit-log.html"));
       }
       if (
-        iconText === "info" ||
-        iconText === "visibility" ||
-        title.includes("Info") ||
-        title.includes("View")
+        !node.classList.contains("event-info") &&
+        (iconText === "info" ||
+          iconText === "visibility" ||
+          title.includes("Info") ||
+          title.includes("View"))
       ) {
         node.addEventListener("click", () => goToPage("client-detail.html"));
       }
@@ -645,6 +647,10 @@
     return `${file}?userId=${encodeURIComponent(userId || "")}`;
   }
 
+  function eventInfoHref(userId, eventId) {
+    return `${clientTabHref("client-event-info.html", userId)}&eventId=${encodeURIComponent(eventId || "")}`;
+  }
+
   function imageMimeFromBase64(value) {
     if (value.startsWith("/9j/")) return "image/jpeg";
     if (value.startsWith("iVBOR")) return "image/png";
@@ -683,7 +689,7 @@
       ["Audit Activity", "client-audit.html", "audit"],
     ];
     return `<div class="p-container_padding max-w-[1600px] mx-auto space-y-gutter">
-      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      <div class="flex flex-col xl:flex-row xl:items-end justify-between gap-4">
         <div class="flex items-start gap-5 min-w-0">
           <div class="w-20 h-20 rounded-2xl bg-white border border-outline-variant shadow-sm flex items-center justify-center overflow-hidden shrink-0">
             <img class="w-full h-full object-contain p-2" alt="${escapeHtml(user.businessName || user.name || "Client")} logo" src="${escapeHtml(logoSrc)}" onerror="this.onerror=null;this.src='../assets/caterpro_logo.png';"/>
@@ -1119,11 +1125,666 @@
         ${cell(escapeHtml(event.status || "-"), "status")}
         ${cell(formatMoney(event.total), "total", "text-right font-bold", Number(event.total || 0))}
         ${cell(formatMoney(event.balance), "balance", "text-right text-error", Number(event.balance || 0))}
-        <td class="px-4 py-4 text-right whitespace-nowrap">${iconButton("info", "Event info")}${iconButton("edit", "Edit event")}<button class="event-download p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${escapeHtml(event.id || "")}" title="Download PDFs"><span class="material-symbols-outlined text-[18px]">download</span></button>${iconButton("delete", "Delete event", "text-error hover:bg-error-container")}</td>
+        <td class="px-4 py-4 text-right whitespace-nowrap"><a class="event-info p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" title="Event info" href="${eventInfoHref(data.user?.id, event.id)}"><span class="material-symbols-outlined text-[18px]">info</span></a>${iconButton("edit", "Edit event")}<button class="event-download p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" data-id="${escapeHtml(event.id || "")}" title="Download PDFs"><span class="material-symbols-outlined text-[18px]">download</span></button>${iconButton("delete", "Delete event", "text-error hover:bg-error-container")}</td>
       </tr>`),
       empty: "No events found for this user.",
       actionWidth: "176px",
     });
+  }
+
+  async function renderClientEventInfoPage() {
+    const params = new URLSearchParams(location.search);
+    const userId = params.get("userId") || localStorage.getItem("caterpro.admin.selectedUserId") || "";
+    const eventId = params.get("eventId") || "";
+    const data = await adminFetch(`/admin/client-data${userId ? `?userId=${encodeURIComponent(userId)}` : ""}`);
+    if (data.user?.id) localStorage.setItem("caterpro.admin.selectedUserId", data.user.id);
+    const event = (data.events || []).find((item) => String(item.id || "") === eventId);
+    if (!event) {
+      setMainContent(clientFrame(data, "events", `<section class="bg-white border border-outline-variant rounded-xl p-6">
+        <a class="inline-flex items-center gap-2 text-primary font-label-md text-label-md mb-4" href="${clientTabHref("client-events.html", data.user?.id)}"><span class="material-symbols-outlined text-[18px]">arrow_back</span>Back to Events</a>
+        <h2 class="font-title-lg text-title-lg">Event not found</h2>
+        <p class="text-on-surface-variant mt-1">The selected event is not available in the live DB payload for this client.</p>
+      </section>`));
+      return;
+    }
+    setMainContent(clientFrame(data, "events", clientEventInfoBody(data, event)));
+    document.querySelectorAll("[data-event-pdf-url]").forEach((button) => {
+      button.addEventListener("click", () => openPdfTab(button.dataset.eventPdfUrl || ""));
+    });
+    wireClientEventInfoActions(data, event);
+  }
+
+  function clientEventInfoBody(data, event) {
+    const client = appClientForEvent(data, event) || {};
+    const invoices = (data.invoices || []).filter((invoice) => String(invoice.eventId || invoice.id || "") === String(event.id || ""));
+    const payments = asArray(event.payments);
+    const dates = asArray(event.dates);
+    const addOns = asArray(event.addOns);
+    const assignments = asArray(event.employeeAssignments);
+    const materials = asArray(event.materialDocuments);
+    const totals = eventInfoTotals(event);
+    const statusTone = Number(event.balance || totals.balance || 0) <= 0 && Number(event.total || totals.total || 0) > 0
+      ? "bg-secondary-container text-on-secondary-container"
+      : "bg-error-container text-on-error-container";
+    return `<div class="space-y-gutter">
+      <section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+        <div class="p-6 bg-surface-container-low border-b border-outline-variant">
+          <div class="flex flex-col xl:flex-row xl:items-start justify-between gap-5">
+            <div class="min-w-0">
+              <a class="inline-flex items-center gap-2 text-primary font-label-md text-label-md mb-4" href="${clientTabHref("client-events.html", data.user?.id)}"><span class="material-symbols-outlined text-[18px]">arrow_back</span>Back to Events</a>
+              <div class="flex flex-wrap items-center gap-3">
+                <h2 class="font-display-lg text-display-lg text-on-surface">${escapeHtml(event.name || "Untitled Event")}</h2>
+                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider ${statusTone}">${escapeHtml(event.status || "Status")}</span>
+              </div>
+              <p class="text-on-surface-variant mt-2">${escapeHtml([event.primaryClient || client.name, event.mobile || client.mobile, event.venue].filter(Boolean).join(" | ") || "No client or venue details")}</p>
+              <div class="flex flex-wrap gap-2 mt-5">
+                <button class="event-edit-main px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">edit</span>Edit Event</button>
+                <button class="event-record-payment px-4 py-2 border border-outline-variant bg-white rounded-lg font-label-md text-label-md flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">payments</span>Record Payment</button>
+                <button class="event-change-menu px-4 py-2 border border-outline-variant bg-white rounded-lg font-label-md text-label-md flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">restaurant_menu</span>Change Menu</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 w-full xl:w-auto xl:min-w-[560px]">
+              ${eventInfoStat("calendar_month", "Dates", String(dates.length || (event.date ? 1 : 0)))}
+              ${eventInfoStat("groups", "Total Pax", String(totals.pax))}
+              ${eventInfoStat("payments", "Total", formatMoney(event.total || totals.total))}
+              ${eventInfoStat("pending_actions", "Balance", formatMoney(event.balance || totals.balance), "text-error")}
+            </div>
+          </div>
+        </div>
+        ${eventInfoAddOnsOverview(event, totals)}
+        <div class="p-6 grid grid-cols-1 lg:grid-cols-3 gap-gutter">
+          ${eventInfoPanel("Event Info", [
+            ["Event ID", event.id],
+            ["Date", event.date ? formatDate(event.date) : eventDateRange(event)],
+            ["Venue", event.venue],
+            ["Notes", event.notes],
+            ["Created", formatDate(event.createdAt)],
+            ["Updated", formatDate(event.updatedAt)],
+          ], "event")}
+          ${eventInfoPanel("Client Info", [
+            ["Client", event.primaryClient || client.name],
+            ["Mobile", event.mobile || client.mobile],
+            ["Address / City", client.address || client.city],
+            ["GST", client.gst],
+            ["Client ID", client.id],
+          ], "person")}
+          ${eventInfoPanel("Payments", [
+            ["Total", formatMoney(event.total || totals.total)],
+            ["Paid", formatMoney(event.paid || totals.paid)],
+            ["Discount", formatMoney(totals.discount)],
+            ["Balance", formatMoney(event.balance || totals.balance)],
+            ["Payment Records", String(payments.length)],
+          ], "account_balance_wallet")}
+        </div>
+      </section>
+      ${eventMenuSection(data, event)}
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-gutter">
+        ${eventPaymentsSection(payments)}
+        ${eventServicesSection(event)}
+      </div>
+      <div class="grid grid-cols-1 xl:grid-cols-2 gap-gutter">
+        ${eventStaffSection(assignments)}
+        ${eventDocumentsSection(data, event, materials, invoices)}
+      </div>
+      ${eventRawInfoSection(event)}
+    </div>`;
+  }
+
+  function eventInfoStat(icon, label, value, valueClass = "") {
+    return `<div class="bg-white border border-outline-variant rounded-lg p-4 min-h-[92px]">
+      <span class="material-symbols-outlined text-primary text-[20px]">${icon}</span>
+      <p class="text-label-sm font-label-sm text-on-surface-variant mt-2">${escapeHtml(label)}</p>
+      <p class="font-title-lg text-title-lg text-on-surface ${valueClass}">${escapeHtml(value || "-")}</p>
+    </div>`;
+  }
+
+  function eventInfoPanel(title, rows, icon) {
+    return `<article class="border border-outline-variant rounded-xl bg-surface-container-lowest overflow-hidden">
+      <div class="px-5 py-4 border-b border-outline-variant flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-[20px]">${icon}</span>
+        <h3 class="font-title-lg text-title-lg">${escapeHtml(title)}</h3>
+      </div>
+      <div class="p-5 space-y-3">${rows.map(([label, value]) => eventInfoField(label, value)).join("")}</div>
+    </article>`;
+  }
+
+  function eventInfoAddOnsOverview(event, totals) {
+    const addOns = asArray(event.addOns);
+    return `<div class="p-6 border-b border-outline-variant bg-white">
+      <div class="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-[22px]">add_shopping_cart</span>
+            <h3 class="font-title-lg text-title-lg">Event Add-ons</h3>
+            <span class="px-2.5 py-1 rounded-full bg-surface-container text-on-surface-variant text-xs font-semibold">${addOns.length} item${addOns.length === 1 ? "" : "s"}</span>
+          </div>
+          <p class="text-sm text-on-surface-variant mt-1">Add-ons are included in the event total and visible here after the event is created.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3 min-w-[160px]">
+            <p class="text-label-sm font-label-sm text-on-surface-variant">Add-on Total</p>
+            <p class="font-title-lg text-title-lg">${formatMoney(totals.addOnTotal)}</p>
+          </div>
+          <button class="event-edit-addons px-4 py-2 border border-outline-variant bg-white rounded-lg font-label-md text-label-md flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">edit</span>Edit Add-ons</button>
+        </div>
+      </div>
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        ${addOns.length ? addOns.map((addOn) => `<div class="rounded-lg border border-outline-variant bg-surface-container-lowest px-4 py-3">
+          <p class="font-label-lg text-label-lg text-on-surface">${escapeHtml(addOn.title || addOn.name || "Add-on")}</p>
+          <p class="font-title-md text-title-md text-primary mt-1">${formatMoney(addOn.cost || addOn.price)}</p>
+        </div>`).join("") : `<div class="md:col-span-2 xl:col-span-3 rounded-lg border border-dashed border-outline-variant px-4 py-4 text-on-surface-variant">No event add-ons recorded yet.</div>`}
+      </div>
+    </div>`;
+  }
+
+  function eventInfoField(label, value) {
+    const cleanValue = value === undefined || value === null || value === "" ? "-" : value;
+    return `<div class="grid grid-cols-[128px_1fr] gap-3">
+      <span class="text-label-sm font-label-sm text-on-surface-variant">${escapeHtml(label)}</span>
+      <span class="font-label-md text-label-md text-on-surface break-words">${escapeHtml(cleanValue)}</span>
+    </div>`;
+  }
+
+  function eventDateRange(event) {
+    const dates = asArray(event.dates).map((date) => date.date).filter(Boolean).sort();
+    if (!dates.length) return "-";
+    if (dates.length === 1) return formatDate(dates[0]);
+    return `${formatDate(dates[0])} - ${formatDate(dates.at(-1))}`;
+  }
+
+  function eventInfoTotals(event) {
+    const dates = asArray(event.dates);
+    const pax = dates.reduce((sum, date) => sum + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + Number(slot.enabled === false ? 0 : slot.pax || slot.members || 0), 0), 0);
+    const menuTotal = dates.reduce((sum, date) => sum + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + (slot.enabled === false ? 0 : Number(slot.pax || slot.members || 0) * Number(slot.pricePerPax || 0)), 0), 0);
+    const servicesTotal = dates.reduce((sum, date) => sum
+      + asArray(date.additionalServices).reduce((serviceSum, service) => serviceSum + Number(service.price || 0), 0)
+      + asArray(date.menuSlots).reduce((slotSum, slot) => slotSum + asArray(slot.additionalServices).reduce((serviceSum, service) => serviceSum + Number(service.price || 0), 0), 0), 0);
+    const addOnTotal = asArray(event.addOns).reduce((sum, addOn) => sum + Number(addOn.cost || 0), 0);
+    const paid = asArray(event.payments).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const discount = asArray(event.payments).reduce((sum, payment) => sum + Number(payment.settledDiscount || 0), 0);
+    const total = menuTotal + addOnTotal;
+    return { pax, menuTotal, servicesTotal, addOnTotal, paid, discount, total, balance: Math.max(0, total - paid - discount) };
+  }
+
+  function menuItemTitle(data, id) {
+    const item = (data.menuItems || []).find((entry) => String(entry.id || "") === String(id || ""));
+    return item?.title || [item?.kannada, item?.english].filter(Boolean).join(" / ") || item?.name || id || "Menu item";
+  }
+
+  function eventMenuSection(data, event) {
+    const dates = asArray(event.dates);
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between gap-4">
+        <div><h3 class="font-title-lg text-title-lg">Date-wise Menu</h3><p class="text-sm text-on-surface-variant">${dates.length} event date${dates.length === 1 ? "" : "s"} with menu slots and services</p></div>
+        <span class="material-symbols-outlined text-primary">restaurant_menu</span>
+      </div>
+      <div class="divide-y divide-outline-variant/40">${dates.length ? dates.map((date) => eventDateMenuBlock(data, event, date)).join("") : `<div class="p-6 text-on-surface-variant">No menu dates found for this event.</div>`}</div>
+    </section>`;
+  }
+
+  function eventDateMenuBlock(data, event, date) {
+    const slots = asArray(date.menuSlots);
+    const services = asArray(date.additionalServices);
+    const dateId = date.id || date.date || "";
+    return `<article class="p-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+        <div><h4 class="font-title-lg text-title-lg">${escapeHtml(formatDate(date.date || date.id))}</h4><p class="text-sm text-on-surface-variant">${escapeHtml(date.label || "")}</p></div>
+        <div class="flex flex-wrap items-center gap-2">
+          ${eventPdfOption("Download Day Menu", eventDocumentUrl(data.user?.id, event, "menu", { dateId }), eventHasMenuForDate(date))}
+          <button class="event-add-slot px-4 py-3 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-highest text-left flex items-center gap-2" type="button" data-date-id="${escapeHtml(dateId)}"><span class="material-symbols-outlined text-[18px]">add</span>Add Slot</button>
+          <span class="px-3 py-1 rounded-full bg-surface-container text-on-surface-variant text-label-sm font-label-sm">${slots.length} slot${slots.length === 1 ? "" : "s"}</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        ${slots.length ? slots.map((slot) => eventMenuSlot(data, date, slot)).join("") : `<div class="rounded-lg border border-outline-variant p-4 text-on-surface-variant">No menu slots for this date.</div>`}
+      </div>
+      ${services.length ? `<div class="mt-4 rounded-lg border border-outline-variant bg-surface-container-lowest p-4"><h5 class="font-semibold mb-2">Date Services</h5><div class="flex flex-wrap gap-2">${services.map(serviceChip).join("")}</div></div>` : ""}
+    </article>`;
+  }
+
+  function eventMenuSlot(data, date, slot) {
+    const itemIds = asArray(slot.menuItemIds);
+    const slotServices = asArray(slot.additionalServices);
+    return `<div class="rounded-lg border border-outline-variant bg-surface-container-lowest p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div><h5 class="font-semibold">${escapeHtml(slot.type || "Menu Slot")}</h5><p class="text-sm text-on-surface-variant">${escapeHtml([slot.time, `${Number(slot.pax || slot.members || 0)} pax`, slot.pricePerPax ? `${formatMoney(slot.pricePerPax)} / pax` : ""].filter(Boolean).join(" | "))}</p></div>
+        <div class="flex items-center gap-2">
+          <button class="event-edit-slot p-2 inline-flex hover:bg-surface-container-highest rounded text-on-surface-variant" type="button" data-date-id="${escapeHtml(date.id || date.date || "")}" data-slot-id="${escapeHtml(slot.id || "")}" title="Change menu"><span class="material-symbols-outlined text-[18px]">edit</span></button>
+          <span class="px-2 py-1 rounded ${slot.enabled === false ? "bg-error-container text-on-error-container" : "bg-secondary-container text-on-secondary-container"} text-[11px] font-bold">${slot.enabled === false ? "Disabled" : "Active"}</span>
+        </div>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">${itemIds.length ? itemIds.map((id) => `<span class="px-2.5 py-1 rounded bg-surface-container text-on-surface text-xs">${escapeHtml(menuItemTitle(data, id))}</span>`).join("") : `<span class="text-sm text-on-surface-variant">No menu items selected.</span>`}</div>
+      ${slotServices.length ? `<div class="mt-4 pt-4 border-t border-outline-variant/50 flex flex-wrap gap-2">${slotServices.map(serviceChip).join("")}</div>` : ""}
+      ${asArray(slot.menuImages).length ? `<div class="mt-4 grid grid-cols-2 gap-3">${asArray(slot.menuImages).map((image) => `<img class="h-32 w-full rounded-lg border border-outline-variant object-cover" src="${escapeHtml(image.dataUrl || "")}" alt="${escapeHtml(image.name || "Menu image")}"/>`).join("")}</div>` : ""}
+    </div>`;
+  }
+
+  function serviceChip(service) {
+    const quantity = Number(service.quantity || service.count || 0);
+    const qty = quantity ? `${quantity} ${service.unit || ""}`.trim() : "";
+    return `<span class="px-2.5 py-1 rounded bg-surface-container text-on-surface text-xs">${escapeHtml([service.name || service.title || "Service", qty, service.price ? formatMoney(service.price) : ""].filter(Boolean).join(" | "))}</span>`;
+  }
+
+  function eventPaymentsSection(payments) {
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant"><h3 class="font-title-lg text-title-lg">Payment Timeline</h3><p class="text-sm text-on-surface-variant">${payments.length} payment record${payments.length === 1 ? "" : "s"}</p></div>
+      <div class="p-6 space-y-3">${payments.length ? payments.map((payment) => `<div class="rounded-lg border border-outline-variant p-4 flex flex-wrap items-center justify-between gap-3">
+        <div><p class="font-semibold">${formatMoney(payment.amount)}</p><p class="text-sm text-on-surface-variant">${escapeHtml([formatDate(payment.date), payment.mode, payment.reference].filter(Boolean).join(" | "))}</p></div>
+        <span class="px-2.5 py-1 rounded-full ${payment.settled ? "bg-secondary-container text-on-secondary-container" : "bg-surface-container text-on-surface-variant"} text-[11px] font-bold">${payment.settled ? "Settled" : "Recorded"}</span>
+      </div>`).join("") : `<p class="text-on-surface-variant">No payment records found.</p>`}</div>
+    </section>`;
+  }
+
+  function eventServicesSection(event) {
+    const addOns = asArray(event.addOns);
+    const services = asArray(event.dates).flatMap((date) => [
+      ...asArray(date.additionalServices).map((service) => ({ ...service, date: date.date, slot: "" })),
+      ...asArray(date.menuSlots).flatMap((slot) => asArray(slot.additionalServices).map((service) => ({ ...service, date: date.date, slot: slot.type || "" }))),
+    ]);
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant"><h3 class="font-title-lg text-title-lg">Services & Add-ons</h3><p class="text-sm text-on-surface-variant">${services.length} services, ${addOns.length} add-ons</p></div>
+      <div class="p-6 space-y-4">
+        <div class="space-y-2">${services.length ? services.map((service) => `<div class="rounded-lg border border-outline-variant px-4 py-3 flex justify-between gap-3"><span>${escapeHtml([service.name || "Service", service.date ? formatDate(service.date) : "", service.slot].filter(Boolean).join(" | "))}</span><span class="font-semibold">${formatMoney(service.price)}</span></div>`).join("") : `<p class="text-on-surface-variant">No additional services found.</p>`}</div>
+        <div class="space-y-2">${addOns.length ? addOns.map((addOn) => `<div class="rounded-lg border border-outline-variant px-4 py-3 flex justify-between gap-3"><span>${escapeHtml(addOn.title || addOn.name || "Add-on")}</span><span class="font-semibold">${formatMoney(addOn.cost || addOn.price)}</span></div>`).join("") : ""}</div>
+      </div>
+    </section>`;
+  }
+
+  function eventStaffSection(assignments) {
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant"><h3 class="font-title-lg text-title-lg">Assigned Staff</h3><p class="text-sm text-on-surface-variant">${assignments.length} employee assignment${assignments.length === 1 ? "" : "s"}</p></div>
+      <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-3">${assignments.length ? assignments.map((assignment) => `<div class="rounded-lg border border-outline-variant p-4">
+        <p class="font-semibold">${escapeHtml(assignment.employeeName || assignment.name || "Employee")}</p>
+        <p class="text-sm text-on-surface-variant">${escapeHtml([assignment.designation, assignment.mobile].filter(Boolean).join(" | ")) || "-"}</p>
+        <p class="text-xs text-on-surface-variant mt-2">${escapeHtml([assignment.payPerDay ? `${formatMoney(assignment.payPerDay)} / day` : "", assignment.payPerHour ? `${formatMoney(assignment.payPerHour)} / hour` : ""].filter(Boolean).join(" | "))}</p>
+      </div>`).join("") : `<p class="text-on-surface-variant">No staff assigned.</p>`}</div>
+    </section>`;
+  }
+
+  function eventDocumentsSection(data, event, materials, invoices) {
+    const userId = data.user?.id || "";
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant"><h3 class="font-title-lg text-title-lg">Documents</h3><p class="text-sm text-on-surface-variant">PDFs, invoices, and material documents linked to this event</p></div>
+      <div class="p-6 space-y-3">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+          ${eventPdfOption("Quotation PDF", eventDocumentUrl(userId, event, "quotation"), Boolean(event.id))}
+          ${eventPdfOption("Invoice PDF", eventDocumentUrl(userId, event, "invoice"), Boolean(event.id))}
+          ${eventPdfOption("All Menus PDF", eventDocumentUrl(userId, event, "all-menus"), Boolean(event.id && asArray(event.dates).length))}
+        </div>
+        ${materials.length ? `<div class="pt-3 space-y-2">${materials.map((doc) => `<button class="w-full px-4 py-3 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-highest text-left flex items-center justify-between gap-3" type="button" data-event-pdf-url="${escapeHtml(eventMaterialUrl(userId, event, doc))}"><span>${escapeHtml(doc.title || doc.type || "Material document")} (${asArray(doc.items).length} items)</span><span class="material-symbols-outlined text-[18px]">open_in_new</span></button>`).join("")}</div>` : `<p class="text-sm text-on-surface-variant">No material documents found.</p>`}
+        ${invoices.length ? `<div class="pt-3 border-t border-outline-variant/50"><h4 class="font-semibold mb-2">Related Billing Records</h4>${invoices.map((invoice) => `<div class="rounded-lg border border-outline-variant px-4 py-3 flex justify-between gap-3"><span>${escapeHtml(invoice.documentNumber || invoice.type || "Document")}</span><span class="font-semibold">${formatMoney(invoice.total)}</span></div>`).join("")}</div>` : ""}
+      </div>
+    </section>`;
+  }
+
+  function eventRawInfoSection(event) {
+    const hidden = new Set(["id", "name", "primaryClient", "clientName", "mobile", "venue", "date", "status", "total", "paid", "balance", "dates", "payments", "addOns", "materialDocuments", "employeeAssignments", "menuTypes", "notes", "createdAt", "updatedAt", "attendance"]);
+    const rows = Object.entries(event)
+      .filter(([key, value]) => !hidden.has(key) && value !== undefined && value !== null && value !== "")
+      .map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]);
+    if (!rows.length) return "";
+    return `<section class="bg-white border border-outline-variant rounded-xl overflow-hidden shadow-sm">
+      <div class="px-6 py-4 border-b border-outline-variant"><h3 class="font-title-lg text-title-lg">Additional Event Fields</h3><p class="text-sm text-on-surface-variant">Other live DB fields carried with this event.</p></div>
+      <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-3">${rows.map(([key, value]) => eventInfoField(key, value.slice(0, 260))).join("")}</div>
+    </section>`;
+  }
+
+  function wireClientEventInfoActions(data, event) {
+    document.querySelector(".event-edit-main")?.addEventListener("click", () => showEventEditModal(data, event));
+    document.querySelector(".event-edit-addons")?.addEventListener("click", () => showAddOnsModal(data, event));
+    document.querySelector(".event-record-payment")?.addEventListener("click", () => showRecordPaymentModal(data, event));
+    document.querySelector(".event-change-menu")?.addEventListener("click", () => {
+      const firstDate = asArray(event.dates)[0];
+      const firstSlot = asArray(firstDate?.menuSlots)[0];
+      showMenuSlotModal(data, event, firstDate, firstSlot);
+    });
+    document.querySelectorAll(".event-add-slot").forEach((button) => {
+      button.addEventListener("click", () => {
+        const date = findEventDate(event, button.dataset.dateId || "");
+        if (date) showMenuSlotModal(data, event, date, null);
+      });
+    });
+    document.querySelectorAll(".event-edit-slot").forEach((button) => {
+      button.addEventListener("click", () => {
+        const date = findEventDate(event, button.dataset.dateId || "");
+        const slot = asArray(date?.menuSlots).find((item) => String(item.id || "") === String(button.dataset.slotId || ""));
+        if (date && slot) showMenuSlotModal(data, event, date, slot);
+      });
+    });
+  }
+
+  function findEventDate(event, dateId) {
+    return asArray(event.dates).find((date) => String(date.id || date.date || "") === String(dateId || ""));
+  }
+
+  function cloneEvent(event) {
+    return JSON.parse(JSON.stringify(event || {}));
+  }
+
+  function makeClientId(prefix) {
+    return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function eventAdminPath(data, event, suffix = "") {
+    return `/admin/users/${encodeURIComponent(data.user?.id || "")}/events/${encodeURIComponent(event.id || "")}${suffix}`;
+  }
+
+  function closeModalOnShell(modal, closeClass) {
+    modal.querySelectorAll(`.${closeClass}`).forEach((button) => button.addEventListener("click", () => modal.remove()));
+    modal.addEventListener("click", (event) => { if (event.target === modal) modal.remove(); });
+  }
+
+  function showEventEditModal(data, event) {
+    document.getElementById("admin-event-edit-modal")?.remove();
+    const modal = document.createElement("div");
+    modal.id = "admin-event-edit-modal";
+    modal.className = "fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6";
+    modal.innerHTML = `<div class="w-full max-w-3xl max-h-[90vh] bg-white rounded-xl border border-outline-variant shadow-2xl overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-outline-variant flex items-start justify-between gap-4">
+        <div><h3 class="font-title-lg text-title-lg">Edit Event</h3><p class="text-sm text-on-surface-variant">${escapeHtml(event.id || "")}</p></div>
+        <button class="event-edit-close p-2 rounded hover:bg-surface-container-highest" type="button"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <form id="admin-event-edit-form" class="overflow-y-auto">
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          ${eventInput("Event Name", "name", event.name, "text")}
+          ${eventInput("Client Name", "primaryClient", event.primaryClient || event.clientName, "text")}
+          ${eventInput("Mobile", "mobile", event.mobile, "text")}
+          ${eventInput("Venue", "venue", event.venue, "text")}
+          <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">Status</span><select name="status" class="w-full border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5">${["draft", "pending", "confirmed", "completed", "paid", "cancelled"].map((status) => `<option value="${status}" ${selectedAttr(String(event.status || "").toLowerCase(), status)}>${status}</option>`).join("")}</select></label>
+          ${eventInput("First Event Date", "date", subscriptionDateValue(event.date || asArray(event.dates)[0]?.date), "date")}
+          <label class="space-y-1.5 md:col-span-2"><span class="text-label-sm font-label-sm text-on-surface-variant">Notes</span><textarea name="notes" class="w-full min-h-[110px] border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5">${escapeHtml(event.notes || "")}</textarea></label>
+        </div>
+        <div class="px-6 py-4 border-t border-outline-variant flex items-center justify-between gap-4">
+          <p id="admin-event-edit-state" class="text-sm text-on-surface-variant"></p>
+          <div class="flex gap-3"><button class="event-edit-close px-4 py-2 rounded-lg border border-outline-variant" type="button">Cancel</button><button class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md" type="submit">Save Event</button></div>
+        </div>
+      </form>
+    </div>`;
+    document.body.append(modal);
+    closeModalOnShell(modal, "event-edit-close");
+    modal.querySelector("#admin-event-edit-form")?.addEventListener("submit", async (submitEvent) => {
+      submitEvent.preventDefault();
+      const state = modal.querySelector("#admin-event-edit-state");
+      const formData = new FormData(submitEvent.currentTarget);
+      const next = cloneEvent(event);
+      ["name", "primaryClient", "mobile", "venue", "status", "notes"].forEach((key) => { next[key] = String(formData.get(key) || "").trim(); });
+      const firstDate = String(formData.get("date") || "").trim();
+      if (firstDate) {
+        next.dates = asArray(next.dates);
+        if (next.dates[0]) next.dates[0].date = firstDate;
+        else next.dates.push({ id: firstDate, date: firstDate, label: "", menuSlots: [], additionalServices: [] });
+      }
+      if (state) state.textContent = "Saving event...";
+      try {
+        await adminRequest(eventAdminPath(data, event), { method: "PUT", body: next });
+        if (state) state.textContent = "Event updated";
+        setTimeout(() => renderClientEventInfoPage(), 350);
+      } catch (error) {
+        if (state) {
+          state.className = "text-sm text-error";
+          state.textContent = error.message;
+        }
+      }
+    });
+  }
+
+  function showAddOnsModal(data, event) {
+    document.getElementById("admin-addons-modal")?.remove();
+    const modal = document.createElement("div");
+    const addOns = asArray(event.addOns);
+    modal.id = "admin-addons-modal";
+    modal.className = "fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6";
+    modal.innerHTML = `<div class="w-full max-w-3xl max-h-[90vh] bg-white rounded-xl border border-outline-variant shadow-2xl overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-outline-variant flex items-start justify-between gap-4">
+        <div><h3 class="font-title-lg text-title-lg">Edit Event Add-ons</h3><p class="text-sm text-on-surface-variant">${escapeHtml(event.name || event.primaryClient || event.id || "")}</p></div>
+        <button class="addons-modal-close p-2 rounded hover:bg-surface-container-highest" type="button"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <form id="admin-addons-form" class="overflow-y-auto">
+        <div class="p-6 space-y-4">
+          <div id="admin-addons-rows" class="space-y-3">
+            ${(addOns.length ? addOns : [{}]).map((addOn) => addOnEditorRow(addOn)).join("")}
+          </div>
+          <button id="admin-addons-add" class="px-4 py-2 rounded-lg border border-outline-variant bg-white font-label-md text-label-md flex items-center gap-2" type="button"><span class="material-symbols-outlined text-[18px]">add</span>Add Add-on</button>
+        </div>
+        <div class="px-6 py-4 border-t border-outline-variant flex items-center justify-between gap-4">
+          <p id="admin-addons-state" class="text-sm text-on-surface-variant"></p>
+          <div class="flex gap-3"><button class="addons-modal-close px-4 py-2 rounded-lg border border-outline-variant" type="button">Cancel</button><button class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md" type="submit">Save Add-ons</button></div>
+        </div>
+      </form>
+    </div>`;
+    document.body.append(modal);
+    closeModalOnShell(modal, "addons-modal-close");
+    const rows = modal.querySelector("#admin-addons-rows");
+    modal.querySelector("#admin-addons-add")?.addEventListener("click", () => {
+      rows?.insertAdjacentHTML("beforeend", addOnEditorRow({}));
+    });
+    modal.addEventListener("click", (clickEvent) => {
+      const removeButton = clickEvent.target.closest?.(".admin-addons-remove");
+      if (!removeButton) return;
+      removeButton.closest("[data-addon-row]")?.remove();
+      if (rows && !rows.querySelector("[data-addon-row]")) rows.insertAdjacentHTML("beforeend", addOnEditorRow({}));
+    });
+    modal.querySelector("#admin-addons-form")?.addEventListener("submit", async (submitEvent) => {
+      submitEvent.preventDefault();
+      const state = modal.querySelector("#admin-addons-state");
+      const next = cloneEvent(event);
+      next.addOns = [...modal.querySelectorAll("[data-addon-row]")].map((row) => ({
+        id: row.dataset.addonId || makeClientId("addon"),
+        title: String(row.querySelector("[name='addonTitle']")?.value || "").trim(),
+        cost: Number(row.querySelector("[name='addonCost']")?.value || 0),
+      })).filter((addOn) => addOn.title || addOn.cost > 0);
+      if (state) state.textContent = "Saving add-ons...";
+      try {
+        await adminRequest(eventAdminPath(data, event), { method: "PUT", body: next });
+        if (state) state.textContent = "Add-ons updated";
+        setTimeout(() => renderClientEventInfoPage(), 350);
+      } catch (error) {
+        if (state) {
+          state.className = "text-sm text-error";
+          state.textContent = error.message;
+        }
+      }
+    });
+  }
+
+  function addOnEditorRow(addOn) {
+    return `<div data-addon-row data-addon-id="${escapeHtml(addOn.id || "")}" class="grid grid-cols-1 md:grid-cols-[1fr_160px_44px] gap-3 rounded-lg border border-outline-variant bg-surface-container-lowest p-3">
+      <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">Add-on</span><input name="addonTitle" class="w-full border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5" value="${escapeHtml(addOn.title || addOn.name || "")}" placeholder="Sweet boxes, extra counter, special item"/></label>
+      <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">Cost</span><input name="addonCost" type="number" class="w-full border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5" value="${escapeHtml(addOn.cost || addOn.price || "")}"/></label>
+      <button class="admin-addons-remove self-end h-[46px] rounded-lg border border-outline-variant hover:bg-surface-container-highest flex items-center justify-center" type="button" title="Remove add-on"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+    </div>`;
+  }
+
+  function eventInput(label, name, value, type = "text") {
+    return `<label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">${escapeHtml(label)}</span><input name="${escapeHtml(name)}" type="${type}" class="w-full border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5" value="${escapeHtml(value || "")}"/></label>`;
+  }
+
+  function showRecordPaymentModal(data, event) {
+    document.getElementById("admin-payment-modal")?.remove();
+    const today = new Date().toISOString().slice(0, 10);
+    const balance = Number(event.balance || eventInfoTotals(event).balance || 0);
+    const modal = document.createElement("div");
+    modal.id = "admin-payment-modal";
+    modal.className = "fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6";
+    modal.innerHTML = `<div class="w-full max-w-2xl bg-white rounded-xl border border-outline-variant shadow-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-outline-variant flex items-start justify-between gap-4">
+        <div><h3 class="font-title-lg text-title-lg">Record Payment</h3><p class="text-sm text-on-surface-variant">${escapeHtml(event.name || event.primaryClient || "")}</p></div>
+        <button class="payment-modal-close p-2 rounded hover:bg-surface-container-highest" type="button"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <form id="admin-payment-form">
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          ${eventInput("Amount", "amount", balance || "", "number")}
+          ${eventInput("Payment Date", "date", today, "date")}
+          <label class="space-y-1.5"><span class="text-label-sm font-label-sm text-on-surface-variant">Mode</span><select name="mode" class="w-full border-outline-variant rounded-lg bg-surface-bright px-4 py-2.5"><option>Cash</option><option>UPI</option><option>Bank Transfer</option><option>Cheque</option><option>Card</option><option>Other</option></select></label>
+          ${eventInput("Reference", "reference", "", "text")}
+          ${eventInput("Settlement Discount", "settledDiscount", "", "number")}
+          <label class="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-bright px-4 py-2.5 mt-5"><input name="settled" type="checkbox" class="rounded border-outline-variant text-primary focus:ring-primary/30"/><span>Mark as settled</span></label>
+        </div>
+        <div class="px-6 py-4 border-t border-outline-variant flex items-center justify-between gap-4">
+          <p id="admin-payment-state" class="text-sm text-on-surface-variant"></p>
+          <div class="flex gap-3"><button class="payment-modal-close px-4 py-2 rounded-lg border border-outline-variant" type="button">Cancel</button><button class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md" type="submit">Record Payment</button></div>
+        </div>
+      </form>
+    </div>`;
+    document.body.append(modal);
+    closeModalOnShell(modal, "payment-modal-close");
+    modal.querySelector("#admin-payment-form")?.addEventListener("submit", async (submitEvent) => {
+      submitEvent.preventDefault();
+      const state = modal.querySelector("#admin-payment-state");
+      const formData = new FormData(submitEvent.currentTarget);
+      const body = {
+        amount: Number(formData.get("amount") || 0),
+        date: String(formData.get("date") || "").trim(),
+        mode: String(formData.get("mode") || "").trim(),
+        reference: String(formData.get("reference") || "").trim(),
+        settledDiscount: Number(formData.get("settledDiscount") || 0),
+        settled: formData.get("settled") === "on",
+      };
+      if (state) state.textContent = "Recording payment...";
+      try {
+        await adminRequest(eventAdminPath(data, event, "/payments"), { method: "POST", body });
+        if (state) state.textContent = "Payment recorded";
+        setTimeout(() => renderClientEventInfoPage(), 350);
+      } catch (error) {
+        if (state) {
+          state.className = "text-sm text-error";
+          state.textContent = error.message;
+        }
+      }
+    });
+  }
+
+  function showMenuSlotModal(data, event, date, slot) {
+    if (!date) return;
+    document.getElementById("admin-menu-slot-modal")?.remove();
+    const isNew = !slot;
+    const currentSlot = slot || { id: `slot-${Date.now()}`, type: "Lunch", time: "", pax: 0, pricePerPax: 0, enabled: true, menuItemIds: [], additionalServices: [] };
+    const selected = new Set(asArray(currentSlot.menuItemIds).map(String));
+    const modal = document.createElement("div");
+    modal.id = "admin-menu-slot-modal";
+    modal.className = "fixed inset-0 z-[100] bg-black/40 flex items-center justify-center p-6";
+    modal.innerHTML = `<div class="w-full max-w-5xl max-h-[92vh] bg-white rounded-xl border border-outline-variant shadow-2xl overflow-hidden flex flex-col">
+      <div class="px-6 py-4 border-b border-outline-variant flex items-start justify-between gap-4">
+        <div><h3 class="font-title-lg text-title-lg">${isNew ? "Add Menu Slot" : "Change Menu Slot"}</h3><p class="text-sm text-on-surface-variant">${escapeHtml(formatDate(date.date || date.id))} | ${escapeHtml(event.name || "")}</p></div>
+        <button class="menu-slot-close p-2 rounded hover:bg-surface-container-highest" type="button"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <form id="admin-menu-slot-form" class="overflow-y-auto">
+        <div class="p-6 space-y-5">
+          <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+            ${eventInput("Type", "type", currentSlot.type, "text")}
+            ${eventInput("Time", "time", currentSlot.time, "text")}
+            ${eventInput("Pax", "pax", currentSlot.pax || currentSlot.members || "", "number")}
+            ${eventInput("Price / Pax", "pricePerPax", currentSlot.pricePerPax || "", "number")}
+            <label class="flex items-center gap-3 rounded-lg border border-outline-variant bg-surface-bright px-4 py-2.5 mt-5"><input name="enabled" type="checkbox" class="rounded border-outline-variant text-primary focus:ring-primary/30" ${currentSlot.enabled === false ? "" : "checked"}/><span>Active</span></label>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-5">
+            <section class="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+              <div class="px-4 py-3 border-b border-outline-variant"><h4 class="font-semibold">Selected Items</h4><p id="menu-slot-selected-count" class="text-sm text-on-surface-variant">${selected.size} selected</p></div>
+              <div id="menu-slot-selected-list" class="p-4 flex flex-wrap gap-2 max-h-[420px] overflow-y-auto"></div>
+            </section>
+            <section class="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+              <div class="px-4 py-3 border-b border-outline-variant flex flex-wrap items-center justify-between gap-3">
+                <div><h4 class="font-semibold">Menu Catalog</h4><p class="text-sm text-on-surface-variant">${asArray(data.menuItems).length} items from this client's DB</p></div>
+                <input id="menu-slot-search" class="border border-outline-variant rounded-lg px-4 py-2 min-w-[260px]" placeholder="Search menu items"/>
+              </div>
+              <div id="menu-slot-items" class="p-4 grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[420px] overflow-y-auto">
+                ${asArray(data.menuItems).map((item) => menuSlotItemOption(item, selected.has(String(item.id || "")))).join("")}
+              </div>
+            </section>
+          </div>
+        </div>
+        <div class="px-6 py-4 border-t border-outline-variant flex flex-wrap items-center justify-between gap-4">
+          <p id="admin-menu-slot-state" class="text-sm text-on-surface-variant"></p>
+          <div class="flex flex-wrap gap-3">
+            ${isNew ? "" : `<button id="menu-slot-delete" class="px-4 py-2 rounded-lg border border-error/40 text-error" type="button">Delete Slot</button>`}
+            <button class="menu-slot-close px-4 py-2 rounded-lg border border-outline-variant" type="button">Cancel</button>
+            <button class="px-5 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md" type="submit">Save Menu</button>
+          </div>
+        </div>
+      </form>
+    </div>`;
+    document.body.append(modal);
+    closeModalOnShell(modal, "menu-slot-close");
+    wireMenuSlotSelection(modal);
+    modal.querySelector("#admin-menu-slot-form")?.addEventListener("submit", async (submitEvent) => {
+      submitEvent.preventDefault();
+      await saveMenuSlotModal(data, event, date, currentSlot, modal, false);
+    });
+    modal.querySelector("#menu-slot-delete")?.addEventListener("click", async () => {
+      if (!confirm("Delete this menu slot?")) return;
+      await saveMenuSlotModal(data, event, date, currentSlot, modal, true);
+    });
+  }
+
+  function menuSlotItemOption(item, checked) {
+    const title = item.title || [item.kannada, item.english].filter(Boolean).join(" / ") || item.name || item.id;
+    const search = [title, item.category, item.meals, item.id].join(" ").toLowerCase();
+    return `<label class="menu-slot-option rounded-lg border border-outline-variant px-3 py-2 flex items-start gap-3 hover:bg-surface-container" data-search="${escapeHtml(search)}">
+      <input name="menuItemIds" value="${escapeHtml(item.id || "")}" type="checkbox" class="mt-0.5 rounded border-outline-variant text-primary focus:ring-primary/30" ${checked ? "checked" : ""}/>
+      <span class="min-w-0"><span class="block font-semibold break-words">${escapeHtml(title)}</span><span class="block text-xs text-on-surface-variant">${escapeHtml([item.category, asArray(item.meals).join(", ")].filter(Boolean).join(" | "))}</span></span>
+    </label>`;
+  }
+
+  function wireMenuSlotSelection(modal) {
+    const search = modal.querySelector("#menu-slot-search");
+    const renderSelected = () => {
+      const selectedInputs = [...modal.querySelectorAll('input[name="menuItemIds"]:checked')];
+      const selectedList = modal.querySelector("#menu-slot-selected-list");
+      const count = modal.querySelector("#menu-slot-selected-count");
+      if (count) count.textContent = `${selectedInputs.length} selected`;
+      if (selectedList) {
+        selectedList.innerHTML = selectedInputs.length
+          ? selectedInputs.map((input) => `<span class="px-2.5 py-1 rounded bg-surface-container text-xs">${escapeHtml(input.closest("label")?.querySelector(".font-semibold")?.textContent || input.value)}</span>`).join("")
+          : `<span class="text-sm text-on-surface-variant">No menu items selected.</span>`;
+      }
+    };
+    modal.querySelectorAll('input[name="menuItemIds"]').forEach((input) => input.addEventListener("change", renderSelected));
+    search?.addEventListener("input", () => {
+      const query = String(search.value || "").toLowerCase();
+      modal.querySelectorAll(".menu-slot-option").forEach((option) => {
+        option.style.display = !query || String(option.dataset.search || "").includes(query) ? "" : "none";
+      });
+    });
+    renderSelected();
+  }
+
+  async function saveMenuSlotModal(data, event, date, slot, modal, deleteSlot) {
+    const state = modal.querySelector("#admin-menu-slot-state");
+    const form = modal.querySelector("#admin-menu-slot-form");
+    const formData = new FormData(form);
+    const next = cloneEvent(event);
+    const targetDate = findEventDate(next, date.id || date.date);
+    if (!targetDate) return;
+    targetDate.menuSlots = asArray(targetDate.menuSlots);
+    if (deleteSlot) {
+      targetDate.menuSlots = targetDate.menuSlots.filter((item) => String(item.id || "") !== String(slot.id || ""));
+    } else {
+      const nextSlot = {
+        ...slot,
+        type: String(formData.get("type") || "").trim(),
+        time: String(formData.get("time") || "").trim(),
+        pax: Number(formData.get("pax") || 0),
+        pricePerPax: Number(formData.get("pricePerPax") || 0),
+        enabled: formData.get("enabled") === "on",
+        menuItemIds: formData.getAll("menuItemIds").map((id) => String(id || "").trim()).filter(Boolean),
+        additionalServices: asArray(slot.additionalServices),
+        menuImages: asArray(slot.menuImages),
+      };
+      const slotIndex = targetDate.menuSlots.findIndex((item) => String(item.id || "") === String(slot.id || ""));
+      if (slotIndex >= 0) targetDate.menuSlots[slotIndex] = nextSlot;
+      else targetDate.menuSlots.push(nextSlot);
+    }
+    if (state) state.textContent = deleteSlot ? "Deleting menu slot..." : "Saving menu...";
+    try {
+      await adminRequest(eventAdminPath(data, event), { method: "PUT", body: next });
+      if (state) state.textContent = deleteSlot ? "Menu slot deleted" : "Menu saved";
+      setTimeout(() => renderClientEventInfoPage(), 350);
+    } catch (error) {
+      if (state) {
+        state.className = "text-sm text-error";
+        state.textContent = error.message;
+      }
+    }
   }
 
   function pdfTokenQuery() {
@@ -2699,6 +3360,7 @@
       if (page === "audit-log.html") return await renderAuditLog();
       if (page === "settings.html") return await renderSettings();
       if (page === "admin-profile.html") return await renderAdminProfile();
+      if (page === "client-event-info.html") return await renderClientEventInfoPage();
       const clientPages = {
         "client-detail.html": "details",
         "client-events.html": "events",

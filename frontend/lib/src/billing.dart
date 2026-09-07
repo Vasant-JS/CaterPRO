@@ -45,6 +45,19 @@ String requestPaymentMessage({
   ].join('\n');
 }
 
+Future<bool> openPaymentRequestWhatsApp({
+  required String mobile,
+  required String message,
+}) {
+  final cleanMobile = normalizeMobileText(mobile);
+  final target = cleanMobile.length == 10 ? '91$cleanMobile' : cleanMobile;
+  final uri = Uri.parse(target.isEmpty
+      ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
+      : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
+  return launchUrl(uri,
+      mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+}
+
 class BillingScreen extends StatefulWidget {
   const BillingScreen(
       {super.key,
@@ -2171,16 +2184,13 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment() async {
-    final uri = await api.manualInvoicePdfUri(invoice.id);
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
         amount: money(invoice.pending));
-    await saveAndShareDownload(
-        title: '${invoice.eventName} invoice.pdf',
-        uri: uri,
-        kind: 'invoice',
-        text: text);
+    final launched =
+        await openPaymentRequestWhatsApp(mobile: invoice.mobile, message: text);
+    if (!launched) throw Exception('Unable to open WhatsApp');
     onAudit(
       action: 'requestPayment',
       entityType: 'manualInvoice',
@@ -2316,7 +2326,21 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
           DocumentActionSpec(
               label: 'Request Payment',
               icon: Icons.message,
-              onPressed: invoice.pending == 0 ? null : requestPayment),
+              onPressed: invoice.pending == 0
+                  ? null
+                  : () async {
+                      try {
+                        await requestPayment();
+                        if (context.mounted) {
+                          showCpSnack(context, 'Payment request opened');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showCpSnack(context,
+                              e.toString().replaceFirst('Exception: ', ''));
+                        }
+                      }
+                    }),
           DocumentActionSpec(
               label: 'Edit Invoice',
               icon: Icons.edit,
@@ -2688,17 +2712,13 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final client =
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
     final amount = isInvoice ? eventBalance(event) : eventTotal(event);
-    final uri = await documentUri();
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
         amount: money(amount));
-    await saveAndShareDownload(
-        title:
-            downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
-        uri: uri,
-        kind: 'invoice',
-        text: text);
+    final launched =
+        await openPaymentRequestWhatsApp(mobile: event.mobile, message: text);
+    if (!launched) throw Exception('Unable to open WhatsApp');
     onAudit(
       action: 'requestPayment',
       entityType: isInvoice ? 'eventInvoice' : 'quotation',
@@ -2870,7 +2890,21 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
           DocumentActionSpec(
               label: 'Request Payment',
               icon: Icons.message,
-              onPressed: pending == 0 ? null : () => requestPayment(context)),
+              onPressed: pending == 0
+                  ? null
+                  : () async {
+                      try {
+                        await requestPayment(context);
+                        if (context.mounted) {
+                          showCpSnack(context, 'Payment request opened');
+                        }
+                      } catch (e) {
+                        if (context.mounted) {
+                          showCpSnack(context,
+                              e.toString().replaceFirst('Exception: ', ''));
+                        }
+                      }
+                    }),
           DocumentActionSpec(
               label: 'Record Payment',
               icon: Icons.payments,

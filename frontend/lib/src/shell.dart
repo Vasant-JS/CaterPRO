@@ -759,8 +759,7 @@ class _AppShellState extends State<AppShell> {
           cached['additionalServices'], server['additionalServices'],
           key: 'selectedServices');
     } else if (key == 'menuSlots') {
-      merged['menuItemIds'] =
-          mergeStringList(cached['menuItemIds'], server['menuItemIds']);
+      merged['menuItemIds'] = jsonStringList(server['menuItemIds']);
       merged['additionalServices'] = mergeRecordLists(
           cached['additionalServices'], server['additionalServices'],
           key: 'selectedServices');
@@ -778,15 +777,11 @@ class _AppShellState extends State<AppShell> {
         .toList();
   }
 
-  List<String> mergeStringList(Object? cached, Object? server) {
-    final values = <String>[];
-    for (final source in [cached, server]) {
-      for (final item in ((source as List?) ?? const [])) {
-        final value = item.toString();
-        if (value.isNotEmpty && !values.contains(value)) values.add(value);
-      }
-    }
-    return values;
+  List<String> jsonStringList(Object? value) {
+    return ((value as List?) ?? const [])
+        .map((item) => item.toString())
+        .where((item) => item.isNotEmpty)
+        .toList();
   }
 
   String recordKey(Map<String, dynamic> item, String listKey) {
@@ -2012,21 +2007,70 @@ class _AppShellState extends State<AppShell> {
 
   Future<void> exportData() async {
     showCpSnack(context, 'Preparing export...');
-    final uri = await api.backupExportUri();
-    const title = 'CaterPro backup.json';
-    if (mounted) {
-      showDownloadSnack(context, uri,
-          title: title,
-          kind: 'backup',
-          successMessage: 'Backup download started',
-          failureMessage: 'Unable to save backup');
+    try {
+      await cacheCurrentUserData();
+      Map<String, dynamic>? localSnapshot;
+      try {
+        localSnapshot = await LocalCaterProDb.instance
+            .loadSnapshot()
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {
+        localSnapshot = null;
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final exportedAt = DateTime.now().toIso8601String();
+      final syncPending = await LocalCaterProDb.instance.hasUnsyncedChanges();
+      final syncCounts = await LocalCaterProDb.instance.syncCounts();
+      final unsyncedSnapshot = await LocalCaterProDb.instance
+          .loadUnsyncedSnapshot()
+          .timeout(const Duration(seconds: 5))
+          .catchError((_) => null);
+      final backup = {
+        'schemaVersion': 1,
+        'app': 'CaterPro',
+        'exportedAt': exportedAt,
+        'source': 'local-sqlite',
+        'syncPending': syncPending,
+        'syncCounts': syncCounts,
+        'user': {
+          'id': prefs.getString('auth.userId') ?? 'default-user',
+          'email': prefs.getString('auth.email') ?? '',
+          'name': prefs.getString('auth.name') ?? '',
+        },
+        'userData': normalizeUserData(Map<String, dynamic>.from(
+            (localSnapshot?['userData'] as Map?) ?? currentUserDataJson())),
+        'universal': Map<String, dynamic>.from(
+            (localSnapshot?['universal'] as Map?) ?? currentUniversalJson()),
+        if (unsyncedSnapshot != null) 'unsyncedData': unsyncedSnapshot,
+      };
+      final stamp = exportedAt.replaceAll(RegExp(r'[:.]'), '-');
+      final title = 'caterpro-local-backup-$stamp.json';
+      final savedUri = await saveTextToDevice(
+        title: title,
+        text: const JsonEncoder.withIndent('  ').convert(backup),
+        kind: 'backup',
+      );
+      if (!mounted) return;
+      showCpSnack(context, 'Local backup saved to Downloads/CaterPro');
+      addSystemNotification(
+          title: 'Local data export complete',
+          message:
+              'Saved local CaterPro data from this device, including unsynced changes.',
+          kind: 'export',
+          icon: Icons.download,
+          color: Cp.primary);
+      await openDownloadedFile(savedUri, title: title, kind: 'backup');
+    } catch (e) {
+      addSystemNotification(
+          title: 'Data export failed',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          kind: 'export',
+          icon: Icons.error_outline,
+          color: Cp.error);
+      if (mounted) {
+        showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+      }
     }
-    addSystemNotification(
-        title: 'Data export started',
-        message: 'CaterPro backup is being saved to device downloads.',
-        kind: 'export',
-        icon: Icons.download,
-        color: Cp.primary);
   }
 
   Future<void> importData() async {

@@ -372,6 +372,43 @@ Future<Uri> saveDownloadToDevice(
   return localUri;
 }
 
+Future<Uri> saveBytesToDevice({
+  required String title,
+  required Uint8List bytes,
+  required String kind,
+}) async {
+  if (kIsWeb) {
+    throw Exception('In-app downloads are available on the mobile app.');
+  }
+  final fileName = sanitizeDownloadFileName(title, kind);
+  final mimeType = mimeTypeForDownload(kind, fileName);
+  final result = await downloadChannel.invokeMapMethod<String, Object?>(
+    'saveFile',
+    {
+      'fileName': fileName,
+      'mimeType': mimeType,
+      'bytes': bytes,
+    },
+  );
+  final savedUri = result?['uri']?.toString() ?? '';
+  if (savedUri.isEmpty) throw Exception('Unable to save file');
+  final localUri = Uri.parse(savedUri);
+  await downloadHistory.add(title: fileName, uri: localUri, kind: kind);
+  return localUri;
+}
+
+Future<Uri> saveTextToDevice({
+  required String title,
+  required String text,
+  required String kind,
+}) {
+  return saveBytesToDevice(
+    title: title,
+    bytes: Uint8List.fromList(utf8.encode(text)),
+    kind: kind,
+  );
+}
+
 Future<bool> openDownloadedFile(Uri uri,
     {required String title, String kind = 'file'}) async {
   if (!kIsWeb && (uri.scheme == 'content' || uri.scheme == 'file')) {
