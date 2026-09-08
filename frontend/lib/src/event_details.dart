@@ -634,6 +634,34 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
     if (!launched) showCpSnack(context, 'Unable to open WhatsApp');
   }
 
+  Future<void> requestPayment(BuildContext context, AppEvent event) async {
+    final balance = eventBalance(event);
+    if (balance <= 0) {
+      showCpSnack(context, 'Payment is already complete');
+      return;
+    }
+    try {
+      showCpSnack(context, 'Preparing invoice...');
+      final uri = await widget.api.documentUri(event.id, 'invoice');
+      final client = event.primaryClient.trim().isEmpty
+          ? 'Customer'
+          : event.primaryClient.trim();
+      await saveAndShareDownload(
+          title: downloadTitleForEvent(event, 'invoice'),
+          uri: uri,
+          kind: 'invoice',
+          text: requestPaymentMessage(
+              documentType: 'invoice',
+              clientName: client,
+              amount: money(balance)));
+      if (!context.mounted) return;
+      showCpSnack(context, 'Payment request opened');
+    } catch (e) {
+      if (!context.mounted) return;
+      showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
@@ -732,6 +760,19 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
                 minHeight: 12,
                 color: scheme.primary,
                 backgroundColor: scheme.surfaceContainerHighest)),
+        if (balance > 0) ...[
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 48,
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: () => requestPayment(context, event),
+              icon: const Icon(Icons.message),
+              label: const Text('Request Payment',
+                  style: TextStyle(fontWeight: FontWeight.w900)),
+            ),
+          ),
+        ],
       ])),
       const SizedBox(height: 16),
       SingleChildScrollView(

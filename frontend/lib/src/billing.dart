@@ -2753,6 +2753,12 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final paid = eventPaid(event);
     final currentPayment = payment?.amount ?? 0;
     final pending = eventBalance(event);
+    final headerAmount = isInvoice
+        ? (payment == null ? total : currentPayment)
+        : total;
+    final headerLabel = isInvoice
+        ? (payment == null ? 'Invoice ready' : 'Payment recorded')
+        : 'Quotation ready';
     final clientName =
         event.primaryClient.isEmpty ? event.mobile : event.primaryClient;
     final menuCount =
@@ -2785,11 +2791,11 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       color: isInvoice ? Cp.tertiaryContainer : Cp.primary,
                       size: 34)),
               const SizedBox(height: 12),
-              Text(isInvoice ? 'Payment recorded' : 'Quotation ready',
+              Text(headerLabel,
                   style: TextStyle(
                       color: cpOnVariant(context),
                       fontWeight: FontWeight.w900)),
-              Text(isInvoice ? money(currentPayment) : money(total),
+              Text(money(headerAmount),
                   style: TextStyle(
                       color: cpOnSurface(context),
                       fontSize: 30,
