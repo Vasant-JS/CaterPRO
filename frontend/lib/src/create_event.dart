@@ -110,8 +110,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     if (draft.dates.isEmpty) return 'Add at least one event date.';
     final seenDates = <String>{};
     for (final date in draft.dates) {
-      final dateError =
-          isoDateValidator(date.date, label: 'Event date', noPast: !isEditing);
+      final dateError = isoDateValidator(date.date, label: 'Event date');
       if (dateError != null) return dateError;
       if (!seenDates.add(date.date.trim())) return 'Date already added';
       for (final slot in date.slots.where((item) => item.enabled)) {
@@ -578,7 +577,8 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
   final labelController = TextEditingController();
   DateTime? selectedDate;
   final today = DateTime.now();
-  final firstDate = DateTime(today.year, today.month, today.day);
+  final initialDate = DateTime(today.year, today.month, today.day);
+  final firstDate = DateTime(2020);
   String formatDate(DateTime date) =>
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   return showModalBottomSheet<DraftDateConfig>(
@@ -609,7 +609,7 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
                         color: cpPrimary(context),
                         fontSize: 24,
                         fontWeight: FontWeight.w900)),
-                Text('Select a date. Previous dates are disabled.',
+                Text('Select any event date, including completed events.',
                     style: TextStyle(color: cpOnVariant(context))),
                 const SizedBox(height: 18),
                 InkWell(
@@ -617,9 +617,9 @@ Future<DraftDateConfig?> showAddDateSheet(BuildContext context) {
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: context,
-                      initialDate: selectedDate ?? firstDate,
+                      initialDate: selectedDate ?? initialDate,
                       firstDate: firstDate,
-                      lastDate: DateTime(firstDate.year + 5),
+                      lastDate: DateTime(initialDate.year + 5),
                     );
                     if (picked == null) return;
                     setSheetState(() {
