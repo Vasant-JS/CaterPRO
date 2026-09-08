@@ -2125,6 +2125,23 @@ class AppMenuSlot {
 }
 
 class ApiService {
+  String responseMessage(http.Response response, String fallback) {
+    try {
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        final message = decoded['message']?.toString().trim();
+        final error = decoded['error']?.toString().trim();
+        if (message != null && message.isNotEmpty) {
+          return error == null || error.isEmpty ? message : '$message: $error';
+        }
+      }
+    } catch (_) {
+      final text = response.body.trim();
+      if (text.isNotEmpty) return text;
+    }
+    return fallback;
+  }
+
   Future<Map<String, String>> authHeaders() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('auth.token') ?? '';
@@ -2148,14 +2165,7 @@ class ApiService {
       body: jsonEncode(backup),
     );
     if (response.statusCode != 200) {
-      try {
-        final body = jsonDecode(response.body);
-        throw Exception(body is Map && body['message'] != null
-            ? body['message']
-            : 'Unable to import backup');
-      } catch (_) {
-        throw Exception('Unable to import backup');
-      }
+      throw Exception(responseMessage(response, 'Unable to import backup'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -2189,7 +2199,7 @@ class ApiService {
       headers: await authHeaders(),
     );
     if (response.statusCode != 200) {
-      throw Exception('Unable to load CaterPro data');
+      throw Exception(responseMessage(response, 'Unable to load CaterPro data'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -2222,7 +2232,8 @@ class ApiService {
         )
         .timeout(const Duration(seconds: 45));
     if (response.statusCode != 200) {
-      throw Exception('Unable to push local CaterPro data');
+      throw Exception(
+          responseMessage(response, 'Unable to push local CaterPro data'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
@@ -2244,7 +2255,8 @@ class ApiService {
         )
         .timeout(const Duration(seconds: 45));
     if (response.statusCode != 200) {
-      throw Exception('Unable to push local CaterPro changes');
+      throw Exception(
+          responseMessage(response, 'Unable to push local CaterPro changes'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }

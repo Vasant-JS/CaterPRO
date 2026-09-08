@@ -4720,8 +4720,17 @@ function menuItemFromAdminBody(body = {}, existing = {}, list = []) {
 }
 
 async function writeDbAndFlush(db) {
-  writeDb(db);
-  await flushSupabaseWrites();
+  await persistSyncDb(db);
+}
+
+async function persistSyncDb(db, options = {}) {
+  ensureUniversal(db);
+  runtimeDb = db;
+  const result = await saveSupabaseDb(db, options);
+  if (result?.status === 'failed') {
+    throw new Error(result.error || 'Unable to save sync data');
+  }
+  return result;
 }
 
 function adminUserPayload(db, user) {
@@ -5389,7 +5398,7 @@ app.get('/api/sync/snapshot', async (req, res) => {
   res.json(syncSnapshotForUser(db, user.id));
 });
 
-app.post('/api/sync/snapshot', (req, res) => {
+app.post('/api/sync/snapshot', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
@@ -5400,28 +5409,19 @@ app.post('/api/sync/snapshot', (req, res) => {
   db.userData[user.id] = backupUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
   if (includeUniversal) db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
   ensureUniversal(db);
-  if (req.body?.includeMirrorSync === true) {
-    runtimeDb = db;
-    saveSupabaseDb(db, { userId: user.id, includeUniversal })
-      .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
-      .catch((error) => {
-        console.warn('Supabase sync skipped after local merge:', error.message);
-        res.json({
-          ...syncSnapshotForUser(db, user.id),
-          mirrorSync: {
-            status: 'failed',
-            error: error.message,
-            failedTables: ['supabase_tables'],
-          },
-        });
-      });
-    return;
+  try {
+    const mirrorSync = await persistSyncDb(db, { userId: user.id, includeUniversal });
+    res.json({
+      ...syncSnapshotForUser(db, user.id),
+      ...(req.body?.includeMirrorSync === true ? { mirrorSync } : {}),
+    });
+  } catch (error) {
+    console.warn('Supabase sync failed:', error.message);
+    res.status(503).json({ message: 'Unable to save sync data', error: error.message });
   }
-  writeDb(db, { userId: user.id, includeUniversal });
-  res.json(syncSnapshotForUser(db, user.id));
 });
 
-app.post('/api/sync/delta', (req, res) => {
+app.post('/api/sync/delta', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
@@ -5432,25 +5432,16 @@ app.post('/api/sync/delta', (req, res) => {
   db.userData[user.id] = mergeUserDataForSync(db.userData[user.id] || emptyUserData(), incomingUserData);
   if (includeUniversal) db.universal = mergeProtectedUniversalCatalog(db.universal || {}, incomingUniversal);
   ensureUniversal(db);
-  if (req.body?.includeMirrorSync === true) {
-    runtimeDb = db;
-    saveSupabaseDb(db, { userId: user.id, includeUniversal })
-      .then((mirrorSync) => res.json({ ...syncSnapshotForUser(db, user.id), mirrorSync }))
-      .catch((error) => {
-        console.warn('Supabase delta sync skipped after local merge:', error.message);
-        res.json({
-          ...syncSnapshotForUser(db, user.id),
-          mirrorSync: {
-            status: 'failed',
-            error: error.message,
-            failedTables: ['supabase_tables'],
-          },
-        });
-      });
-    return;
+  try {
+    const mirrorSync = await persistSyncDb(db, { userId: user.id, includeUniversal });
+    res.json({
+      ...syncSnapshotForUser(db, user.id),
+      ...(req.body?.includeMirrorSync === true ? { mirrorSync } : {}),
+    });
+  } catch (error) {
+    console.warn('Supabase delta sync failed:', error.message);
+    res.status(503).json({ message: 'Unable to save sync data', error: error.message });
   }
-  writeDb(db, { userId: user.id, includeUniversal });
-  res.json(syncSnapshotForUser(db, user.id));
 });
 
 app.post('/api/storage/repair-normalize', (req, res) => {
@@ -5531,7 +5522,7 @@ function userDataFromImportPayload(payload, user) {
   return null;
 }
 
-app.post('/api/backup/import', (req, res) => {
+app.post('/api/backup/import', async (req, res) => {
   const db = readDb();
   ensureUniversal(db);
   const user = requireUser(req, res, db);
@@ -5552,25 +5543,30 @@ app.post('/api/backup/import', (req, res) => {
   if (payload.universal && typeof payload.universal === 'object' && !Array.isArray(payload.universal)) {
     db.universal = mergeProtectedUniversalCatalog(db.universal || {}, payload.universal);
   }
-  writeDb(db);
-  res.json({
-    message: 'Backup imported',
-    counts: {
-      events: db.userData[user.id].events.length,
-      clients: db.userData[user.id].clients.length,
-      employees: db.userData[user.id].employees.length,
-      attendance: db.userData[user.id].attendance.length,
-      additionalServices: db.userData[user.id].additionalServices.length,
-      customMenus: db.userData[user.id].customMenus.length,
-      requirementLists: db.userData[user.id].requirementLists.length,
-      manualInvoices: db.userData[user.id].manualInvoices.length,
-      auditLogs: db.userData[user.id].auditLogs.length,
-      menuItems: db.universal.menuItems.length,
-      rawMaterials: db.universal.rawMaterials.length,
-      produceItems: db.universal.produceItems.length,
-      vesselItems: db.universal.vesselItems.length,
-    },
-  });
+  try {
+    await persistSyncDb(db, { userId: user.id, includeUniversal: Boolean(payload.universal) });
+    res.json({
+      message: 'Backup imported',
+      counts: {
+        events: db.userData[user.id].events.length,
+        clients: db.userData[user.id].clients.length,
+        employees: db.userData[user.id].employees.length,
+        attendance: db.userData[user.id].attendance.length,
+        additionalServices: db.userData[user.id].additionalServices.length,
+        customMenus: db.userData[user.id].customMenus.length,
+        requirementLists: db.userData[user.id].requirementLists.length,
+        manualInvoices: db.userData[user.id].manualInvoices.length,
+        auditLogs: db.userData[user.id].auditLogs.length,
+        menuItems: db.universal.menuItems.length,
+        rawMaterials: db.universal.rawMaterials.length,
+        produceItems: db.universal.produceItems.length,
+        vesselItems: db.universal.vesselItems.length,
+      },
+    });
+  } catch (error) {
+    console.warn('Backup import sync failed:', error.message);
+    res.status(503).json({ message: 'Unable to save imported backup', error: error.message });
+  }
 });
 
 app.get('/api/business-profile', async (req, res) => {
