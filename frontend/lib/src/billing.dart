@@ -45,19 +45,6 @@ String requestPaymentMessage({
   ].join('\n');
 }
 
-Future<bool> openPaymentRequestWhatsApp({
-  required String mobile,
-  required String message,
-}) {
-  final cleanMobile = normalizeMobileText(mobile);
-  final target = cleanMobile.length == 10 ? '91$cleanMobile' : cleanMobile;
-  final uri = Uri.parse(target.isEmpty
-      ? 'https://wa.me/?text=${Uri.encodeComponent(message)}'
-      : 'https://wa.me/$target?text=${Uri.encodeComponent(message)}');
-  return launchUrl(uri,
-      mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-}
-
 class BillingScreen extends StatefulWidget {
   const BillingScreen(
       {super.key,
@@ -2184,13 +2171,16 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment() async {
+    final uri = await api.manualInvoicePdfUri(invoice.id);
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
         amount: money(invoice.pending));
-    final launched =
-        await openPaymentRequestWhatsApp(mobile: invoice.mobile, message: text);
-    if (!launched) throw Exception('Unable to open WhatsApp');
+    await saveAndShareDownload(
+        title: '${invoice.eventName} invoice.pdf',
+        uri: uri,
+        kind: 'invoice',
+        text: text);
     onAudit(
       action: 'requestPayment',
       entityType: 'manualInvoice',
@@ -2712,13 +2702,17 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final client =
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
     final amount = isInvoice ? eventBalance(event) : eventTotal(event);
+    final uri = await documentUri();
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
         amount: money(amount));
-    final launched =
-        await openPaymentRequestWhatsApp(mobile: event.mobile, message: text);
-    if (!launched) throw Exception('Unable to open WhatsApp');
+    await saveAndShareDownload(
+        title:
+            downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
+        uri: uri,
+        kind: 'invoice',
+        text: text);
     onAudit(
       action: 'requestPayment',
       entityType: isInvoice ? 'eventInvoice' : 'quotation',
