@@ -1177,12 +1177,17 @@ class InvoiceDocumentTemplateCatalog {
 }
 
 class ApiConfig {
+  static const _definedEnvironment = String.fromEnvironment('CATERPRO_ENV');
   static const _definedBaseUrl = String.fromEnvironment('CATERPRO_API_URL');
+  static const devBaseUrl = 'https://caterpro-api.onrender.com/api';
   static const liveBaseUrl = 'https://api.caterpro.in/api';
 
   static String get baseUrl {
     if (_definedBaseUrl.isNotEmpty) {
       return _definedBaseUrl;
+    }
+    if (_definedEnvironment.toLowerCase() == 'dev') {
+      return devBaseUrl;
     }
     return liveBaseUrl;
   }
