@@ -2254,6 +2254,13 @@ class ApiService {
           }),
         )
         .timeout(const Duration(seconds: 45));
+    if (response.statusCode == 404) {
+      return pushSyncSnapshot(
+        userData: userData,
+        universal: universal,
+        includeMirrorSync: includeMirrorSync,
+      );
+    }
     if (response.statusCode != 200) {
       throw Exception(
           responseMessage(response, 'Unable to push local CaterPro changes'));
