@@ -5,7 +5,6 @@ const path = require('path');
 const crypto = require('crypto');
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
-const { Pool } = require('pg');
 
 function loadLocalEnvFile() {
   const envPath = path.join(__dirname, '.env');
@@ -30,28 +29,10 @@ const app = express();
 const port = Number(process.env.PORT || 8787);
 const caterProBrandUrl = 'https://caterpro.in';
 const caterProPdfFooter = 'Generated with CaterPro | Catering events, menus, invoices & payments made simple';
-const caterProEnv = String(process.env.CATERPRO_ENV || process.env.APP_ENV || (process.env.NODE_ENV === 'production' ? 'prod' : 'dev')).trim().toLowerCase();
-const storageProvider = String(process.env.DB_PROVIDER || (caterProEnv === 'prod' ? 'aws-postgres' : 'supabase')).trim().toLowerCase();
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseStateId = process.env.CATERPRO_STATE_ID || process.env.SUPABASE_STATE_ID || 'default';
-const supabase = storageProvider === 'supabase' && supabaseUrl && supabaseServiceRoleKey ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } }) : null;
-const awsDatabaseUrl = process.env.AWS_DATABASE_URL || process.env.DATABASE_URL || '';
-const hasAwsPostgresConfig = Boolean(
-  awsDatabaseUrl ||
-    (process.env.AWS_DB_HOST && process.env.AWS_DB_NAME && process.env.AWS_DB_USER && process.env.AWS_DB_PASSWORD),
-);
-const awsPostgres = storageProvider === 'aws-postgres' && hasAwsPostgresConfig
-  ? new Pool({
-      connectionString: awsDatabaseUrl || undefined,
-      host: process.env.AWS_DB_HOST,
-      port: process.env.AWS_DB_PORT ? Number(process.env.AWS_DB_PORT) : undefined,
-      database: process.env.AWS_DB_NAME,
-      user: process.env.AWS_DB_USER,
-      password: process.env.AWS_DB_PASSWORD,
-      ssl: String(process.env.AWS_DB_SSL || 'true').toLowerCase() === 'false' ? false : { rejectUnauthorized: false },
-    })
-  : null;
+const supabaseStateId = process.env.SUPABASE_STATE_ID || 'default';
+const supabase = supabaseUrl && supabaseServiceRoleKey ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } }) : null;
 const consolidatedMenuExports = new Map();
 let runtimeDb = null;
 let pendingSupabaseWrite = Promise.resolve();
@@ -67,7 +48,7 @@ app.use((req, res, next) => {
 
 function readDb() {
   if (!runtimeDb) {
-    throw new Error(`Online database state is not loaded. Check ${storageLabel()} table data.`);
+    throw new Error('Online database state is not loaded. Check Supabase table data.');
   }
   ensureUniversal(runtimeDb);
   return runtimeDb;
@@ -84,14 +65,8 @@ function asArray(value) {
 }
 
 function requireSupabaseConfigured() {
-  if (storageProvider === 'supabase' && !supabase) {
-    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required for DEV Supabase storage.');
-  }
-  if (storageProvider === 'aws-postgres' && (!hasAwsPostgresConfig || !awsPostgres)) {
-    throw new Error('AWS_DATABASE_URL or AWS_DB_HOST/AWS_DB_NAME/AWS_DB_USER/AWS_DB_PASSWORD are required for PROD AWS storage.');
-  }
-  if (!['supabase', 'aws-postgres'].includes(storageProvider)) {
-    throw new Error(`Unsupported DB_PROVIDER "${storageProvider}". Use "supabase" for DEV or "aws-postgres" for PROD.`);
+  if (!supabase) {
+    throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required. Supabase storage is mandatory.');
   }
 }
 
@@ -99,33 +74,6 @@ async function supabaseRequest(builder) {
   const { data, error, count } = await builder;
   if (error) throw error;
   return { data, count };
-}
-
-function storageLabel() {
-  return storageProvider === 'aws-postgres' ? 'AWS Postgres' : 'Supabase';
-}
-
-function storageStateId() {
-  return supabaseStateId;
-}
-
-function isJsonStorageColumn(column) {
-  return column === 'raw' || column === 'add_ons' || column === 'additional_services' || column === 'menu_item_ids' || column === 'item_ids';
-}
-
-function pgValueForColumn(column, value) {
-  if (isJsonStorageColumn(column)) return JSON.stringify(value ?? (column === 'raw' ? {} : []));
-  return value;
-}
-
-async function pgQuery(text, values = []) {
-  if (!awsPostgres) throw new Error('AWS Postgres is not configured');
-  return awsPostgres.query(text, values);
-}
-
-function isMissingStorageTableError(error) {
-  const message = String(error?.message || '');
-  return error?.code === 'PGRST205' || error?.code === '42P01' || message.includes('Could not find the table') || message.includes('does not exist');
 }
 
 function missingSupabaseColumnName(error) {
@@ -139,20 +87,18 @@ function isMissingSupabaseColumnError(error) {
 }
 
 async function loadSupabaseDb() {
-  if (storageProvider === 'aws-postgres' && !awsPostgres) return null;
-  if (storageProvider === 'supabase' && !supabase) return null;
+  if (!supabase) return null;
   return loadSupabaseTableState();
 }
 
 async function saveSupabaseDb(db, { syncMirrorTables = false, userId = null, includeUniversal = false } = {}) {
-  if (storageProvider === 'supabase' && !supabase) return { status: 'disabled', tables: {} };
-  if (storageProvider === 'aws-postgres' && !awsPostgres) return { status: 'disabled', tables: {} };
+  if (!supabase) return { status: 'disabled', tables: {} };
   try {
     if (syncMirrorTables) return await syncSupabaseTables(db);
     if (userId) return await replaceSupabaseUserTableState(db, userId, { includeUniversal });
     return await upsertSupabaseTableState(db);
   } catch (error) {
-    console.warn(`${storageLabel()} table sync skipped:`, error.message);
+    console.warn('Supabase table sync skipped:', error.message);
     return { status: 'failed', error: error.message, tables: {} };
   }
 }
@@ -571,16 +517,6 @@ function emptySupabaseRows() {
 }
 
 async function loadSupabaseRows(table) {
-  if (storageProvider === 'aws-postgres') {
-    const pageSize = 1000;
-    const rows = [];
-    for (let offset = 0; ; offset += pageSize) {
-      const result = await pgQuery(`select * from ${table} where state_id = $1 limit $2 offset $3`, [storageStateId(), pageSize, offset]);
-      rows.push(...asArray(result.rows));
-      if (result.rows.length < pageSize) break;
-    }
-    return rows;
-  }
   const pageSize = 1000;
   const rows = [];
   for (let from = 0; ; from += pageSize) {
@@ -783,23 +719,6 @@ function buildSupabaseRows(db) {
 
 async function upsertSupabaseRows(table, rows) {
   if (rows.length === 0) return;
-  if (storageProvider === 'aws-postgres') {
-    const conflictColumns = supabaseTableConflicts[table].split(',').map((item) => item.trim());
-    for (const row of rows) {
-      const columns = Object.keys(row);
-      const values = columns.map((column) => pgValueForColumn(column, row[column]));
-      const placeholders = columns.map((column, index) => `$${index + 1}${isJsonStorageColumn(column) ? '::jsonb' : ''}`);
-      const updateColumns = columns.filter((column) => !conflictColumns.includes(column));
-      const updateSql = updateColumns.length
-        ? updateColumns.map((column) => `${column}=excluded.${column}`).join(', ')
-        : `${columns[0]}=excluded.${columns[0]}`;
-      await pgQuery(
-        `insert into ${table} (${columns.join(', ')}) values (${placeholders.join(', ')}) on conflict (${conflictColumns.join(', ')}) do update set ${updateSql}`,
-        values,
-      );
-    }
-    return;
-  }
   let pendingRows = rows;
   const omittedColumns = [];
   for (let attempt = 0; attempt < 8; attempt += 1) {
@@ -828,21 +747,8 @@ async function upsertSupabaseRows(table, rows) {
 }
 
 function isMissingSupabaseTableError(error) {
-  return isMissingStorageTableError(error);
-}
-
-async function deleteStorageRows(table, { userId = null } = {}) {
-  if (storageProvider === 'aws-postgres') {
-    if (userId) {
-      await pgQuery(`delete from ${table} where state_id = $1 and user_id = $2`, [storageStateId(), userId]);
-      return;
-    }
-    await pgQuery(`delete from ${table} where state_id = $1`, [storageStateId()]);
-    return;
-  }
-  let query = supabase.from(table).delete().eq('state_id', storageStateId());
-  if (userId) query = query.eq('user_id', userId);
-  await supabaseRequest(query);
+  const message = String(error?.message || '');
+  return error?.code === 'PGRST205' || message.includes('Could not find the table');
 }
 
 async function syncSupabaseTables(db) {
@@ -853,7 +759,7 @@ async function syncSupabaseTables(db) {
   const tableStatus = {};
   for (const table of supabaseTables) {
     try {
-      await deleteStorageRows(table);
+      await supabaseRequest(supabase.from(table).delete().eq('state_id', supabaseStateId));
     } catch (error) {
       if (isMissingSupabaseTableError(error)) {
         skippedTables.push(table);
@@ -941,7 +847,13 @@ async function replaceSupabaseUserTableState(db, userId, { includeUniversal = fa
 
   for (const table of userTables) {
     try {
-      await deleteStorageRows(table, { userId });
+      await supabaseRequest(
+        supabase
+          .from(table)
+          .delete()
+          .eq('state_id', supabaseStateId)
+          .eq('user_id', userId),
+      );
     } catch (error) {
       if (isMissingSupabaseTableError(error)) {
         skippedTables.push(table);
@@ -1013,10 +925,10 @@ async function initializeStorage() {
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
     runtimeDb = ensureAdminUser(supabaseDb);
-    console.log(`CaterPro storage: loaded ${storageLabel()} tables for ${caterProEnv.toUpperCase()} state "${storageStateId()}"`);
+    console.log(`CaterPro storage: loaded Supabase tables for state "${supabaseStateId}"`);
     return;
   }
-  throw new Error(`No ${storageLabel()} table data found for "${storageStateId()}". Create cp_users and related table rows before starting the API.`);
+  throw new Error(`No Supabase table data found for "${supabaseStateId}". Create cp_users and related table rows before starting the API.`);
 }
 function makeId(prefix) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
@@ -6626,10 +6538,6 @@ function storageCountsFor(db, userId) {
 }
 
 async function supabaseTableCount(table) {
-  if (storageProvider === 'aws-postgres') {
-    const result = await pgQuery(`select count(*)::int as count from ${table} where state_id = $1`, [storageStateId()]);
-    return Number(result.rows?.[0]?.count || 0);
-  }
   const { count } = await supabaseRequest(
     supabase.from(table).select('*', { count: 'exact', head: true }).eq('state_id', supabaseStateId),
   );
@@ -6640,18 +6548,11 @@ app.get('/api/storage/status', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  let databaseStatus = {
-    provider: storageProvider,
-    environment: caterProEnv,
-    enabled: storageProvider === 'aws-postgres' ? Boolean(awsPostgres) : Boolean(supabase),
-    connected: false,
-    updatedAt: null,
-  };
-  if (storageProvider === 'supabase' && supabase) {
+  let supabaseStatus = { enabled: Boolean(supabase), connected: false, updatedAt: null };
+  if (supabase) {
     try {
       const userCount = await supabaseTableCount('cp_users');
-      databaseStatus = {
-        ...databaseStatus,
+      supabaseStatus = {
         enabled: true,
         connected: true,
         stateId: supabaseStateId,
@@ -6659,29 +6560,12 @@ app.get('/api/storage/status', async (req, res) => {
         userCount,
       };
     } catch (error) {
-      databaseStatus = { ...databaseStatus, enabled: true, connected: false, stateId: supabaseStateId, error: error.message };
-    }
-  } else if (storageProvider === 'aws-postgres' && awsPostgres) {
-    try {
-      const result = await pgQuery('select count(*)::int as count from cp_users where state_id = $1', [storageStateId()]);
-      databaseStatus = {
-        ...databaseStatus,
-        enabled: true,
-        connected: true,
-        stateId: storageStateId(),
-        liveState: 'tables',
-        userCount: Number(result.rows?.[0]?.count || 0),
-      };
-    } catch (error) {
-      databaseStatus = { ...databaseStatus, enabled: true, connected: false, stateId: storageStateId(), error: error.message };
+      supabaseStatus = { enabled: true, connected: false, stateId: supabaseStateId, error: error.message };
     }
   }
   res.json({
-    storage: storageProvider,
-    environment: caterProEnv,
-    database: databaseStatus,
-    supabase: storageProvider === 'supabase' ? databaseStatus : { enabled: false, connected: false },
-    aws: storageProvider === 'aws-postgres' ? databaseStatus : { enabled: false, connected: false },
+    storage: 'supabase',
+    supabase: supabaseStatus,
     counts: storageCountsFor(db, user.id),
   });
 });
@@ -6690,8 +6574,7 @@ app.get('/api/storage/tables', async (req, res) => {
   const db = readDb();
   const user = requireUser(req, res, db);
   if (!user) return;
-  if (storageProvider === 'supabase' && !supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
-  if (storageProvider === 'aws-postgres' && !awsPostgres) return res.status(400).json({ message: 'AWS database is not configured' });
+  if (!supabase) return res.status(400).json({ message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are not configured' });
   try {
     const mirrorSync = await syncSupabaseTables(db);
     const counts = {};
