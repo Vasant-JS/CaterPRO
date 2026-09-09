@@ -976,6 +976,10 @@ function ensureAdminUser(db) {
   const existing = asArray(db.users).find((user) => String(user.email || '').toLowerCase() === adminEmail);
   if (existing) {
     existing.role = existing.role || 'admin';
+    if (adminPassword && existing.password !== adminPassword) {
+      existing.password = adminPassword;
+      existing.updatedAt = new Date().toISOString();
+    }
     db.userData[existing.id] = db.userData[existing.id] || emptyUserData();
     return db;
   }
