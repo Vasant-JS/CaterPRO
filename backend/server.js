@@ -924,14 +924,7 @@ async function initializeStorage() {
   requireSupabaseConfigured();
   const supabaseDb = await loadSupabaseDb();
   if (supabaseDb) {
-    const recoverAdmin = adminUserNeedsRecovery(supabaseDb);
     runtimeDb = ensureAdminUser(supabaseDb);
-    if (recoverAdmin) {
-      const result = await saveSupabaseDb(runtimeDb);
-      if (result?.status === 'failed') {
-        throw new Error(`Unable to recover admin login: ${result.error || 'Supabase save failed'}`);
-      }
-    }
     console.log(`CaterPro storage: loaded Supabase tables for state "${supabaseStateId}"`);
     return;
   }
@@ -983,10 +976,6 @@ function ensureAdminUser(db) {
   const existing = asArray(db.users).find((user) => String(user.email || '').toLowerCase() === adminEmail);
   if (existing) {
     existing.role = existing.role || 'admin';
-    if (adminPassword && existing.password !== adminPassword) {
-      existing.password = adminPassword;
-      existing.updatedAt = new Date().toISOString();
-    }
     db.userData[existing.id] = db.userData[existing.id] || emptyUserData();
     return db;
   }
@@ -1002,14 +991,6 @@ function ensureAdminUser(db) {
   db.users.push(admin);
   db.userData[admin.id] = emptyUserData();
   return db;
-}
-
-function adminUserNeedsRecovery(db) {
-  const adminEmail = String(process.env.ADMIN_EMAIL || 'admin@caterpro.in').trim().toLowerCase();
-  const adminPassword = String(process.env.ADMIN_PASSWORD || 'password');
-  if (!adminEmail.includes('@') || !adminPassword) return false;
-  const existing = asArray(db.users).find((user) => String(user.email || '').toLowerCase() === adminEmail);
-  return !existing || existing.role !== 'admin' || existing.password !== adminPassword;
 }
 
 function emptyUserData() {
