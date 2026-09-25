@@ -1,6 +1,7 @@
 package com.caterpro.caterpro
 
 import android.content.ContentValues
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -114,13 +115,28 @@ class MainActivity : FlutterFragmentActivity() {
         }
         try {
             val uri = Uri.parse(uriText)
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = mimeType ?: "*/*"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                if (!text.isNullOrBlank()) {
+            val safeMimeType = mimeType ?: "*/*"
+            val intent = if (!text.isNullOrBlank()) {
+                Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                    type = "*/*"
+                    putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(uri))
                     putExtra(Intent.EXTRA_TEXT, text)
+                    putExtra(Intent.EXTRA_SUBJECT, title ?: "CaterPro invoice")
+                    putExtra(Intent.EXTRA_TITLE, title ?: "CaterPro invoice")
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                        putExtra(Intent.EXTRA_MIME_TYPES, arrayOf(safeMimeType, "text/plain"))
+                    }
+                    clipData = ClipData.newUri(contentResolver, title ?: "CaterPro invoice", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } else {
+                Intent(Intent.ACTION_SEND).apply {
+                    type = safeMimeType
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_TITLE, title ?: "Share PDF")
+                    clipData = ClipData.newUri(contentResolver, title ?: "Share PDF", uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
             startActivity(Intent.createChooser(intent, title ?: "Share PDF"))
             result.success(true)

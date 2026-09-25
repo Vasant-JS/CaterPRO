@@ -25,7 +25,6 @@ class EventsScreen extends StatefulWidget {
 class _EventsScreenState extends State<EventsScreen> {
   final searchController = TextEditingController();
   final dateChipScrollController = ScrollController();
-  final dateChipKeys = List.generate(15, (_) => GlobalKey());
   String query = '';
   String? clientFilter;
   String? dateFilter;
@@ -33,6 +32,9 @@ class _EventsScreenState extends State<EventsScreen> {
   bool showPastEvents = false;
   bool showOverduePayments = false;
   String paymentFilter = 'All';
+  static const todayDateChipIndex = 7;
+  static const dateChipWidth = 84.0;
+  static const dateChipSpacing = 8.0;
   static const shortMonths = [
     'Jan',
     'Feb',
@@ -73,18 +75,11 @@ class _EventsScreenState extends State<EventsScreen> {
   void scrollChipsToToday() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final context = dateChipKeys[7].currentContext;
-      if (context != null) {
-        Scrollable.ensureVisible(
-          context,
-          alignment: 0,
-          duration: const Duration(milliseconds: 1),
-          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        );
-        return;
-      }
       if (!dateChipScrollController.hasClients) return;
-      dateChipScrollController.jumpTo(0);
+      final targetOffset =
+          (todayDateChipIndex * (dateChipWidth + dateChipSpacing))
+              .clamp(0.0, dateChipScrollController.position.maxScrollExtent);
+      dateChipScrollController.jumpTo(targetOffset);
     });
   }
 
@@ -482,30 +477,30 @@ class _EventsScreenState extends State<EventsScreen> {
           controller: dateChipScrollController,
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: dateChipDates.asMap().entries.map((entry) {
-              final index = entry.key;
-              final date = entry.value;
+            children: dateChipDates.map((date) {
               final key = _dateKey(date);
               final selected = dateFilter == key;
               return Padding(
-                key: dateChipKeys[index],
                 padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  label: Text(_dateChipLabel(date)),
-                  selected: selected,
-                  onSelected: (_) => toggleDateFilter(date),
-                  selectedColor: cpPrimary(context),
-                  backgroundColor: cpCard(context),
-                  side: BorderSide(
-                      color: selected
-                          ? cpPrimary(context)
-                          : cpOutlineVariant(context)),
-                  labelStyle: TextStyle(
-                      color: selected
-                          ? Theme.of(context).colorScheme.onPrimary
-                          : cpOnSurface(context),
-                      fontWeight: FontWeight.w800),
-                  showCheckmark: false,
+                child: SizedBox(
+                  width: dateChipWidth,
+                  child: ChoiceChip(
+                    label: Center(child: Text(_dateChipLabel(date))),
+                    selected: selected,
+                    onSelected: (_) => toggleDateFilter(date),
+                    selectedColor: cpPrimary(context),
+                    backgroundColor: cpCard(context),
+                    side: BorderSide(
+                        color: selected
+                            ? cpPrimary(context)
+                            : cpOutlineVariant(context)),
+                    labelStyle: TextStyle(
+                        color: selected
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : cpOnSurface(context),
+                        fontWeight: FontWeight.w800),
+                    showCheckmark: false,
+                  ),
                 ),
               );
             }).toList(),

@@ -44,7 +44,7 @@ SUPABASE_STATE_ID=default
 After deploy, open:
 
 ```text
-https://api.caterpro.in/api/docs
+https://caterpro-api.onrender.com/api/docs
 ```
 
 The backend requires an existing `caterpro_state/default` row. It does not seed from or fall back to local JSON files.
@@ -64,19 +64,28 @@ npm start
 
 ## 4. Flutter Frontend API URL
 
-For local web:
+Debug builds default to the dev API:
+
+- Android emulator: `http://10.0.2.2:8787/api`
+- Web/desktop: `http://127.0.0.1:8787/api`
+
+For local web with the default dev API:
 
 ```powershell
-C:\flutter\bin\flutter.bat run -d chrome --web-hostname 127.0.0.1 --web-port 53217 --dart-define=CATERPRO_API_URL=http://127.0.0.1:8787/api
+C:\flutter\bin\flutter.bat run -d chrome --web-hostname 127.0.0.1 --web-port 53217 --dart-define=CATERPRO_ENV=dev
 ```
 
-For hosted API:
+For production API:
 
 ```powershell
-C:\flutter\bin\flutter.bat run -d chrome --dart-define=CATERPRO_API_URL=https://api.caterpro.in/api
+C:\flutter\bin\flutter.bat run -d chrome --dart-define=CATERPRO_ENV=prod
 ```
 
-For Android emulator, use your computer IP instead of `127.0.0.1`, or use the hosted API URL.
+For Android physical devices, use your computer IP:
+
+```powershell
+C:\flutter\bin\flutter.bat run -d <device-id> --dart-define=CATERPRO_API_URL=http://<your-computer-ip>:8787/api
+```
 
 ## 5. Verify Storage
 

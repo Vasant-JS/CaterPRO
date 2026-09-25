@@ -83,6 +83,7 @@ class _AppShellState extends State<AppShell> {
   int eventsSession = 0;
   int createInitialStep = 0;
   Timer? autoSyncTimer;
+  Timer? pendingAutoSyncTimer;
   DateTime? lastSyncedAt;
   bool localSyncPending = false;
   bool syncInProgress = false;
@@ -103,6 +104,7 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     autoSyncTimer?.cancel();
+    pendingAutoSyncTimer?.cancel();
     super.dispose();
   }
 
@@ -360,7 +362,22 @@ class _AppShellState extends State<AppShell> {
   }
 
   void backupCurrentSnapshotQuietly() {
-    unawaited(cacheCurrentUserData().catchError((_) {}));
+    unawaited(cacheCurrentUserData().then((_) {
+      scheduleAutoSync();
+    }).catchError((_) {}));
+  }
+
+  void scheduleAutoSync() {
+    if (!mounted || loading) return;
+    pendingAutoSyncTimer?.cancel();
+    pendingAutoSyncTimer = Timer(const Duration(seconds: 2), () {
+      if (!mounted || loading) return;
+      if (syncInProgress) {
+        scheduleAutoSync();
+        return;
+      }
+      unawaited(refreshEvents(silent: true));
+    });
   }
 
   Future<void> startupRefresh() async {
@@ -1857,7 +1874,7 @@ class _AppShellState extends State<AppShell> {
         metadata: {'unit': service.unit, 'price': service.price},
       );
     });
-    unawaited(cacheCurrentUserData());
+    backupCurrentSnapshotQuietly();
     unawaited(api.saveAdditionalService(service).then((saved) {
       if (!mounted) return;
       setState(() {
@@ -1893,7 +1910,7 @@ class _AppShellState extends State<AppShell> {
         },
       );
     });
-    unawaited(cacheCurrentUserData());
+    backupCurrentSnapshotQuietly();
     unawaited(api.deleteAdditionalService(id).then((_) {
       unawaited(cacheCurrentUserData(synced: true));
     }).catchError((error) {
