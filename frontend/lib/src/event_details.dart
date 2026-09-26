@@ -641,20 +641,21 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
       return;
     }
     try {
-      showCpSnack(context, 'Sending WhatsApp payment request...');
+      showCpSnack(context, 'Preparing invoice...');
+      final uri = await widget.api.documentUri(event.id, 'invoice');
       final client = event.primaryClient.trim().isEmpty
           ? 'Customer'
           : event.primaryClient.trim();
-      final text = requestPaymentMessage(
-          documentType: 'invoice', clientName: client, amount: money(balance));
-      await widget.api.sendWhatsAppPaymentRequest(
-          source: 'event',
-          eventId: event.id,
-          documentType: 'invoice',
-          to: event.mobile,
-          caption: text);
+      await saveAndShareDownload(
+          title: downloadTitleForEvent(event, 'invoice'),
+          uri: uri,
+          kind: 'invoice',
+          text: requestPaymentMessage(
+              documentType: 'invoice',
+              clientName: client,
+              amount: money(balance)));
       if (!context.mounted) return;
-      showCpSnack(context, 'Payment request sent on WhatsApp');
+      showCpSnack(context, 'Payment request opened');
     } catch (e) {
       if (!context.mounted) return;
       showCpSnack(context, e.toString().replaceFirst('Exception: ', ''));

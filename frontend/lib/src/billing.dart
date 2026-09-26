@@ -2171,16 +2171,16 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
   }
 
   Future<void> requestPayment() async {
+    final uri = await api.manualInvoicePdfUri(invoice.id);
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
         amount: money(invoice.pending));
-    await api.sendWhatsAppPaymentRequest(
-        source: 'manualInvoice',
-        invoiceId: invoice.id,
-        documentType: 'invoice',
-        to: invoice.mobile,
-        caption: text);
+    await saveAndShareDownload(
+        title: '${invoice.eventName} invoice.pdf',
+        uri: uri,
+        kind: 'invoice',
+        text: text);
     onAudit(
       action: 'requestPayment',
       entityType: 'manualInvoice',
@@ -2322,7 +2322,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                       try {
                         await requestPayment();
                         if (context.mounted) {
-                          showCpSnack(context, 'Payment request sent on WhatsApp');
+                          showCpSnack(context, 'Payment request opened');
                         }
                       } catch (e) {
                         if (context.mounted) {
@@ -2702,16 +2702,17 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
     final client =
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
     final amount = isInvoice ? eventBalance(event) : eventTotal(event);
+    final uri = await documentUri();
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
         amount: money(amount));
-    await api.sendWhatsAppPaymentRequest(
-        source: 'event',
-        eventId: event.id,
-        documentType: isInvoice ? 'invoice' : 'quotation',
-        to: event.mobile,
-        caption: text);
+    await saveAndShareDownload(
+        title:
+            downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
+        uri: uri,
+        kind: 'invoice',
+        text: text);
     onAudit(
       action: 'requestPayment',
       entityType: isInvoice ? 'eventInvoice' : 'quotation',
@@ -2895,7 +2896,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       try {
                         await requestPayment(context);
                         if (context.mounted) {
-                          showCpSnack(context, 'Payment request sent on WhatsApp');
+                          showCpSnack(context, 'Payment request opened');
                         }
                       } catch (e) {
                         if (context.mounted) {

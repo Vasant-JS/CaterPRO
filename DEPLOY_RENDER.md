@@ -39,9 +39,6 @@ NODE_VERSION=20
 SUPABASE_URL=<your Supabase project URL>
 SUPABASE_SERVICE_ROLE_KEY=<your Supabase service role key>
 SUPABASE_STATE_ID=default
-WHATSAPP_ACCESS_TOKEN=<Meta WhatsApp Cloud API token>
-WHATSAPP_PHONE_NUMBER_ID=<Meta WhatsApp phone number ID>
-WHATSAPP_DEFAULT_COUNTRY_CODE=91
 ```
 
 After deploy, open:

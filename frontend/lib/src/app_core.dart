@@ -2917,35 +2917,6 @@ class ApiService {
         .replace(queryParameters: {'token': token});
   }
 
-  Future<Map<String, dynamic>> sendWhatsAppPaymentRequest({
-    required String source,
-    String? eventId,
-    String? invoiceId,
-    String documentType = 'invoice',
-    required String to,
-    required String caption,
-  }) async {
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}/whatsapp/request-payment'),
-      headers: await authHeaders(),
-      body: jsonEncode({
-        'source': source,
-        if (eventId != null) 'eventId': eventId,
-        if (invoiceId != null) 'invoiceId': invoiceId,
-        'documentType': documentType,
-        'to': to,
-        'caption': caption,
-      }),
-    );
-    if (response.statusCode != 200) {
-      final body = jsonDecode(response.body);
-      throw Exception(body is Map && body['message'] != null
-          ? body['message']
-          : 'Unable to send WhatsApp payment request');
-    }
-    return Map<String, dynamic>.from(jsonDecode(response.body) as Map);
-  }
-
   Future<AppEvent> saveMaterialDocument(
       String eventId, EventMaterialDocument document) async {
     final creating = document.id.isEmpty;

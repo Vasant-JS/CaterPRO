@@ -3,7 +3,6 @@ const swaggerUi = require('swagger-ui-express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { PassThrough } = require('stream');
 const PDFDocument = require('pdfkit');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -35,10 +34,6 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseStateId = process.env.SUPABASE_STATE_ID || 'default';
 const supabase = supabaseUrl && supabaseServiceRoleKey ? createClient(supabaseUrl, supabaseServiceRoleKey, { auth: { persistSession: false } }) : null;
 const consolidatedMenuExports = new Map();
-const whatsappGraphVersion = process.env.WHATSAPP_GRAPH_VERSION || 'v21.0';
-const whatsappPhoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID || '';
-const whatsappAccessToken = process.env.WHATSAPP_ACCESS_TOKEN || '';
-const whatsappDefaultCountryCode = process.env.WHATSAPP_DEFAULT_COUNTRY_CODE || '91';
 let runtimeDb = null;
 let pendingSupabaseWrite = Promise.resolve();
 
@@ -2268,115 +2263,6 @@ function pdfFilename(parts) {
 
 function setPdfAttachment(res, parts, disposition = 'attachment') {
   res.setHeader('Content-Disposition', `${disposition}; filename="${pdfFilename(parts)}"`);
-}
-
-function pdfBufferFromGenerator(generate) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    const headers = {};
-    const stream = new PassThrough();
-    stream.setHeader = (name, value) => {
-      headers[String(name).toLowerCase()] = value;
-    };
-    stream.status = () => stream;
-    stream.json = (payload) => {
-      reject(new Error(payload?.message || 'Unable to generate PDF'));
-    };
-    stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-    stream.on('finish', () => {
-      resolve({ buffer: Buffer.concat(chunks), headers });
-    });
-    stream.on('error', reject);
-    try {
-      generate(stream);
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-function filenameFromContentDisposition(value, fallback) {
-  const match = String(value || '').match(/filename="([^"]+)"/i);
-  return match?.[1] || fallback;
-}
-
-function normalizeWhatsAppRecipient(value) {
-  let digits = String(value || '').replace(/\D/g, '');
-  if (digits.startsWith('00')) digits = digits.slice(2);
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  if (digits.length === 10 && whatsappDefaultCountryCode) {
-    digits = `${whatsappDefaultCountryCode}${digits}`;
-  }
-  return digits;
-}
-
-function whatsappApiConfigured() {
-  return Boolean(whatsappPhoneNumberId && whatsappAccessToken);
-}
-
-async function whatsappJsonRequest(pathSuffix, options = {}) {
-  const response = await fetch(
-    `https://graph.facebook.com/${whatsappGraphVersion}/${pathSuffix}`,
-    {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${whatsappAccessToken}`,
-        ...(options.body instanceof FormData
-          ? {}
-          : { 'Content-Type': 'application/json' }),
-        ...(options.headers || {}),
-      },
-    },
-  );
-  const text = await response.text();
-  let body = null;
-  if (text.trim()) {
-    try {
-      body = JSON.parse(text);
-    } catch (_) {
-      body = text;
-    }
-  }
-  if (!response.ok) {
-    const message = body?.error?.message || body?.message || text || `WhatsApp API failed (${response.status})`;
-    throw new Error(message);
-  }
-  return body || {};
-}
-
-async function uploadWhatsAppDocument(buffer, filename) {
-  const form = new FormData();
-  form.append('messaging_product', 'whatsapp');
-  form.append('type', 'application/pdf');
-  form.append('file', new Blob([buffer], { type: 'application/pdf' }), filename);
-  const body = await whatsappJsonRequest(`${whatsappPhoneNumberId}/media`, {
-    method: 'POST',
-    body: form,
-  });
-  if (!body.id) throw new Error('WhatsApp media upload did not return a media id');
-  return body.id;
-}
-
-async function sendWhatsAppDocument({ to, buffer, filename, caption }) {
-  if (!whatsappApiConfigured()) {
-    throw new Error('WhatsApp Cloud API is not configured on the backend');
-  }
-  const recipient = normalizeWhatsAppRecipient(to);
-  if (recipient.length < 11) throw new Error('Client WhatsApp number is missing or invalid');
-  const mediaId = await uploadWhatsAppDocument(buffer, filename);
-  return whatsappJsonRequest(`${whatsappPhoneNumberId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: recipient,
-      type: 'document',
-      document: {
-        id: mediaId,
-        filename,
-        caption: String(caption || '').slice(0, 1024),
-      },
-    }),
-  });
 }
 
 function amountInWords(value) {
@@ -5981,65 +5867,6 @@ app.get('/api/manual-invoices/:invoiceId/pdf', (req, res) => {
   const invoice = db.userData[user.id].manualInvoices.find((item) => item.id === req.params.invoiceId);
   if (!invoice) return res.status(404).json({ message: 'Manual invoice not found' });
   return generateManualInvoicePdf({ res, invoice, businessProfile: db.userData[user.id].businessProfile });
-});
-
-app.post('/api/whatsapp/request-payment', async (req, res) => {
-  const db = readDb();
-  const user = requireUser(req, res, db);
-  if (!user) return;
-  try {
-    const source = String(req.body?.source || '');
-    const caption = String(req.body?.caption || '').trim();
-    const to = req.body?.to || '';
-    let pdf;
-    let filename;
-    if (source === 'manualInvoice') {
-      const invoice = db.userData[user.id].manualInvoices.find((item) => item.id === req.body?.invoiceId);
-      if (!invoice) return res.status(404).json({ message: 'Manual invoice not found' });
-      pdf = await pdfBufferFromGenerator((pdfRes) => generateManualInvoicePdf({
-        res: pdfRes,
-        invoice,
-        businessProfile: db.userData[user.id].businessProfile,
-      }));
-      filename = filenameFromContentDisposition(
-        pdf.headers['content-disposition'],
-        pdfFilename(['INVOICE', invoice.clientName || 'Client', invoice.eventName || invoice.id]),
-      );
-    } else if (source === 'event') {
-      const event = findUserEvent(db, user.id, req.body?.eventId);
-      if (!event) return res.status(404).json({ message: 'Event not found' });
-      const type = req.body?.documentType === 'quotation' ? 'quotation' : 'invoice';
-      pdf = await pdfBufferFromGenerator((pdfRes) => generateEventPdf({
-        res: pdfRes,
-        db,
-        event,
-        type,
-        businessProfile: db.userData[user.id].businessProfile,
-        clients: db.userData[user.id].clients || [],
-      }));
-      filename = filenameFromContentDisposition(
-        pdf.headers['content-disposition'],
-        pdfFilename([type === 'invoice' ? 'INVOICE' : 'QUOTATION', eventClientName(event), event.name || event.id]),
-      );
-    } else {
-      return res.status(400).json({ message: 'Payment request source must be event or manualInvoice' });
-    }
-    const result = await sendWhatsAppDocument({
-      to,
-      buffer: pdf.buffer,
-      filename,
-      caption,
-    });
-    res.json({
-      status: 'sent',
-      to: normalizeWhatsAppRecipient(to),
-      filename,
-      messageId: result.messages?.[0]?.id || '',
-      raw: result,
-    });
-  } catch (error) {
-    res.status(502).json({ message: error.message || 'Unable to send WhatsApp payment request' });
-  }
 });
 
 app.get('/api/custom-menus', (req, res) => {
