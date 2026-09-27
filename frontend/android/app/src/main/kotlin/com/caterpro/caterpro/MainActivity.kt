@@ -157,7 +157,14 @@ class MainActivity : FlutterFragmentActivity() {
             .filter { it.activityInfo.packageName in setOf("com.whatsapp", "com.whatsapp.w4b") }
         if (matches.isEmpty()) return null
         val intents = matches.map { resolveInfo ->
-            baseShareFileIntent(uri, mimeType, title, text).apply {
+            Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+                type = mimeType
+                putParcelableArrayListExtra(Intent.EXTRA_STREAM, arrayListOf(uri))
+                putExtra(Intent.EXTRA_TEXT, text)
+                putExtra(Intent.EXTRA_SUBJECT, title ?: "CaterPro invoice")
+                putExtra(Intent.EXTRA_TITLE, title ?: "Share PDF")
+                clipData = ClipData.newUri(contentResolver, title ?: "Share PDF", uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 component = ComponentName(
                     resolveInfo.activityInfo.packageName,
                     resolveInfo.activityInfo.name
