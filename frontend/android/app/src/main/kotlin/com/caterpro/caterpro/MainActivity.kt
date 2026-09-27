@@ -2,6 +2,7 @@ package com.caterpro.caterpro
 
 import android.content.ContentValues
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -116,21 +117,57 @@ class MainActivity : FlutterFragmentActivity() {
         try {
             val uri = Uri.parse(uriText)
             val safeMimeType = mimeType ?: "*/*"
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = safeMimeType
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_TITLE, title ?: "Share PDF")
-                if (!text.isNullOrBlank()) {
-                    putExtra(Intent.EXTRA_TEXT, text)
-                    putExtra(Intent.EXTRA_SUBJECT, title ?: "CaterPro invoice")
-                }
-                clipData = ClipData.newUri(contentResolver, title ?: "Share PDF", uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val intent = if (!text.isNullOrBlank()) {
+                whatsappChooserIntent(uri, safeMimeType, title, text)
+                    ?: shareFileIntent(uri, safeMimeType, title, text)
+            } else {
+                shareFileIntent(uri, safeMimeType, title, null)
             }
-            startActivity(Intent.createChooser(intent, title ?: "Share PDF"))
+            startActivity(intent)
             result.success(true)
         } catch (_: Exception) {
             result.success(false)
+        }
+    }
+
+    private fun shareFileIntent(uri: Uri, mimeType: String, title: String?, text: String?): Intent {
+        return Intent.createChooser(
+            baseShareFileIntent(uri, mimeType, title, text),
+            title ?: "Share PDF"
+        )
+    }
+
+    private fun baseShareFileIntent(uri: Uri, mimeType: String, title: String?, text: String?): Intent {
+        return Intent(Intent.ACTION_SEND).apply {
+            type = mimeType
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TITLE, title ?: "Share PDF")
+            if (!text.isNullOrBlank()) {
+                putExtra(Intent.EXTRA_TEXT, text)
+                putExtra(Intent.EXTRA_SUBJECT, title ?: "CaterPro invoice")
+            }
+            clipData = ClipData.newUri(contentResolver, title ?: "Share PDF", uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    private fun whatsappChooserIntent(uri: Uri, mimeType: String, title: String?, text: String): Intent? {
+        val probe = baseShareFileIntent(uri, mimeType, title, text)
+        val matches = packageManager.queryIntentActivities(probe, 0)
+            .filter { it.activityInfo.packageName in setOf("com.whatsapp", "com.whatsapp.w4b") }
+        if (matches.isEmpty()) return null
+        val intents = matches.map { resolveInfo ->
+            baseShareFileIntent(uri, mimeType, title, text).apply {
+                component = ComponentName(
+                    resolveInfo.activityInfo.packageName,
+                    resolveInfo.activityInfo.name
+                )
+                setPackage(resolveInfo.activityInfo.packageName)
+            }
+        }
+        if (intents.size == 1) return intents.first()
+        return Intent.createChooser(intents.first(), "Share to WhatsApp").apply {
+            putExtra(Intent.EXTRA_INITIAL_INTENTS, intents.drop(1).toTypedArray())
         }
     }
 
