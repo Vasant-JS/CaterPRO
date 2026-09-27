@@ -476,6 +476,62 @@ Future<Uri> saveAndShareDownload(
   return localUri;
 }
 
+String whatsappTargetFromMobile(String value) {
+  final clean = normalizeMobileText(value);
+  if (clean.isEmpty) return '';
+  return clean.length == 10 ? '91$clean' : clean;
+}
+
+Future<bool> openWhatsAppTextToMobile({
+  required String mobile,
+  required String text,
+}) async {
+  final target = whatsappTargetFromMobile(mobile);
+  if (target.isEmpty || text.trim().isEmpty) return false;
+  final uri = Uri.https('wa.me', '/$target', {'text': text});
+  return launchUrl(uri,
+      mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+}
+
+Future<void> sharePaymentPdfThenText(
+  BuildContext context, {
+  required String title,
+  required Uri uri,
+  required String kind,
+  required String mobile,
+  required String text,
+}) async {
+  if (whatsappTargetFromMobile(mobile).isEmpty) {
+    throw Exception('Client mobile number is not available');
+  }
+
+  await saveAndShareDownload(title: title, uri: uri, kind: kind);
+  if (!context.mounted) return;
+
+  final sendText = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Send payment text'),
+          content: const Text(
+              'After sending the PDF in WhatsApp, tap Send Text to open the payment message for the same customer.'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Later')),
+            FilledButton.icon(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                icon: const Icon(Icons.message),
+                label: const Text('Send Text')),
+          ],
+        ),
+      ) ??
+      false;
+  if (!sendText) return;
+
+  final opened = await openWhatsAppTextToMobile(mobile: mobile, text: text);
+  if (!opened) throw Exception('Unable to open WhatsApp');
+}
+
 class AppPreferences {
   const AppPreferences(
       {this.textScale = 1,

@@ -643,13 +643,15 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
     try {
       showCpSnack(context, 'Preparing invoice...');
       final uri = await widget.api.documentUri(event.id, 'invoice');
+      if (!context.mounted) return;
       final client = event.primaryClient.trim().isEmpty
           ? 'Customer'
           : event.primaryClient.trim();
-      await saveAndShareDownload(
+      await sharePaymentPdfThenText(context,
           title: downloadTitleForEvent(event, 'invoice'),
           uri: uri,
           kind: 'invoice',
+          mobile: event.mobile,
           text: requestPaymentMessage(
               documentType: 'invoice',
               clientName: client,

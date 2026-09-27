@@ -2170,16 +2170,18 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
         title: '${invoice.eventName} invoice.pdf', uri: uri, kind: 'invoice');
   }
 
-  Future<void> requestPayment() async {
+  Future<void> requestPayment(BuildContext context) async {
     final uri = await api.manualInvoicePdfUri(invoice.id);
+    if (!context.mounted) return;
     final text = requestPaymentMessage(
         documentType: 'invoice',
         clientName: invoice.clientName,
         amount: money(invoice.pending));
-    await saveAndShareDownload(
+    await sharePaymentPdfThenText(context,
         title: '${invoice.eventName} invoice.pdf',
         uri: uri,
         kind: 'invoice',
+        mobile: invoice.mobile,
         text: text);
     onAudit(
       action: 'requestPayment',
@@ -2320,7 +2322,7 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
                   ? null
                   : () async {
                       try {
-                        await requestPayment();
+                        await requestPayment(context);
                         if (context.mounted) {
                           showCpSnack(context, 'Payment request opened');
                         }
@@ -2703,15 +2705,17 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
         event.primaryClient.isEmpty ? 'Customer' : event.primaryClient;
     final amount = isInvoice ? eventBalance(event) : eventTotal(event);
     final uri = await documentUri();
+    if (!context.mounted) return;
     final text = requestPaymentMessage(
         documentType: isInvoice ? 'invoice' : 'quotation',
         clientName: client,
         amount: money(amount));
-    await saveAndShareDownload(
+    await sharePaymentPdfThenText(context,
         title:
             downloadTitleForEvent(event, isInvoice ? 'invoice' : 'quotation'),
         uri: uri,
         kind: 'invoice',
+        mobile: event.mobile,
         text: text);
     onAudit(
       action: 'requestPayment',
