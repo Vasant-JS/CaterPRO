@@ -505,6 +505,10 @@ Future<void> sharePaymentPdfThenText(
     throw Exception('Client mobile number is not available');
   }
 
+  await Clipboard.setData(ClipboardData(text: text));
+  if (context.mounted) {
+    showCpSnack(context, 'Payment text copied');
+  }
   await saveAndShareDownload(title: title, uri: uri, kind: kind);
   if (!context.mounted) return;
 
@@ -513,11 +517,11 @@ Future<void> sharePaymentPdfThenText(
         builder: (dialogContext) => AlertDialog(
           title: const Text('Send payment text'),
           content: const Text(
-              'After sending the PDF in WhatsApp, tap Send Text to open the payment message for the same customer.'),
+              'The payment text is copied. Paste it with the PDF in WhatsApp, or tap Send Text to open it as a separate message.'),
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Later')),
+                child: const Text('Cancel')),
             FilledButton.icon(
                 onPressed: () => Navigator.pop(dialogContext, true),
                 icon: const Icon(Icons.message),
