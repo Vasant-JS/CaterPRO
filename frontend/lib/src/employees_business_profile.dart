@@ -789,6 +789,15 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     }
   }
 
+  Future<void> drawSignature() async {
+    final value = await showSignatureDrawDialog(context);
+    if (value == null || !mounted) return;
+    setState(() {
+      signatureBase64 = value;
+      includeSignature = true;
+    });
+  }
+
   @override
   Widget build(BuildContext context) => ScreenFrame(
           topBar: TopBar(
@@ -826,12 +835,21 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                           setState(() => logoBase64 = value))),
               const SizedBox(width: 12),
               Expanded(
-                  child: UploadBox(
-                      label: 'Signature',
-                      icon: Icons.draw,
-                      value: signatureBase64,
-                      onChanged: (value) =>
-                          setState(() => signatureBase64 = value))),
+                  child: Column(children: [
+                UploadBox(
+                    label: 'Upload Signature',
+                    icon: Icons.draw,
+                    value: signatureBase64,
+                    onChanged: (value) =>
+                        setState(() => signatureBase64 = value)),
+                const SizedBox(height: 8),
+                SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                        onPressed: drawSignature,
+                        icon: const Icon(Icons.edit),
+                        label: const Text('Draw Sign')))
+              ])),
               const SizedBox(width: 12),
               Expanded(
                   child: UploadBox(
@@ -1030,6 +1048,179 @@ class UploadBox extends StatelessWidget {
       ),
     );
   }
+}
+
+class SignatureInk {
+  const SignatureInk(this.label, this.color);
+  final String label;
+  final Color color;
+}
+
+class SignatureStroke {
+  SignatureStroke({required this.color});
+  final Color color;
+  final points = <Offset>[];
+}
+
+const signatureInkColors = [
+  SignatureInk('Black', Colors.black),
+  SignatureInk('Blue', Color(0xff1455d9)),
+  SignatureInk('Green', Color(0xff188038)),
+  SignatureInk('Red', Color(0xffc5221f)),
+  SignatureInk('Grey', Color(0xff5f6368)),
+];
+
+Future<String?> showSignatureDrawDialog(BuildContext context) {
+  return showDialog<String>(
+      context: context, builder: (_) => const SignatureDrawDialog());
+}
+
+class SignatureDrawDialog extends StatefulWidget {
+  const SignatureDrawDialog({super.key});
+
+  @override
+  State<SignatureDrawDialog> createState() => _SignatureDrawDialogState();
+}
+
+class _SignatureDrawDialogState extends State<SignatureDrawDialog> {
+  final strokes = <SignatureStroke>[];
+  Color selectedColor = signatureInkColors.first.color;
+  Size canvasSize = Size.zero;
+
+  void addPoint(Offset point) {
+    if (strokes.isEmpty) {
+      strokes.add(SignatureStroke(color: selectedColor));
+    }
+    setState(() => strokes.last.points.add(point));
+  }
+
+  void startStroke(Offset point) {
+    setState(() {
+      strokes.add(SignatureStroke(color: selectedColor)..points.add(point));
+    });
+  }
+
+  void reset() => setState(strokes.clear);
+
+  Future<void> submit() async {
+    final hasInk = strokes.any((stroke) => stroke.points.length > 1);
+    if (!hasInk || canvasSize == Size.zero) {
+      showCpSnack(context, 'Draw signature before submitting');
+      return;
+    }
+    final dataUrl = await renderSignatureDataUrl(strokes, canvasSize);
+    if (!mounted) return;
+    Navigator.pop(context, dataUrl);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Draw Signature',
+          style: TextStyle(fontWeight: FontWeight.w900)),
+      contentPadding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+      content: SizedBox(
+        width: 520,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final ink in signatureInkColors)
+                ChoiceChip(
+                  label: Text(ink.label),
+                  selected: selectedColor == ink.color,
+                  avatar: CircleAvatar(backgroundColor: ink.color),
+                  onSelected: (_) => setState(() => selectedColor = ink.color),
+                )
+            ],
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(builder: (context, constraints) {
+            final width = constraints.maxWidth.clamp(280.0, 520.0);
+            final size = Size(width, width * .42);
+            canvasSize = size;
+            return Container(
+              width: size.width,
+              height: size.height,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: cpOutline(context), width: 1.3),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(9),
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onPanStart: (details) => startStroke(details.localPosition),
+                  onPanUpdate: (details) => addPoint(details.localPosition),
+                  child: CustomPaint(
+                    painter: SignaturePainter(strokes),
+                    child: const SizedBox.expand(),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ]),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel')),
+        TextButton.icon(
+            onPressed: reset,
+            icon: const Icon(Icons.refresh),
+            label: const Text('Reset')),
+        FilledButton.icon(
+            onPressed: submit,
+            icon: const Icon(Icons.check),
+            label: const Text('Submit')),
+      ],
+    );
+  }
+}
+
+class SignaturePainter extends CustomPainter {
+  const SignaturePainter(this.strokes);
+  final List<SignatureStroke> strokes;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    for (final stroke in strokes) {
+      final paint = Paint()
+        ..color = stroke.color
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..style = PaintingStyle.stroke;
+      final points = stroke.points;
+      if (points.length == 1) {
+        canvas.drawCircle(points.first, 1.5, paint);
+        continue;
+      }
+      for (var i = 1; i < points.length; i += 1) {
+        canvas.drawLine(points[i - 1], points[i], paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant SignaturePainter oldDelegate) => true;
+}
+
+Future<String> renderSignatureDataUrl(
+    List<SignatureStroke> strokes, Size canvasSize) async {
+  const scale = 3.0;
+  final recorder = ui.PictureRecorder();
+  final canvas = Canvas(recorder)..scale(scale, scale);
+  SignaturePainter(strokes).paint(canvas, canvasSize);
+  final picture = recorder.endRecording();
+  final image = await picture.toImage(
+      (canvasSize.width * scale).round(), (canvasSize.height * scale).round());
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  if (bytes == null) throw Exception('Unable to create signature');
+  return 'data:image/png;base64,${base64Encode(bytes.buffer.asUint8List())}';
 }
 
 class SectionTitle extends StatelessWidget {
