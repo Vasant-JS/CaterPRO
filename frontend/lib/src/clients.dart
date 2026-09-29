@@ -190,7 +190,9 @@ class _ClientsScreenState extends State<ClientsScreen> {
           ...summary.events.map((event) => ListTile(
                 leading: const Icon(Icons.event, color: Cp.primary),
                 title: Text(event.name),
-                subtitle: Text(event.dates.map((date) => date.date).join(', ')),
+                subtitle: Text(event.dates
+                    .map((date) => compactDateLabel(date.date))
+                    .join(', ')),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () {
                   Navigator.pop(context);
@@ -258,7 +260,7 @@ class _ClientsScreenState extends State<ClientsScreen> {
                 leading:
                     const Icon(Icons.payments, color: Cp.tertiaryContainer),
                 title: Text(event.name),
-                subtitle: Text(payment.date),
+                subtitle: Text(compactDateLabel(payment.date)),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   Text(money(payment.amount)),
                   const SizedBox(width: 8),

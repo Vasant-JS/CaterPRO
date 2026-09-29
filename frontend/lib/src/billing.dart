@@ -107,7 +107,7 @@ class _BillingScreenState extends State<BillingScreen> {
       '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
   String _rangeLabel(DateTimeRange range) =>
-      '${_dateKey(range.start)} to ${_dateKey(range.end)}';
+      '${compactDateLabel(_dateKey(range.start))} to ${compactDateLabel(_dateKey(range.end))}';
 
   DateTime? eventSortDate(AppEvent event) {
     final dates = event.dates
@@ -170,7 +170,9 @@ class _BillingScreenState extends State<BillingScreen> {
                 amount: money(eventTotal(event)),
                 dateLabel: event.dates.isEmpty
                     ? 'No dates'
-                    : event.dates.map((date) => date.date).join(', '),
+                    : event.dates
+                        .map((date) => compactDateLabel(date.date))
+                        .join(', '),
                 status: 'Quotation',
                 statusColor: Cp.primary,
                 icon: Icons.request_quote,
@@ -216,7 +218,9 @@ class _BillingScreenState extends State<BillingScreen> {
                 amount: money(eventBalance(event)),
                 dateLabel: event.dates.isEmpty
                     ? 'No dates'
-                    : event.dates.map((date) => date.date).join(', '),
+                    : event.dates
+                        .map((date) => compactDateLabel(date.date))
+                        .join(', '),
                 status: eventBalance(event) == 0 ? 'Settled' : 'Invoice',
                 statusColor: eventBalance(event) == 0
                     ? Cp.tertiaryContainer
@@ -261,7 +265,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 amountLabel: invoice.pending == 0 ? 'Total' : 'Pending',
                 amount: money(
                     invoice.pending == 0 ? invoice.total : invoice.pending),
-                dateLabel: invoice.invoiceDate,
+                dateLabel: compactDateLabel(invoice.invoiceDate),
                 status: invoice.pending == 0 ? 'Settled' : 'Manual',
                 statusColor:
                     invoice.pending == 0 ? Cp.tertiaryContainer : Cp.primary,
@@ -302,7 +306,7 @@ class _BillingScreenState extends State<BillingScreen> {
                 code: 'INV-${item.payment.id.toUpperCase()}',
                 amountLabel: 'Payment Amount',
                 amount: money(item.payment.amount),
-                dateLabel: item.payment.date,
+                dateLabel: compactDateLabel(item.payment.date),
                 status: item.payment.settled ? 'Settled' : 'Paid',
                 statusColor:
                     item.payment.settled ? Cp.tertiaryContainer : Cp.tertiary,
@@ -2275,10 +2279,12 @@ class ManualInvoiceDetailsScreen extends StatelessWidget {
               Row(children: [
                 Expanded(
                     child: SmallInfoBlock(
-                        label: 'Event Date', value: invoice.eventDate)),
+                        label: 'Event Date',
+                        value: compactDateLabel(invoice.eventDate))),
                 Expanded(
                     child: SmallInfoBlock(
-                        label: 'Invoice Date', value: invoice.invoiceDate))
+                        label: 'Invoice Date',
+                        value: compactDateLabel(invoice.invoiceDate)))
               ]),
             ]),
           ),
@@ -2636,7 +2642,7 @@ class BillingDocumentCard extends StatelessWidget {
                           color: outline,
                           fontSize: 11,
                           fontWeight: FontWeight.w800)),
-                  Text(dateLabel,
+                  Text(compactDateListLabel(dateLabel),
                       textAlign: TextAlign.right,
                       style: const TextStyle(fontWeight: FontWeight.w800))
                 ])),
@@ -2822,7 +2828,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(
-                  'Event Date: ${event.dates.isEmpty ? '-' : event.dates.map((date) => date.date).join(', ')}',
+                  'Event Date: ${event.dates.isEmpty ? '-' : event.dates.map((date) => compactDateLabel(date.date)).join(', ')}',
                   style: const TextStyle(fontWeight: FontWeight.w900)),
               Text('Terms: Due of Receipt',
                   style: TextStyle(
@@ -2838,8 +2844,8 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                 Expanded(
                     child: SmallInfoBlock(
                         label: isInvoice ? 'Invoice Date' : 'Quotation Date',
-                        value: payment?.date ??
-                            DateTime.now().toIso8601String().substring(0, 10))),
+                        value: compactDateLabel(
+                            payment?.date ?? isoDateKey(DateTime.now())))),
               ]),
               Divider(height: 24, color: cpOutlineVariant(context)),
               SmallInfoBlock(label: 'Event#', value: event.id.toUpperCase()),
@@ -2864,7 +2870,7 @@ class BillingDocumentDetailsScreen extends StatelessWidget {
                       fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               ...sortedEventDates(event.dates).take(4).map((date) => Text(
-                  '${date.date}: ${sortedVisibleMenuSlots(date.menuSlots).map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
+                  '${compactDateLabel(date.date)}: ${sortedVisibleMenuSlots(date.menuSlots).map((slot) => '${slot.type} ${slot.pax} Members').join(', ')}',
                   style: const TextStyle(fontWeight: FontWeight.w700))),
             ]),
           ),
@@ -3001,8 +3007,9 @@ class BillingClientInfoScreen extends StatelessWidget {
                     leading: Icon(Icons.event, color: cpPrimary(context)),
                     title: Text(event.name,
                         style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle:
-                        Text(event.dates.map((date) => date.date).join(', ')),
+                    subtitle: Text(event.dates
+                        .map((date) => compactDateLabel(date.date))
+                        .join(', ')),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
                       Navigator.of(context).popUntil((route) => route.isFirst);
@@ -3187,7 +3194,8 @@ class InvoiceCard extends StatelessWidget {
                       color: color == Cp.error ? Cp.error : Cp.outline,
                       fontSize: 12,
                       fontWeight: FontWeight.w700)),
-              Text(date, style: const TextStyle(fontWeight: FontWeight.w700))
+              Text(compactDateListLabel(date),
+                  style: const TextStyle(fontWeight: FontWeight.w700))
             ])
           ]),
         ]),
@@ -3208,13 +3216,20 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
   static const int paidAmount = 225000;
   static const int balanceAmount = 125000;
   final paymentController = TextEditingController(text: '50000');
-  final dateController = TextEditingController(
-      text: DateTime.now().toIso8601String().substring(0, 10));
+  late final TextEditingController dateController;
   final refController = TextEditingController(text: 'REF123456789');
   final paymentModes = const ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque'];
   int selectedMode = 0;
   bool settled = false;
   String? errorText;
+  late String paymentDate;
+
+  @override
+  void initState() {
+    super.initState();
+    paymentDate = isoDateKey(DateTime.now());
+    dateController = TextEditingController(text: compactDateLabel(paymentDate));
+  }
 
   int get paymentAmount =>
       int.tryParse(paymentController.text.replaceAll(RegExp(r'[^0-9]'), '')) ??
@@ -3258,14 +3273,28 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
           'Payment cannot be more than remaining balance ${money(balanceAmount)}.');
       return false;
     }
-    final dateError =
-        isoDateValidator(dateController.text, label: 'Payment date');
+    final dateError = isoDateValidator(paymentDate, label: 'Payment date');
     if (dateError != null) {
       setState(() => errorText = dateError);
       return false;
     }
     setState(() => errorText = null);
     return true;
+  }
+
+  Future<void> pickPaymentDate() async {
+    final initial = parseIsoDate(paymentDate) ?? DateTime.now();
+    final picked = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100));
+    if (picked == null || !mounted) return;
+    setState(() {
+      paymentDate = isoDateKey(picked);
+      dateController.text = compactDateLabel(paymentDate);
+    });
+    validate();
   }
 
   void savePayment() {
@@ -3354,7 +3383,9 @@ class _RecordPaymentSheetState extends State<RecordPaymentSheet> {
                     child: PaymentInputBox(
                         label: 'Date',
                         controller: dateController,
-                        icon: Icons.calendar_today)),
+                        icon: Icons.calendar_today,
+                        readOnly: true,
+                        onTap: pickPaymentDate)),
                 const SizedBox(width: 12),
                 Expanded(
                     child: PaymentInputBox(
@@ -3434,12 +3465,16 @@ class PaymentInputBox extends StatelessWidget {
       required this.controller,
       this.icon,
       this.keyboardType,
-      this.onChanged});
+      this.onChanged,
+      this.onTap,
+      this.readOnly = false});
   final String label;
   final TextEditingController controller;
   final IconData? icon;
   final TextInputType? keyboardType;
   final ValueChanged<String>? onChanged;
+  final VoidCallback? onTap;
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -3457,10 +3492,12 @@ class PaymentInputBox extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 keyboardType: keyboardType,
+                readOnly: readOnly,
                 textCapitalization: cpTextCapitalizationForField(
                     label: label, keyboardType: keyboardType),
                 scrollPadding: cpTextFieldScrollPadding(context),
                 onChanged: onChanged,
+                onTap: onTap,
                 style: TextStyle(
                     color: cpOnSurface(context),
                     fontSize: 16,
@@ -3480,8 +3517,18 @@ class PaymentInputBox extends StatelessWidget {
             ),
             if (icon != null)
               Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: Icon(icon, color: cpOutline(context))),
+                padding: const EdgeInsets.only(left: 8),
+                child: onTap == null
+                    ? Icon(icon, color: cpOutline(context))
+                    : IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints.tightFor(
+                            width: 36, height: 36),
+                        onPressed: onTap,
+                        icon: Icon(icon, color: cpOutline(context)),
+                        tooltip: label),
+              ),
           ],
         ),
       ),

@@ -3150,6 +3150,16 @@ class ReportDateRangeSelection {
 String isoDateKey(DateTime date) =>
     '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
+String compactDateLabel(String isoDate) {
+  final date = parseIsoDate(isoDate);
+  return date == null
+      ? isoDate
+      : '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year.toString().padLeft(4, '0')}';
+}
+
+String compactDateListLabel(String value) =>
+    value.split(',').map((item) => compactDateLabel(item.trim())).join(', ');
+
 String reportRangeFileLabel(DateTime start, DateTime end) =>
     '${isoDateKey(start)} to ${isoDateKey(end)}';
 

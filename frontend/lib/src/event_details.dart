@@ -93,7 +93,7 @@ class EventDetailsScreen extends StatelessWidget {
         final date = await pickDateToDelete(context, selectedEvent);
         if (!context.mounted || date == null) return;
         final confirmed = await confirmEventAction(context, 'Delete Date?',
-            'This will remove ${date.label.isEmpty ? date.date : date.label} and its menus.');
+            'This will remove ${date.label.isEmpty ? compactDateLabel(date.date) : date.label} and its menus.');
         if (!context.mounted || !confirmed) return;
         await deleteDate(context, selectedEvent, date);
         break;
@@ -166,7 +166,8 @@ class EventDetailsScreen extends StatelessWidget {
           for (final date in event.dates)
             SimpleDialogOption(
               onPressed: () => Navigator.pop(dialogContext, date),
-              child: Text(date.label.isEmpty ? date.date : date.label,
+              child: Text(
+                  date.label.isEmpty ? compactDateLabel(date.date) : date.label,
                   style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
         ],
@@ -741,8 +742,12 @@ class _EventDetailsContentState extends State<EventDetailsContent> {
           final tileWidth =
               ((constraints.maxWidth - 12) / 2).clamp(132.0, 240.0);
           return Wrap(spacing: 12, runSpacing: 16, children: [
-            InfoTile(Icons.calendar_today, 'Dates',
-                event.dates.map((date) => date.date).join(', '),
+            InfoTile(
+                Icons.calendar_today,
+                'Dates',
+                event.dates
+                    .map((date) => compactDateLabel(date.date))
+                    .join(', '),
                 width: tileWidth),
             InfoTile(Icons.restaurant_menu, 'Menu Members', 'Meal-wise',
                 color: primary, width: tileWidth),
@@ -1002,7 +1007,7 @@ class EventDetailsTabContent extends StatelessWidget {
                       const SizedBox(width: 12),
                       Expanded(
                           child: Text(
-                              '${money(payment.amount)} | ${payment.mode}\n${payment.date}${payment.reference.isEmpty ? '' : ' | ${payment.reference}'}',
+                              '${money(payment.amount)} | ${payment.mode}\n${compactDateLabel(payment.date)}${payment.reference.isEmpty ? '' : ' | ${payment.reference}'}',
                               style: const TextStyle(
                                   fontWeight: FontWeight.w800))),
                       if (payment.settled)
@@ -1260,7 +1265,7 @@ class _EventTeamSectionState extends State<EventTeamSection> {
     final assigned =
         widget.event.employeeAssignments.map(Employee.fromAssignment).toList();
     final dates = widget.event.dates
-        .map((date) => date.date)
+        .map((date) => compactDateLabel(date.date))
         .where((date) => date.isNotEmpty)
         .toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -2070,7 +2075,8 @@ class EventDateMenuCard extends StatelessWidget {
               decoration: BoxDecoration(
                   color: scheme.primaryContainer,
                   borderRadius: BorderRadius.circular(10)),
-              child: Text(date.date.split('-').skip(1).join('\n'),
+              child: Text(
+                  compactDateLabel(date.date).split('-').take(2).join('\n'),
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       color: scheme.onPrimaryContainer,
@@ -2082,7 +2088,10 @@ class EventDateMenuCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(date.label.isEmpty ? date.date : date.label,
+                  Text(
+                      date.label.isEmpty
+                          ? compactDateLabel(date.date)
+                          : date.label,
                       style: TextStyle(
                           color: cpPrimary(context),
                           fontSize: 17,

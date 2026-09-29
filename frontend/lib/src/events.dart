@@ -573,7 +573,9 @@ class _EventsScreenState extends State<EventsScreen> {
                 .toList();
             final dateText = event.dates.isEmpty
                 ? 'No dates'
-                : event.dates.map((date) => date.date).join(', ');
+                : event.dates
+                    .map((date) => compactDateLabel(date.date))
+                    .join(', ');
             final balance = eventBalance(event);
             return EventListCard(
                 title: event.name,

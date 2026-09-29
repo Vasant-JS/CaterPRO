@@ -2145,6 +2145,7 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
   late final TextEditingController paymentController;
   late final TextEditingController dateController;
   late final TextEditingController refController;
+  late String paymentDate;
   final paymentModes = ['Cash', 'UPI', 'NEFT', 'RTGS', 'Cheque'];
   int selectedMode = 0;
   bool settled = false;
@@ -2167,10 +2168,9 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
   void initState() {
     super.initState();
     final today = DateTime.now();
+    paymentDate = isoDateKey(today);
     paymentController = TextEditingController();
-    dateController = TextEditingController(
-        text:
-            '${today.year.toString().padLeft(4, '0')}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}');
+    dateController = TextEditingController(text: compactDateLabel(paymentDate));
     refController = TextEditingController();
   }
 
@@ -2190,14 +2190,27 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
       } else if (amount > balanceAmount) {
         errorText =
             'Payment cannot be more than remaining balance ${money(balanceAmount)}.';
-      } else if (isoDateValidator(dateController.text, label: 'Payment date') !=
-          null) {
-        errorText =
-            isoDateValidator(dateController.text, label: 'Payment date');
+      } else if (isoDateValidator(paymentDate, label: 'Payment date') != null) {
+        errorText = isoDateValidator(paymentDate, label: 'Payment date');
       } else {
         errorText = null;
       }
     });
+  }
+
+  Future<void> pickPaymentDate() async {
+    final initial = parseIsoDate(paymentDate) ?? DateTime.now();
+    final picked = await showDatePicker(
+        context: context,
+        initialDate: initial,
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100));
+    if (picked == null || !mounted) return;
+    setState(() {
+      paymentDate = isoDateKey(picked);
+      dateController.text = compactDateLabel(paymentDate);
+    });
+    validate();
   }
 
   Future<void> savePayment() async {
@@ -2207,7 +2220,7 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
     final payment = AppPayment(
       id: 'pay_${DateTime.now().microsecondsSinceEpoch}',
       amount: paymentAmount,
-      date: dateController.text.trim(),
+      date: paymentDate,
       mode: paymentModes[selectedMode],
       reference: refController.text.trim(),
       settled: settled,
@@ -2218,7 +2231,7 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
         widget.event.id,
         id: payment.id,
         amount: paymentAmount,
-        date: dateController.text.trim(),
+        date: paymentDate,
         mode: paymentModes[selectedMode],
         reference: refController.text.trim(),
         settled: settled,
@@ -2315,7 +2328,9 @@ class _EventRecordPaymentSheetState extends State<EventRecordPaymentSheet> {
                       child: PaymentInputBox(
                           label: 'Date',
                           controller: dateController,
-                          icon: Icons.calendar_today)),
+                          icon: Icons.calendar_today,
+                          readOnly: true,
+                          onTap: pickPaymentDate)),
                   const SizedBox(width: 12),
                   Expanded(
                       child: PaymentInputBox(
