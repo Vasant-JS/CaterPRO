@@ -1100,6 +1100,7 @@ class BusinessProfile {
     this.terms = '',
     this.logoBase64 = '',
     this.signatureBase64 = '',
+    this.includeSignature = true,
     this.qrBase64 = '',
     this.documentTemplate = 'boxed',
     this.invoiceTextScale = 1,
@@ -1123,6 +1124,7 @@ class BusinessProfile {
   final String terms;
   final String logoBase64;
   final String signatureBase64;
+  final bool includeSignature;
   final String qrBase64;
   final String documentTemplate;
   final double invoiceTextScale;
@@ -1150,6 +1152,9 @@ class BusinessProfile {
       terms: data['terms']?.toString() ?? '',
       logoBase64: data['logoBase64']?.toString() ?? '',
       signatureBase64: data['signatureBase64']?.toString() ?? '',
+      includeSignature: data['includeSignature'] is bool
+          ? data['includeSignature'] as bool
+          : data['includeSignature']?.toString() != 'false',
       qrBase64: data['qrBase64']?.toString() ?? '',
       documentTemplate: data['documentTemplate']?.toString() ?? 'boxed',
       invoiceTextScale:
@@ -1177,6 +1182,7 @@ class BusinessProfile {
         'terms': terms,
         'logoBase64': logoBase64,
         'signatureBase64': signatureBase64,
+        'includeSignature': includeSignature,
         'qrBase64': qrBase64,
         'documentTemplate': documentTemplate,
         'invoiceTextScale': invoiceTextScale,

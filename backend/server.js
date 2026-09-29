@@ -1002,7 +1002,7 @@ function emptyUserData() {
 }
 
 function emptyBusinessProfile() {
-  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', city: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', qrBase64: '', documentTemplate: 'boxed', invoiceTextScale: 1, pdfMenuFontSize: 12 };
+  return { businessName: '', serviceType: '', gstin: '', gstType: 'cgst_sgst', gstRate: 5, pan: '', address: '', city: '', phone: '', email: '', accountHolderName: '', bankName: '', branchName: '', accountNumber: '', ifsc: '', terms: '', logoBase64: '', signatureBase64: '', includeSignature: true, qrBase64: '', documentTemplate: 'boxed', invoiceTextScale: 1, pdfMenuFontSize: 12 };
 }
 
 const invoiceDocumentTemplates = [
@@ -2888,17 +2888,21 @@ function drawDocumentClosing(doc, y, {
   const lowerY = Math.max(y + 96, totalsY + totalsH + 18);
   const paymentHeight = drawPaymentDetails(doc, theme.name === 'boxed' ? metrics.left + 10 : metrics.left, lowerY, fonts, theme, businessProfile);
 
-  const signatureX = metrics.right - 154;
+  const signatureLineWidth = 186;
+  const signatureImageWidth = 170;
+  const signatureImageHeight = 50;
+  const signatureX = metrics.right - signatureLineWidth - 10;
   const signatureMaxY = theme.name === 'boxed' ? 704 : 716;
   const signatureY = Math.min(Math.max(lowerY + Math.max(28, paymentHeight + 12), totalsY + totalsH + 36), signatureMaxY);
-  if (businessProfile.signatureBase64) {
+  if (businessProfile.includeSignature !== false && businessProfile.signatureBase64) {
+    const signatureImageX = signatureX + (signatureLineWidth - signatureImageWidth) / 2;
     doc.save();
-    doc.rect(signatureX + 4, signatureY - 4, 136, 44).fill('#ffffff');
+    doc.rect(signatureX + 4, signatureY - 4, signatureLineWidth - 8, signatureImageHeight + 8).fill('#ffffff');
     doc.restore();
-    drawProfileImage(doc, businessProfile.signatureBase64, signatureX + 8, signatureY, { fit: [128, 38] });
+    drawProfileImage(doc, businessProfile.signatureBase64, signatureImageX, signatureY, { fit: [signatureImageWidth, signatureImageHeight] });
   }
-  doc.moveTo(signatureX, signatureY + 44).lineTo(signatureX + 144, signatureY + 44).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
-  doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Authorized Signature', signatureX, signatureY + 50, { width: 144, align: 'center', lineBreak: false });
+  doc.moveTo(signatureX, signatureY + 56).lineTo(signatureX + signatureLineWidth, signatureY + 56).strokeColor('#9aa3aa').lineWidth(0.5).stroke();
+  doc.fillColor(theme.primary).font(fonts.bold).fontSize(8.5).text('Authorized Signature', signatureX, signatureY + 62, { width: signatureLineWidth, align: 'center', lineBreak: false });
 }
 
 function resetDocumentPage(doc, theme) {
@@ -4890,6 +4894,8 @@ app.put('/api/admin/users/:userId', async (req, res) => {
     if (req.body[key] === undefined) continue;
     if (key === 'gstRate' || key === 'invoiceTextScale' || key === 'pdfMenuFontSize') {
       profile[key] = Number(req.body[key]) || emptyBusinessProfile()[key];
+    } else if (key === 'includeSignature') {
+      profile[key] = req.body[key] !== false && String(req.body[key]) !== 'false';
     } else {
       profile[key] = String(req.body[key] || '').trim();
     }

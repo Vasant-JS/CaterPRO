@@ -665,6 +665,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   late final terms = TextEditingController(text: widget.profile.terms);
   late String logoBase64 = widget.profile.logoBase64;
   late String signatureBase64 = widget.profile.signatureBase64;
+  late bool includeSignature = widget.profile.includeSignature;
   late String qrBase64 = widget.profile.qrBase64;
   late String documentTemplate =
       normalizedDocumentTemplate(widget.profile.documentTemplate);
@@ -702,6 +703,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
     terms.text = profile.terms;
     logoBase64 = profile.logoBase64;
     signatureBase64 = profile.signatureBase64;
+    includeSignature = profile.includeSignature;
     qrBase64 = profile.qrBase64;
     documentTemplate = normalizedDocumentTemplate(profile.documentTemplate);
   }
@@ -748,6 +750,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
         terms: terms.text.trim(),
         logoBase64: logoBase64,
         signatureBase64: signatureBase64,
+        includeSignature: includeSignature,
         qrBase64: qrBase64,
         documentTemplate: documentTemplate,
         invoiceTextScale: widget.profile.invoiceTextScale,
@@ -838,6 +841,18 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
                       onChanged: (value) => setState(() => qrBase64 = value))),
             ]),
             const SizedBox(height: 16),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: includeSignature,
+              activeColor: Theme.of(context).colorScheme.primary,
+              title: const Text('Include signature in invoice / quotation',
+                  style: TextStyle(fontWeight: FontWeight.w900)),
+              subtitle: const Text(
+                  'Turn off to leave the signature line blank for manual signing.'),
+              onChanged: (value) =>
+                  setState(() => includeSignature = value ?? true),
+            ),
+            const SizedBox(height: 8),
             if (error != null) ...[
               CpCard(
                   color: Cp.errorContainer,
