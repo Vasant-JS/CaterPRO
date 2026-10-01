@@ -4378,7 +4378,7 @@ const openApiSpec = {
   },
   servers: [
     { url: 'http://127.0.0.1:8787', description: 'Local development' },
-    { url: 'https://caterpro-api.onrender.com', description: 'Render production' },
+    { url: 'https://api.caterpro.in', description: 'Production' },
   ],
   tags: [
     { name: 'Auth' },

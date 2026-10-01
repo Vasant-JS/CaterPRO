@@ -44,7 +44,7 @@ SUPABASE_STATE_ID=default
 After deploy, open:
 
 ```text
-https://caterpro-api.onrender.com/api/docs
+https://api.caterpro.in/api/docs
 ```
 
 The backend requires an existing `caterpro_state/default` row. It does not seed from or fall back to local JSON files.

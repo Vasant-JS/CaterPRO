@@ -1248,7 +1248,7 @@ class ApiConfig {
       String.fromEnvironment('CATERPRO_ENV', defaultValue: 'auto');
   static const devWebBaseUrl = 'http://127.0.0.1:8787/api';
   static const devAndroidBaseUrl = 'http://10.0.2.2:8787/api';
-  static const liveBaseUrl = 'https://caterpro-api.onrender.com/api';
+  static const liveBaseUrl = 'https://api.caterpro.in/api';
 
   static String get baseUrl {
     if (_definedBaseUrl.isNotEmpty) {
@@ -2275,7 +2275,8 @@ class ApiService {
       headers: await authHeaders(),
     );
     if (response.statusCode != 200) {
-      throw Exception(responseMessage(response, 'Unable to load CaterPro data'));
+      throw Exception(
+          responseMessage(response, 'Unable to load CaterPro data'));
     }
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
