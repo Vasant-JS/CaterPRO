@@ -2231,6 +2231,35 @@ function drawSingleLineText(doc, text, x, y, width, fonts, options = {}) {
   doc.fillColor(color).font(fontForText(fonts, source)).fontSize(fontSize).text(source, x, y, textOptions);
 }
 
+function fittedFontSize(doc, text, font, width, preferredSize, minSize = 6) {
+  const source = repairMojibake(String(text || ''));
+  if (!source) return preferredSize;
+  for (let size = preferredSize; size >= minSize; size -= 0.25) {
+    doc.font(font).fontSize(size);
+    if (doc.widthOfString(source) <= width) return size;
+  }
+  return minSize;
+}
+
+function drawFittedSingleLineText(doc, text, x, y, width, fonts, options = {}) {
+  const source = repairMojibake(String(text || ''));
+  if (!source) return;
+  const preferredSize = options.fontSize || 7;
+  const font = options.font || fontForText(fonts, source, options.bold);
+  const fontSize = fittedFontSize(doc, source, font, width, preferredSize, options.minFontSize || 5.5);
+  doc
+    .fillColor(options.color || '#202124')
+    .font(font)
+    .fontSize(fontSize)
+    .text(source, x, y, {
+      width,
+      height: options.height || Math.max(10, fontSize + 3),
+      align: options.align,
+      ellipsis: true,
+      lineBreak: false,
+    });
+}
+
 function prettyDate(value) {
   if (!value) return '-';
   const parsed = new Date(`${value}T00:00:00`);
@@ -2460,8 +2489,22 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     });
     const titleX = boxX + boxW - titleW - 16;
     doc.fillColor(theme.primary).font(fonts.regular).fontSize(23).text(title, titleX, boxY + 18, { width: titleW, align: 'right', lineBreak: false });
-    doc.fillColor(theme.ink).font(fonts.bold).fontSize(8.2).text(number, titleX, boxY + 47, { width: titleW, align: 'right', lineBreak: false });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(8).text(prettyDate(documentDate), titleX, boxY + 62, { width: titleW, align: 'right', lineBreak: false });
+    drawFittedSingleLineText(doc, number, boxX + 16, boxY + 47, boxW - 32, fonts, {
+      font: fonts.bold,
+      fontSize: 8.2,
+      minFontSize: 5.8,
+      color: theme.ink,
+      align: 'right',
+      height: 10,
+    });
+    drawFittedSingleLineText(doc, prettyDate(documentDate), boxX + 16, boxY + 64, boxW - 32, fonts, {
+      font: fonts.regular,
+      fontSize: 8,
+      minFontSize: 6.4,
+      color: theme.muted,
+      align: 'right',
+      height: 10,
+    });
     return;
   }
   if (theme.name === 'classic') {
@@ -2476,7 +2519,14 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     });
     if (contactLine) doc.text(contactLine, 52, 80, { width: 290 });
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(17).text(title, 388, 40, { width: 142, align: 'right' });
-    doc.fillColor(theme.muted).font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 388, 64, { width: 142, align: 'right' });
+    drawFittedSingleLineText(doc, number, 388, 64, 142, fonts, {
+      font: fonts.regular,
+      fontSize: PDF_BODY_FONT_SIZE,
+      minFontSize: 5.8,
+      color: theme.muted,
+      align: 'right',
+      height: 10,
+    });
     if (taxLine) doc.text(taxLine, 388, 80, { width: 142, align: 'right' });
     return;
   }
@@ -2496,7 +2546,14 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
     });
     if (contactLine) doc.text(contactLine, 106, 78, { width: 260 });
     doc.fillColor(theme.primary).font(fonts.bold).fontSize(23).text(title, 392, 34, { width: 148, align: 'right' });
-    doc.fillColor(theme.secondary).font(fonts.bold).fontSize(PDF_BODY_FONT_SIZE).text(number, 392, 66, { width: 148, align: 'right' });
+    drawFittedSingleLineText(doc, number, 392, 66, 148, fonts, {
+      font: fonts.bold,
+      fontSize: PDF_BODY_FONT_SIZE,
+      minFontSize: 5.8,
+      color: theme.secondary,
+      align: 'right',
+      height: 10,
+    });
     if (taxLine) doc.fillColor(theme.muted).font(fonts.regular).fontSize(7).text(taxLine, 350, 84, { width: 190, align: 'right' });
     doc.moveTo(106, 108).lineTo(559, 108).strokeColor(theme.secondary).lineWidth(0.9).stroke();
     return;
@@ -2516,7 +2573,14 @@ function writeDocumentHeader(doc, title, event, number, fonts, businessProfile =
   });
   if (contactLine) doc.text(contactLine, 116, 84, { width: 258 });
   doc.font(fonts.bold).fontSize(20).text(title, 390, 42, { width: 140, align: 'right' });
-  doc.fillColor('#f6f2df').font(fonts.regular).fontSize(PDF_BODY_FONT_SIZE).text(number, 390, 68, { width: 140, align: 'right' });
+  drawFittedSingleLineText(doc, number, 390, 68, 140, fonts, {
+    font: fonts.regular,
+    fontSize: PDF_BODY_FONT_SIZE,
+    minFontSize: 5.8,
+    color: '#f6f2df',
+    align: 'right',
+    height: 10,
+  });
   if (taxLine) doc.text(taxLine, 330, 84, { width: 200, align: 'right' });
 }
 
@@ -2941,9 +3005,9 @@ function continueDocumentContentPage(doc, title, event, number, fonts, businessP
 
 function drawDocumentFooter(doc, fonts, theme, businessProfile, { thankYou = false, pageNumber = 1, pageCount = 1 } = {}) {
   const metrics = documentMetrics(theme);
-  const footerY = theme.name === 'boxed' ? 760 : 778;
-  const thanksY = theme.name === 'boxed' ? 744 : 762;
-  const brandY = theme.name === 'boxed' ? 766 : 786;
+  const footerY = theme.name === 'boxed' ? 806 : 778;
+  const thanksY = theme.name === 'boxed' ? 790 : 762;
+  const brandY = theme.name === 'boxed' ? 812 : 786;
   doc.moveTo(metrics.left, footerY).lineTo(metrics.right, footerY).strokeColor(theme.name === 'classic' || theme.name === 'boxed' ? '#9ca3af' : '#d6dde0').lineWidth(0.5).stroke();
   if (thankYou) {
     doc.fillColor(theme.ink).font(fonts.bold).fontSize(9.5)

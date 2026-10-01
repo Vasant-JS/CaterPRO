@@ -367,13 +367,13 @@ class _AppShellState extends State<AppShell> {
     }).catchError((_) {}));
   }
 
-  void scheduleAutoSync() {
+  void scheduleAutoSync({Duration delay = const Duration(seconds: 2)}) {
     if (!mounted || loading) return;
     pendingAutoSyncTimer?.cancel();
-    pendingAutoSyncTimer = Timer(const Duration(seconds: 2), () {
+    pendingAutoSyncTimer = Timer(delay, () {
       if (!mounted || loading) return;
       if (syncInProgress) {
-        scheduleAutoSync();
+        scheduleAutoSync(delay: delay);
         return;
       }
       unawaited(refreshEvents(silent: true));
@@ -1027,6 +1027,7 @@ class _AppShellState extends State<AppShell> {
           localSyncPending = true;
           loadError = null;
         });
+        scheduleAutoSync(delay: const Duration(seconds: 30));
       }
     }
   }
@@ -1045,6 +1046,7 @@ class _AppShellState extends State<AppShell> {
     Map<String, dynamic>? localUniversal;
     var localDirty = false;
     Map<String, dynamic>? localSnapshot;
+    var retryPendingSync = false;
     try {
       localSnapshot = await LocalCaterProDb.instance
           .loadSnapshot()
@@ -1237,8 +1239,19 @@ class _AppShellState extends State<AppShell> {
       }
     } catch (e) {
       if (!mounted) return;
+      var hasPendingLocalChanges = localDirty;
+      if (!hasPendingLocalChanges) {
+        try {
+          hasPendingLocalChanges = await LocalCaterProDb.instance
+              .hasUnsyncedChanges()
+              .timeout(const Duration(seconds: 5));
+        } catch (_) {
+          hasPendingLocalChanges = localSnapshot != null;
+        }
+      }
+      retryPendingSync = hasPendingLocalChanges;
       setState(() {
-        if (localSnapshot != null) localSyncPending = true;
+        if (hasPendingLocalChanges) localSyncPending = true;
         loadError = null;
       });
       if (!silent) {
@@ -1250,6 +1263,9 @@ class _AppShellState extends State<AppShell> {
     } finally {
       syncInProgress = false;
       if (mounted) setState(() => loading = false);
+      if (retryPendingSync) {
+        scheduleAutoSync(delay: const Duration(seconds: 30));
+      }
     }
   }
 
